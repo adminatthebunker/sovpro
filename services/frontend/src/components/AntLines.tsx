@@ -15,6 +15,12 @@ interface AntPathLayer extends L.Polyline {
   isPaused?: () => boolean;
 }
 
+/** True when the user has reduced-motion enabled — we skip animation entirely. */
+const PREFERS_REDUCED_MOTION =
+  typeof window !== "undefined" &&
+  window.matchMedia &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 /**
  * Animated "ant-path" polylines for foreign-tier connection features.
  *
@@ -48,7 +54,8 @@ export function AntLines({ data }: Props) {
         color: meta.color,
         pulseColor: "#fafafa",
         opacity: 0.7,
-        paused: false,
+        // Reduced-motion users: render statically (no animation loop)
+        paused: PREFERS_REDUCED_MOTION,
         reverse: false,
         hardwareAccelerated: true,
         interactive: false,
@@ -65,28 +72,26 @@ export function AntLines({ data }: Props) {
     };
   }, [data, map]);
 
+  // Pause during interaction OR while tiles are loading — over high-latency
+  // links (e.g. Tailscale) tile loads cause SVG reflows that compete with
+  // the ant-path setInterval, producing visible flicker.
   useMapEvents({
-    zoomstart: () => {
-      for (const l of layersRef.current) {
-        try { l.pause?.(); } catch { /* noop */ }
-      }
-    },
-    zoomend: () => {
-      for (const l of layersRef.current) {
-        try { l.resume?.(); } catch { /* noop */ }
-      }
-    },
-    movestart: () => {
-      for (const l of layersRef.current) {
-        try { l.pause?.(); } catch { /* noop */ }
-      }
-    },
-    moveend: () => {
-      for (const l of layersRef.current) {
-        try { l.resume?.(); } catch { /* noop */ }
-      }
-    },
+    zoomstart: () => pauseAll(layersRef.current),
+    zoomend:   () => resumeAll(layersRef.current),
+    movestart: () => pauseAll(layersRef.current),
+    moveend:   () => resumeAll(layersRef.current),
+    // @ts-expect-error - loading/load are real Leaflet events not in the type
+    loading:   () => pauseAll(layersRef.current),
+    load:      () => resumeAll(layersRef.current),
   });
 
   return null;
+}
+
+function pauseAll(layers: AntPathLayer[]) {
+  for (const l of layers) { try { l.pause?.(); } catch { /* noop */ } }
+}
+function resumeAll(layers: AntPathLayer[]) {
+  if (PREFERS_REDUCED_MOTION) return;  // never resume if user opted out
+  for (const l of layers) { try { l.resume?.(); } catch { /* noop */ } }
 }

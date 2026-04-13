@@ -105,12 +105,19 @@ export function MapView({ filters }: Props) {
             <TileLayer
               attribution='&copy; OpenStreetMap, &copy; CARTO'
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              keepBuffer={6}
+              updateWhenIdle={true}
+              updateWhenZooming={false}
+              maxNativeZoom={18}
             />
           </LayersControl.BaseLayer>
           <LayersControl.BaseLayer name="Light">
             <TileLayer
               attribution='&copy; OpenStreetMap'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              keepBuffer={6}
+              updateWhenIdle={true}
+              updateWhenZooming={false}
             />
           </LayersControl.BaseLayer>
 
