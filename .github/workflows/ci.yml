@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  api:
+    name: API · typecheck + build
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm", cache-dependency-path: services/api/package.json }
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+
+  frontend:
+    name: Frontend · typecheck + build
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm", cache-dependency-path: services/frontend/package.json }
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+
+  scanner:
+    name: Scanner · lint + import check
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: services/scanner } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -r requirements.txt
+      - run: python -c "import src.scanner, src.classify, src.compare, src.opennorth, src.seed_orgs, src.geoip, src.stats, src.db"
+      - run: python -m src --help
+
+  compose-validate:
+    name: docker-compose · validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          echo "DB_PASSWORD=ci_only_pw" >> .env
+          echo "WEBHOOK_SECRET=$(openssl rand -hex 32)" >> .env
+      - run: docker compose config -q

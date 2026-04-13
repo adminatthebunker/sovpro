@@ -1,0 +1,153 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# SovereignWatch — docker-compose orchestration
+# ═══════════════════════════════════════════════════════════════════════════
+# Start everything:           docker compose up -d
+# Run a scan (on demand):     docker compose run --rm scanner scan
+# Seed orgs:                  docker compose run --rm scanner seed-orgs
+# Ingest federal MPs:         docker compose run --rm scanner ingest-mps
+# Stop everything:            docker compose down
+# ═══════════════════════════════════════════════════════════════════════════
+
+services:
+  # ── Database ──────────────────────────────────────────────────────
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: sw-db
+    environment:
+      POSTGRES_DB: sovereignwatch
+      POSTGRES_USER: sw
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sw -d sovereignwatch"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── API ───────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: sw-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      API_PORT: 3000
+      API_HOST: 0.0.0.0
+      API_LOG_LEVEL: ${API_LOG_LEVEL:-info}
+      API_CORS_ORIGIN: ${API_CORS_ORIGIN:-*}
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      CHANGE_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Frontend (static SPA served by nginx:alpine) ──────────────────
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    container_name: sw-frontend
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Scanner (run-on-demand) ───────────────────────────────────────
+  scanner:
+    build:
+      context: ./services/scanner
+      dockerfile: Dockerfile
+    container_name: sw-scanner
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      SCANNER_CONCURRENCY: ${SCANNER_CONCURRENCY:-16}
+      SCANNER_HTTP_TIMEOUT: ${SCANNER_HTTP_TIMEOUT:-15}
+      SCANNER_USER_AGENT: ${SCANNER_USER_AGENT:-SovereignWatchBot/1.0 (+https://sovereignwatch.ca)}
+      GEOIP_CITY_PATH: /data/GeoLite2-City.mmdb
+      GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
+      SEED_SQL_PATH: /app/db/seed.sql
+      OPENNORTH_BASE: ${OPENNORTH_BASE:-https://represent.opennorth.ca}
+    volumes:
+      - ./data:/data:ro
+      - ./db:/app/db:ro
+    profiles: ["tools"]
+    networks: [sw]
+
+  # ── Scheduled scanner (cron-ish sidecar) ──────────────────────────
+  scanner-cron:
+    build:
+      context: ./services/scanner
+      dockerfile: Dockerfile
+    container_name: sw-scanner-cron
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      SCANNER_CONCURRENCY: ${SCANNER_CONCURRENCY:-16}
+      GEOIP_CITY_PATH: /data/GeoLite2-City.mmdb
+      GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
+    volumes:
+      - ./data:/data:ro
+      - ./db:/app/db:ro
+      - ./scripts/scanner-cron.sh:/cron.sh:ro
+    entrypoint: ["/bin/sh", "/cron.sh"]
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Change detection (external service) ───────────────────────────
+  change-detection:
+    image: ghcr.io/thedurancode/change:latest
+    container_name: sw-change
+    volumes:
+      - changedata:/data
+    environment:
+      WEBHOOK_URL: http://api:3000/api/v1/webhooks/change
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    depends_on: [api]
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Uptime Kuma ───────────────────────────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: sw-kuma
+    volumes:
+      - kumadata:/app/data
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── nginx (public entrypoint) ─────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: sw-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on: [api, frontend]
+    restart: unless-stopped
+    networks: [sw]
+
+volumes:
+  pgdata:
+  changedata:
+  kumadata:
+
+networks:
+  sw:
+    driver: bridge

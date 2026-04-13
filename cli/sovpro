@@ -1,0 +1,303 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+# sovpro — SovereignWatch operator CLI
+# ═══════════════════════════════════════════════════════════════════════════
+# A thin orchestrator over docker compose, git, and the scanner container.
+# Designed to be the one tool an operator needs day to day.
+# ═══════════════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+# Locate repo root (one level up from cli/)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Colors
+if [ -t 1 ]; then
+    C_RED='\033[31m'; C_GRN='\033[32m'; C_YEL='\033[33m'; C_CYN='\033[36m'; C_BLD='\033[1m'; C_RST='\033[0m'
+else
+    C_RED=; C_GRN=; C_YEL=; C_CYN=; C_BLD=; C_RST=
+fi
+
+log()  { printf "${C_CYN}▸${C_RST} %s\n" "$*"; }
+ok()   { printf "${C_GRN}✓${C_RST} %s\n" "$*"; }
+warn() { printf "${C_YEL}!${C_RST} %s\n" "$*"; }
+die()  { printf "${C_RED}✗${C_RST} %s\n" "$*" >&2; exit 1; }
+
+COMPOSE="docker compose"
+
+# ── Pre-flight ───────────────────────────────────────────────────────
+require_env() {
+    if [ ! -f .env ]; then
+        die "No .env file. Run: sovpro init"
+    fi
+}
+
+# ── Help ─────────────────────────────────────────────────────────────
+usage() {
+    cat <<'EOF'
+sovpro — SovereignWatch CLI
+
+USAGE
+  sovpro <command> [args]
+
+LIFECYCLE
+  init                 Create .env from .env.example (if missing)
+  up                   Build and start the stack
+  down                 Stop the stack
+  restart              Restart all services
+  logs [service]       Tail logs (all or a single service)
+  ps                   Show service status
+  rebuild [service]    Rebuild image(s) and restart
+
+DATA INGESTION
+  ingest mps           Fetch federal MPs from Open North
+  ingest mlas          Fetch Alberta MLAs
+  ingest councils      Fetch Edmonton + Calgary councils
+  ingest all           Run all three plus seed orgs
+  seed orgs            Seed referendum organizations
+
+SCANNING
+  scan [--limit N]     Scan stale websites
+  scan full            Scan everything (ignore staleness)
+  refresh              Refresh map materialized views
+  stats                Print sovereignty stats
+
+DATABASE
+  db psql              Open psql shell
+  db backup [path]     pg_dump to file (default ./backups/<ts>.sql.gz)
+  db restore <path>    Restore a backup
+  db reset             DESTRUCTIVE — drop pgdata volume
+
+GIT
+  git init             Initialize repo (if not already)
+  git status           Show working tree status
+  git commit "<msg>"   Stage all + commit
+  git push [remote]    Push to remote (default origin)
+  git remote <url>     Set or update origin
+  release <tag>        Tag a release and push
+
+DEPLOY (basic)
+  deploy local         Bring stack up locally (== sovpro up)
+  deploy remote <ssh>  rsync repo to host and run sovpro up over SSH
+
+UTIL
+  health               Hit /health on the API
+  open                 Open the frontend in a browser
+  doctor               Diagnose common config issues
+
+Run 'sovpro help <command>' for details.
+EOF
+}
+
+# ── Commands ─────────────────────────────────────────────────────────
+cmd_init() {
+    if [ -f .env ]; then
+        warn ".env already exists — leaving as is"
+    else
+        cp .env.example .env
+        ok ".env created from template — edit it before running 'sovpro up'"
+    fi
+    [ -d .git ] || { git init -b main >/dev/null && ok "git repo initialized"; }
+    mkdir -p data backups
+    ok "Run 'sovpro doctor' to verify your configuration."
+}
+
+cmd_up()      { require_env; $COMPOSE up -d --build; ok "Stack is up"; }
+cmd_down()    { $COMPOSE down; }
+cmd_restart() { $COMPOSE restart; }
+cmd_ps()      { $COMPOSE ps; }
+cmd_logs()    { $COMPOSE logs -f --tail=200 ${1:-}; }
+cmd_rebuild() {
+    require_env
+    if [ $# -eq 0 ]; then
+        $COMPOSE build --pull && $COMPOSE up -d
+    else
+        $COMPOSE build --pull "$1" && $COMPOSE up -d "$1"
+    fi
+}
+
+scan_run() { $COMPOSE run --rm scanner "$@"; }
+
+cmd_ingest() {
+    require_env
+    case "${1:-}" in
+        mps)      scan_run ingest-mps ;;
+        mlas)     scan_run ingest-mlas ;;
+        councils) scan_run ingest-councils ;;
+        all)
+            scan_run seed-orgs
+            scan_run ingest-mps
+            scan_run ingest-mlas
+            scan_run ingest-councils
+            ;;
+        *) die "Usage: sovpro ingest {mps|mlas|councils|all}" ;;
+    esac
+}
+
+cmd_seed() {
+    require_env
+    case "${1:-orgs}" in
+        orgs) scan_run seed-orgs ;;
+        *) die "Usage: sovpro seed orgs" ;;
+    esac
+}
+
+cmd_scan() {
+    require_env
+    case "${1:-}" in
+        full) shift; scan_run scan --stale-hours 0 "$@" ;;
+        *)    scan_run scan "$@" ;;
+    esac
+}
+
+cmd_refresh() { require_env; scan_run refresh-views; }
+cmd_stats()   { require_env; scan_run stats; }
+
+cmd_db() {
+    require_env
+    case "${1:-}" in
+        psql)
+            $COMPOSE exec db psql -U sw -d sovereignwatch
+            ;;
+        backup)
+            mkdir -p backups
+            local out="${2:-backups/$(date -u +%Y%m%dT%H%M%SZ).sql.gz}"
+            log "backing up to $out"
+            $COMPOSE exec -T db pg_dump -U sw sovereignwatch | gzip > "$out"
+            ok "saved $out"
+            ;;
+        restore)
+            [ -n "${2:-}" ] || die "Usage: sovpro db restore <path>"
+            [ -f "$2" ] || die "File not found: $2"
+            log "restoring from $2"
+            gunzip -c "$2" | $COMPOSE exec -T db psql -U sw -d sovereignwatch
+            ok "restored"
+            ;;
+        reset)
+            warn "This will destroy all scan data."
+            printf "Type 'yes' to continue: "; read -r ans
+            [ "$ans" = "yes" ] || { warn "aborted"; return 1; }
+            $COMPOSE down
+            docker volume rm sovpro_pgdata 2>/dev/null || true
+            $COMPOSE up -d db
+            ok "Database reset"
+            ;;
+        *) die "Usage: sovpro db {psql|backup|restore|reset}" ;;
+    esac
+}
+
+cmd_git() {
+    case "${1:-}" in
+        init)
+            [ -d .git ] && { warn "already a git repo"; return; }
+            git init -b main
+            git config user.name "${GIT_NAME:-adminatthebunker}"
+            git config user.email "${GIT_EMAIL:-admin@thebunkerops.ca}"
+            ok "git initialized"
+            ;;
+        status) git status ;;
+        commit)
+            shift
+            [ -n "${1:-}" ] || die "Usage: sovpro git commit \"message\""
+            git add -A
+            git commit -m "$1"
+            ;;
+        push)
+            shift
+            local remote="${1:-origin}"
+            local branch
+            branch="$(git symbolic-ref --short HEAD)"
+            git push -u "$remote" "$branch"
+            ;;
+        remote)
+            shift
+            [ -n "${1:-}" ] || die "Usage: sovpro git remote <url>"
+            git remote remove origin 2>/dev/null || true
+            git remote add origin "$1"
+            ok "origin set to $1"
+            ;;
+        *) die "Usage: sovpro git {init|status|commit|push|remote}" ;;
+    esac
+}
+
+cmd_release() {
+    [ -n "${1:-}" ] || die "Usage: sovpro release <tag>"
+    git tag -a "$1" -m "Release $1"
+    git push origin "$1"
+    ok "Tagged + pushed $1"
+}
+
+cmd_deploy() {
+    case "${1:-}" in
+        local) cmd_up ;;
+        remote)
+            [ -n "${2:-}" ] || die "Usage: sovpro deploy remote <ssh-target>"
+            local target="$2"
+            log "rsyncing to $target"
+            rsync -avz --delete \
+                --exclude='.git' --exclude='node_modules' --exclude='data/*.mmdb' \
+                --exclude='backups' --exclude='.env' \
+                ./ "$target:~/sovpro/"
+            log "remote: docker compose up -d --build"
+            ssh "$target" "cd ~/sovpro && docker compose up -d --build"
+            ok "Deployed to $target"
+            ;;
+        *) die "Usage: sovpro deploy {local|remote <ssh-target>}" ;;
+    esac
+}
+
+cmd_health() {
+    require_env
+    curl -fsS http://localhost/health || die "API not responding"
+}
+
+cmd_open() {
+    local url="http://localhost"
+    case "$(uname -s)" in
+        Darwin) open "$url" ;;
+        Linux)  xdg-open "$url" 2>/dev/null || echo "Open: $url" ;;
+        *) echo "Open: $url" ;;
+    esac
+}
+
+cmd_doctor() {
+    log "running diagnostics"
+    command -v docker >/dev/null || { warn "docker not on PATH"; return 1; }
+    $COMPOSE version >/dev/null || { warn "compose plugin missing"; return 1; }
+    [ -f .env ] || { warn "no .env file (run sovpro init)"; }
+    if [ -f .env ]; then
+        grep -q '^DB_PASSWORD=' .env || warn "DB_PASSWORD missing in .env"
+        grep -q '^WEBHOOK_SECRET=' .env || warn "WEBHOOK_SECRET missing in .env"
+        grep -q 'change_me' .env && warn "default password still set in .env"
+    fi
+    [ -f data/GeoLite2-City.mmdb ] || warn "data/GeoLite2-City.mmdb missing — see 'make geoip-download'"
+    [ -f data/GeoLite2-ASN.mmdb ]  || warn "data/GeoLite2-ASN.mmdb missing"
+    ok "diagnostics complete"
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────────
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+    help|-h|--help) usage ;;
+    init)     cmd_init "$@" ;;
+    up)       cmd_up "$@" ;;
+    down)     cmd_down "$@" ;;
+    restart)  cmd_restart "$@" ;;
+    logs)     cmd_logs "$@" ;;
+    ps)       cmd_ps "$@" ;;
+    rebuild)  cmd_rebuild "$@" ;;
+    ingest)   cmd_ingest "$@" ;;
+    seed)     cmd_seed "$@" ;;
+    scan)     cmd_scan "$@" ;;
+    refresh)  cmd_refresh "$@" ;;
+    stats)    cmd_stats "$@" ;;
+    db)       cmd_db "$@" ;;
+    git)      cmd_git "$@" ;;
+    release)  cmd_release "$@" ;;
+    deploy)   cmd_deploy "$@" ;;
+    health)   cmd_health "$@" ;;
+    open)     cmd_open "$@" ;;
+    doctor)   cmd_doctor "$@" ;;
+    *) die "Unknown command: $cmd (run: sovpro help)" ;;
+esac

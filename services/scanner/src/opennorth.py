@@ -1,0 +1,309 @@
+"""Ingestion from Open North's Represent API.
+
+Endpoints (all paginated with ?limit=):
+  /representatives/house-of-commons/
+  /representatives/alberta-legislature/
+  /representatives/edmonton-city-council/
+  /representatives/calgary-city-council/
+  /boundaries/{set}/{slug}/simple_shape
+
+Each representative object contains:
+  name, first_name, last_name, party_name, elected_office,
+  district_name, email, photo_url, personal_url, url (party profile),
+  extra, offices, ... plus related_links including the boundary.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional
+
+import httpx
+import orjson
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+from .db import Database
+
+log = logging.getLogger(__name__)
+console = Console()
+
+
+BASE = os.environ.get("OPENNORTH_BASE", "https://represent.opennorth.ca")
+
+
+@dataclass
+class OpenNorthSet:
+    path: str
+    level: str
+    province: Optional[str]
+    office: str
+    boundary_set: str
+    boundary_level: str
+
+
+SETS = {
+    "federal_mps": OpenNorthSet(
+        path="/representatives/house-of-commons/",
+        level="federal",
+        province=None,
+        office="MP",
+        boundary_set="federal-electoral-districts",
+        boundary_level="federal",
+    ),
+    "alberta_mlas": OpenNorthSet(
+        path="/representatives/alberta-legislature/",
+        level="provincial",
+        province="AB",
+        office="MLA",
+        boundary_set="alberta-electoral-districts",
+        boundary_level="provincial",
+    ),
+    "edmonton_council": OpenNorthSet(
+        path="/representatives/edmonton-city-council/",
+        level="municipal",
+        province="AB",
+        office="City Councillor",
+        boundary_set="edmonton-wards",
+        boundary_level="municipal",
+    ),
+    "calgary_council": OpenNorthSet(
+        path="/representatives/calgary-city-council/",
+        level="municipal",
+        province="AB",
+        office="City Councillor",
+        boundary_set="calgary-wards",
+        boundary_level="municipal",
+    ),
+}
+
+
+async def _fetch_json(client: httpx.AsyncClient, url: str) -> dict:
+    r = await client.get(url)
+    r.raise_for_status()
+    return r.json()
+
+
+async def _fetch_reps(client: httpx.AsyncClient, set_def: OpenNorthSet, limit: int) -> list[dict]:
+    """Page through /representatives/... until exhausted or limit reached."""
+    out: list[dict] = []
+    next_url = f"{BASE}{set_def.path}?limit={min(limit, 100)}"
+    while next_url and len(out) < limit:
+        data = await _fetch_json(client, next_url)
+        out.extend(data.get("objects", []))
+        meta = data.get("meta", {})
+        nxt = meta.get("next")
+        next_url = f"{BASE}{nxt}" if nxt else None
+    return out[:limit]
+
+
+def _social_urls(rep: dict) -> dict:
+    urls: dict[str, str] = {}
+    for link in rep.get("extra", {}).get("urls", []) or []:
+        note = (link.get("note") or "").lower()
+        url = link.get("url")
+        if not url:
+            continue
+        for key in ("twitter", "x.com", "facebook", "instagram", "youtube", "tiktok", "linkedin"):
+            if key in note or key in url:
+                urls[key.replace("x.com", "twitter")] = url
+                break
+    return urls
+
+
+def _constituency_id(rep: dict, set_def: OpenNorthSet) -> Optional[str]:
+    """Try a few places Open North might stash the district slug."""
+    dn = rep.get("district_name") or ""
+    # Prefer the districts boundary link if present
+    for link in rep.get("related", {}).get("boundary_set_name", []) if isinstance(rep.get("related"), dict) else []:
+        pass
+    # Fall back to "boundary_url"
+    b = rep.get("boundary_url")
+    if b:
+        # b looks like /boundaries/{set}/{slug}/
+        parts = [p for p in b.strip("/").split("/") if p]
+        if len(parts) >= 3:
+            return parts[-1]
+    # Fall back to slugified district_name within set
+    if dn:
+        import re
+        slug = re.sub(r"[^a-z0-9]+", "-", dn.lower()).strip("-")
+        return f"{set_def.boundary_set}/{slug}"
+    return None
+
+
+async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> str:
+    """Return politician id."""
+    source_id = f"opennorth:{set_def.path.rstrip('/').split('/')[-1]}:{rep.get('name','').lower().replace(' ','-')}"
+    cid = _constituency_id(rep, set_def)
+    row = await db.fetchrow(
+        """
+        INSERT INTO politicians (
+            source_id, name, first_name, last_name, gender, party, elected_office,
+            level, province_territory, constituency_name, constituency_id,
+            email, photo_url, personal_url, official_url, social_urls, extras
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        ON CONFLICT (source_id) DO UPDATE SET
+            name = EXCLUDED.name,
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name,
+            party = EXCLUDED.party,
+            elected_office = EXCLUDED.elected_office,
+            constituency_name = EXCLUDED.constituency_name,
+            constituency_id = EXCLUDED.constituency_id,
+            email = EXCLUDED.email,
+            photo_url = EXCLUDED.photo_url,
+            personal_url = EXCLUDED.personal_url,
+            official_url = EXCLUDED.official_url,
+            social_urls = EXCLUDED.social_urls,
+            extras = EXCLUDED.extras,
+            updated_at = now()
+        RETURNING id
+        """,
+        source_id,
+        rep.get("name") or "Unknown",
+        rep.get("first_name"),
+        rep.get("last_name"),
+        rep.get("gender"),
+        rep.get("party_name"),
+        rep.get("elected_office") or set_def.office,
+        set_def.level,
+        set_def.province or rep.get("extra", {}).get("province"),
+        rep.get("district_name"),
+        cid,
+        rep.get("email"),
+        rep.get("photo_url"),
+        rep.get("personal_url"),
+        rep.get("url"),
+        orjson.dumps(_social_urls(rep)).decode(),
+        orjson.dumps({k: v for k, v in rep.items()
+                     if k not in ("name","first_name","last_name","party_name",
+                                  "elected_office","district_name","email",
+                                  "photo_url","personal_url","url")}).decode(),
+    )
+    return str(row["id"])
+
+
+async def _attach_websites(db: Database, politician_id: str, rep: dict) -> None:
+    for url, label in _extract_websites(rep):
+        await db.execute(
+            """
+            INSERT INTO websites (owner_type, owner_id, url, label)
+            VALUES ('politician', $1, $2, $3)
+            ON CONFLICT (owner_type, owner_id, url) DO NOTHING
+            """,
+            politician_id, url, label,
+        )
+
+
+def _extract_websites(rep: dict) -> Iterable[tuple[str, str]]:
+    if rep.get("personal_url"):
+        yield rep["personal_url"], "personal"
+    if rep.get("url"):
+        yield rep["url"], "party"
+    for link in rep.get("extra", {}).get("urls", []) or []:
+        u = link.get("url")
+        note = (link.get("note") or "").lower()
+        if not u:
+            continue
+        if any(s in note for s in ("twitter","facebook","instagram","youtube","tiktok","linkedin","x.com")):
+            continue
+        if "campaign" in note or "personal" in note or "official" in note:
+            yield u, note or "related"
+
+
+async def _fetch_boundary(client: httpx.AsyncClient, set_def: OpenNorthSet, constituency_id: str) -> Optional[dict]:
+    # constituency_id is already "{set}/{slug}" OR just "{slug}"
+    if "/" in constituency_id:
+        path = f"/boundaries/{constituency_id}/simple_shape"
+    else:
+        path = f"/boundaries/{set_def.boundary_set}/{constituency_id}/simple_shape"
+    url = f"{BASE}{path}"
+    try:
+        r = await client.get(url)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except Exception:
+        return None
+
+
+async def _upsert_boundary(db: Database, set_def: OpenNorthSet, constituency_id: str,
+                           name: str, geojson: dict) -> None:
+    # PostGIS ingests GeoJSON via ST_GeomFromGeoJSON. Cast to MultiPolygon.
+    geom_sql = """
+      ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($4), 4326))
+    """
+    await db.execute(
+        f"""
+        INSERT INTO constituency_boundaries
+          (constituency_id, name, level, province_territory, source_set,
+           boundary, boundary_simple, centroid, area_sqkm)
+        VALUES ($1, $2, $3, $5, $6, {geom_sql}, {geom_sql}, ST_Centroid({geom_sql}),
+                ST_Area({geom_sql}::geography)/1000000)
+        ON CONFLICT (constituency_id) DO UPDATE SET
+          name = EXCLUDED.name,
+          level = EXCLUDED.level,
+          province_territory = EXCLUDED.province_territory,
+          source_set = EXCLUDED.source_set,
+          boundary = EXCLUDED.boundary,
+          boundary_simple = EXCLUDED.boundary_simple,
+          centroid = EXCLUDED.centroid,
+          area_sqkm = EXCLUDED.area_sqkm,
+          updated_at = now()
+        """,
+        constituency_id, name, set_def.boundary_level,
+        orjson.dumps(geojson).decode(),
+        set_def.province, set_def.boundary_set,
+    )
+
+
+async def _ingest_set(db: Database, set_def: OpenNorthSet, limit: int) -> None:
+    async with httpx.AsyncClient(timeout=30, headers={"User-Agent": "SovereignWatchBot/1.0"}) as client:
+        console.print(f"[cyan]Fetching {set_def.path}[/cyan]")
+        reps = await _fetch_reps(client, set_def, limit)
+        console.print(f"[cyan]  got {len(reps)} representatives[/cyan]")
+
+        with Progress(
+            SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
+            TextColumn("{task.completed}/{task.total}"), TimeElapsedColumn(),
+        ) as progress:
+            task = progress.add_task("Upserting politicians", total=len(reps))
+            bsem = asyncio.Semaphore(8)
+            seen_ids: set[str] = set()
+
+            async def handle(rep: dict) -> None:
+                try:
+                    pid = await _upsert_politician(db, rep, set_def)
+                    await _attach_websites(db, pid, rep)
+                    cid = _constituency_id(rep, set_def)
+                    if cid and cid not in seen_ids:
+                        seen_ids.add(cid)
+                        async with bsem:
+                            gj = await _fetch_boundary(client, set_def, cid)
+                            if gj and gj.get("coordinates"):
+                                await _upsert_boundary(
+                                    db, set_def, cid,
+                                    rep.get("district_name") or cid, gj)
+                except Exception as exc:
+                    log.exception("ingest failed for %s: %s", rep.get("name"), exc)
+                finally:
+                    progress.update(task, advance=1)
+
+            await asyncio.gather(*(handle(r) for r in reps))
+
+
+async def ingest_mps(db: Database, *, limit: int = 500) -> None:
+    await _ingest_set(db, SETS["federal_mps"], limit)
+
+
+async def ingest_mlas(db: Database, *, limit: int = 100) -> None:
+    await _ingest_set(db, SETS["alberta_mlas"], limit)
+
+
+async def ingest_councils(db: Database) -> None:
+    await _ingest_set(db, SETS["edmonton_council"], 25)
+    await _ingest_set(db, SETS["calgary_council"], 25)
