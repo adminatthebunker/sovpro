@@ -220,12 +220,18 @@ async def _attach_websites(db: Database, politician_id: str, rep: dict) -> None:
 # Hostnames that are shared institutional infrastructure (NOT a personal
 # political choice). They get scanned but excluded from headline stats.
 SHARED_OFFICIAL_HOSTS: frozenset[str] = frozenset({
+    # Federal / provincial parliament
     "www.ourcommons.ca",
     "www.assembly.ab.ca",
-    "www.edmonton.ca",
-    "www.calgary.ca",
-    "edmonton.ca",
-    "calgary.ca",
+    # Major-metro councils
+    "www.edmonton.ca", "edmonton.ca",
+    "www.calgary.ca",  "calgary.ca",
+    # Smaller AB municipalities (added 2026-04-13)
+    "www.lethbridge.ca", "lethbridge.ca",
+    "www.rmwb.ca",       "rmwb.ca",
+    "www.strathcona.ca", "strathcona.ca",
+    "cityofgp.com",      "www.cityofgp.com",
+    "countygp.ab.ca",    "www.countygp.ab.ca",
 })
 
 
