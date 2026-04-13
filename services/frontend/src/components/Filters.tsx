@@ -4,6 +4,7 @@ export interface FilterState {
   province?: string;
   party?: string;
   includeNoData?: boolean;
+  politicianIds?: string[];
 }
 
 interface Props {

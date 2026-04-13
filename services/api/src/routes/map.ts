@@ -7,6 +7,7 @@ const geoQuery = z.object({
   level: z.enum(["federal","provincial","municipal"]).optional(),
   province: z.string().length(2).optional(),
   party: z.string().optional(),
+  politician_ids: z.string().optional(),  // comma-separated UUIDs
   group: z.enum(["politicians","organizations","all"]).default("all"),
   include_no_data: z.coerce.boolean().default(false),
 });
@@ -24,17 +25,21 @@ export default async function mapRoutes(app: FastifyInstance) {
   app.get("/geojson", async (req, reply) => {
     const q = geoQuery.safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
-    const { level, province, party, group, include_no_data } = q.data;
+    const { level, province, party, politician_ids, group, include_no_data } = q.data;
+    const politicianIdsArr = politician_ids
+      ? politician_ids.split(",").map(s => s.trim()).filter(Boolean)
+      : null;
 
     const features: GeoFeature[] = [];
 
     // ── Politicians layer (constituency polygons + server pins + connection lines) ──
     if (group === "politicians" || group === "all") {
       const where: string[] = [];
-      const params: (string | number)[] = [];
+      const params: (string | number | string[])[] = [];
       if (level)    { params.push(level);    where.push(`level = $${params.length}`); }
       if (province) { params.push(province); where.push(`province_territory = $${params.length}`); }
       if (party)    { params.push(party);    where.push(`party = $${params.length}`); }
+      if (politicianIdsArr) { params.push(politicianIdsArr); where.push(`politician_id::text = ANY($${params.length}::text[])`); }
       const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
       const rows = await query<MapRow>(
@@ -112,10 +117,11 @@ export default async function mapRoutes(app: FastifyInstance) {
       if (include_no_data) {
         const noDataWhere: string[] = ["p.is_active = true",
           `NOT EXISTS (SELECT 1 FROM map_politicians mp WHERE mp.politician_id = p.id)`];
-        const ndParams: (string | number)[] = [];
+        const ndParams: (string | number | string[])[] = [];
         if (level)    { ndParams.push(level);    noDataWhere.push(`p.level = $${ndParams.length}`); }
         if (province) { ndParams.push(province); noDataWhere.push(`p.province_territory = $${ndParams.length}`); }
         if (party)    { ndParams.push(party);    noDataWhere.push(`p.party = $${ndParams.length}`); }
+        if (politicianIdsArr) { ndParams.push(politicianIdsArr); noDataWhere.push(`p.id::text = ANY($${ndParams.length}::text[])`); }
 
         const noDataRows = await query<{
           politician_id: string; name: string; party: string | null; level: string;

@@ -1,11 +1,36 @@
-import { useMemo } from "react";
-import { MapContainer, TileLayer, GeoJSON, LayersControl, LayerGroup } from "react-leaflet";
+import { useEffect, useMemo } from "react";
+import { MapContainer, TileLayer, GeoJSON, LayersControl, LayerGroup, useMap } from "react-leaflet";
 import L from "leaflet";
 import type { GeoCollection, SovereigntyTier } from "../types";
 import { TIER_META } from "../types";
 import { useFetch } from "../hooks/useFetch";
 import type { FilterState } from "./Filters";
 import { AntLines } from "./AntLines";
+
+/** Auto-fits the map to the bounding box of the given features when the
+ *  feature set is small (i.e. user just narrowed via postal lookup). */
+function FitToFeatures({ features }: { features: GeoJSON.Feature[] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!features.length || features.length > 80) return;
+    const bounds = L.latLngBounds([]);
+    let extended = false;
+    for (const f of features) {
+      try {
+        const layer = L.geoJSON(f as GeoJSON.GeoJsonObject);
+        const b = layer.getBounds();
+        if (b.isValid()) {
+          bounds.extend(b);
+          extended = true;
+        }
+      } catch { /* noop */ }
+    }
+    if (extended) {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 9, animate: false });
+    }
+  }, [features, map]);
+  return null;
+}
 
 interface Props {
   filters: FilterState;
@@ -29,6 +54,9 @@ export function MapView({ filters }: Props) {
     if (filters.province) params.set("province", filters.province);
     if (filters.party) params.set("party", filters.party);
     if (filters.includeNoData) params.set("include_no_data", "true");
+    if (filters.politicianIds && filters.politicianIds.length > 0) {
+      params.set("politician_ids", filters.politicianIds.join(","));
+    }
     params.set("group", filters.layer === "all" ? "all" : filters.layer);
     return `/map/geojson?${params.toString()}`;
   }, [filters]);
@@ -68,6 +96,10 @@ export function MapView({ filters }: Props) {
         wheelDebounceTime={40}
         wheelPxPerZoomLevel={120}
       >
+        <FitToFeatures features={[
+          ...polygons.features as GeoJSON.Feature[],
+          ...polygonsNoData.features as GeoJSON.Feature[],
+        ]} />
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Dark">
             <TileLayer

@@ -7,7 +7,7 @@ import { Filters, type FilterState } from "./components/Filters";
 import { HeroHeadline } from "./components/HeroHeadline";
 import { TierLegend } from "./components/TierLegend";
 import { PartyFilter } from "./components/PartyFilter";
-import { PostalLookup } from "./components/PostalLookup";
+import { PostalLookupBar } from "./components/PostalLookupBar";
 import { Faq } from "./components/Faq";
 
 export default function App() {
@@ -17,8 +17,9 @@ export default function App() {
     province: undefined,
     party: undefined,
     includeNoData: true,
+    politicianIds: undefined,
   });
-  const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "lookup" | "faq">("map");
+  const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "faq">("map");
 
   return (
     <div className="shell">
@@ -32,7 +33,6 @@ export default function App() {
         </div>
         <nav className="shell__tabs">
           <button className={activeTab === "map" ? "active" : ""} onClick={() => setActiveTab("map")}>Map</button>
-          <button className={activeTab === "lookup" ? "active" : ""} onClick={() => setActiveTab("lookup")}>Find your reps</button>
           <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>Referendum</button>
           <button className={activeTab === "changes" ? "active" : ""} onClick={() => setActiveTab("changes")}>Changes</button>
           <button className={activeTab === "faq" ? "active" : ""} onClick={() => setActiveTab("faq")}>FAQ</button>
@@ -44,6 +44,9 @@ export default function App() {
 
       {activeTab === "map" && (
         <section className="shell__map-section">
+          <PostalLookupBar
+            onResult={(ids) => setFilters(f => ({ ...f, politicianIds: ids ?? undefined }))}
+          />
           <PartyFilter
             active={filters.party}
             onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
@@ -54,7 +57,6 @@ export default function App() {
         </section>
       )}
 
-      {activeTab === "lookup" && <PostalLookup />}
       {activeTab === "referendum" && <ReferendumSpotlight />}
       {activeTab === "changes" && <ChangesFeed />}
       {activeTab === "faq" && <Faq />}

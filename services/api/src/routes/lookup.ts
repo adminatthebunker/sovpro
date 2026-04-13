@@ -112,6 +112,7 @@ export default async function lookupRoutes(app: FastifyInstance) {
         : [];
 
       return {
+        politician_id: local[0]?.id ?? null,
         name: rep.name,
         district: rep.district_name,
         elected_office: rep.elected_office,
