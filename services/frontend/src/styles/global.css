@@ -69,7 +69,9 @@ button.active { background: var(--accent); border-color: var(--accent); }
 /* Hero row — headline on the left, "Who we track" on the right */
 .hero-row {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  /* Give the WhoWeTrack panel real estate — the per-city sub-list breathes
+     and the headline still has plenty of room. */
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 1fr);
   gap: 1.25rem;
   align-items: stretch;
 }
