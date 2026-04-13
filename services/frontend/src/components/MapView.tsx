@@ -37,6 +37,10 @@ interface Props {
 
 const CANADA_CENTER: [number, number] = [56.1304, -106.3468];
 
+/** Singleton SVG renderer used ONLY for the animated flow lines. Everything
+ *  else inherits the map-level Canvas renderer (preferCanvas). */
+const svgFlowRenderer = L.svg({ padding: 0.5 });
+
 // Fix default marker icons under bundlers
 // @ts-expect-error - leaflet icon fallback
 delete L.Icon.Default.prototype._getIconUrl;
@@ -201,21 +205,20 @@ export function MapView({ filters }: Props) {
                   color: TIER_META[tier]?.color ?? "#94a3b8",
                   weight: 1.6,
                   opacity: 0.8,
-                  // dashArray lands on the SVG element via Leaflet — guarantees
-                  // a dashed line even before the CSS animation kicks in.
                   dashArray: "10 14",
                   lineCap: "round",
                   interactive: false,
+                  // Force SVG renderer for THIS layer only so each line is a
+                  // real <path> element we can animate via CSS. The map-level
+                  // preferCanvas still applies to everything else.
+                  renderer: svgFlowRenderer,
                 };
               }}
               onEachFeature={(_f, layer) => {
-                // Leaflet's setStyle does NOT update className. Apply the
-                // animation hook directly on the rendered SVG path so the
-                // CSS keyframes (sw-flow-dash) match.
                 const lp = layer as L.Path & { _path?: SVGPathElement };
                 const apply = () => lp._path?.classList.add("sw-flow-line");
                 apply();
-                layer.on("add", apply);  // re-apply if Leaflet recreates the path on zoom
+                layer.on("add", apply);
               }}
             />
           </LayersControl.Overlay>
