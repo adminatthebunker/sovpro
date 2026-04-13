@@ -41,7 +41,20 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .shell__logo { font-size: 2.4rem; }
 .shell__brand h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.02em; }
 .shell__tag { margin: 0; color: var(--ink-muted); font-size: .85rem; }
-.shell__tabs { display: flex; gap: .5rem; }
+.shell__tabs { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.shell__contact {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .4rem .8rem; border-radius: 6px;
+  background: var(--panel); color: var(--ink-muted);
+  border: 1px solid var(--border);
+  font-weight: 500; font-size: .85rem;
+  text-decoration: none; transition: background .15s, color .15s;
+  margin-left: .35rem;
+}
+.shell__contact:hover {
+  background: var(--accent); color: #fff;
+  border-color: var(--accent); text-decoration: none;
+}
 .shell__footer {
   margin-top: 2rem; padding-top: 1rem; color: var(--ink-muted);
   font-size: .8rem; border-top: 1px solid var(--border);
