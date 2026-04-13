@@ -37,6 +37,7 @@ export const COUNTRY_FLAGS: Record<string, string> = {
 export interface ReferendumSideSummary {
   orgs: string[];
   total_websites: number;
+  hosted_in_alberta: number;
   hosted_in_canada: number;
   hosted_in_us: number;
   cdn_fronted: number;

@@ -21,6 +21,7 @@ interface AlbertaStatsResponse {
     personal: number;
     party_managed: number;
     ca: number;
+    ab: number;
     us: number;
     cdn: number;
     foreign: number;
@@ -51,6 +52,7 @@ export function ReferendumSpotlight({ reportParty, onShowReport, onCloseReport }
 
   const totalSites = (data.leave_side.total_websites || 0) + (data.stay_side.total_websites || 0);
   const totalCA = (data.leave_side.hosted_in_canada || 0) + (data.stay_side.hosted_in_canada || 0);
+  const totalAB = (data.leave_side.hosted_in_alberta || 0) + (data.stay_side.hosted_in_alberta || 0);
   const totalOutside = totalSites - totalCA;
   const pctOutside = totalSites > 0 ? Math.round(100 * totalOutside / totalSites) : 0;
   const daysUntil = Math.max(0, Math.ceil(
@@ -85,14 +87,19 @@ export function ReferendumSpotlight({ reportParty, onShowReport, onCloseReport }
           <div className="ref__hero-strip-card ref__hero-strip-card--leave">
             <div className="ref__hero-strip-num">{leaveOrgs}</div>
             <div className="ref__hero-strip-label">organizations advocating Alberta leave Canada</div>
-            <div className="ref__hero-strip-sub">{data.leave_side.hosted_in_canada}/{data.leave_side.total_websites} sites in Canada</div>
+            <div className="ref__hero-strip-sub">{data.leave_side.hosted_in_alberta}/{data.leave_side.total_websites} sites hosted in Alberta · {data.leave_side.hosted_in_canada}/{data.leave_side.total_websites} in Canada</div>
           </div>
           <div className="ref__hero-strip-card ref__hero-strip-card--stay">
             <div className="ref__hero-strip-num">{stayOrgs}</div>
             <div className="ref__hero-strip-label">organizations campaigning to stay in Canada</div>
-            <div className="ref__hero-strip-sub">{data.stay_side.hosted_in_canada}/{data.stay_side.total_websites} sites in Canada</div>
+            <div className="ref__hero-strip-sub">{data.stay_side.hosted_in_alberta}/{data.stay_side.total_websites} sites hosted in Alberta · {data.stay_side.hosted_in_canada}/{data.stay_side.total_websites} in Canada</div>
           </div>
         </div>
+        {totalSites > 0 && totalAB === 0 && (
+          <div className="ref__hero-zero-ab">
+            <strong>0 of {totalSites}</strong> referendum-organization sites are physically hosted in Alberta &mdash; not even one.
+          </div>
+        )}
       </header>
 
       <AlbertaPoliticians
@@ -170,10 +177,14 @@ function AlbertaPoliticians({
           <div className="ref__ab-party-grid">
             {abPartyRows.map(p => {
               const total = p.sites || 0;
+              const ab = p.ab || 0;
               const ca = p.ca || 0;
-              const pct = total > 0 ? Math.round(100 * ca / total) : 0;
+              const pctAB = total > 0 ? Math.round(100 * ab / total) : 0;
+              // Grade weights Alberta-hosted highest; CA-but-not-AB is partial credit.
+              const score = total > 0 ? (ab + 0.5 * (ca - ab)) / total : 0;
+              const pctScore = Math.round(100 * score);
               const grade =
-                pct >= 85 ? "A" : pct >= 70 ? "B" : pct >= 50 ? "C" : pct >= 30 ? "D" : "F";
+                pctScore >= 70 ? "A" : pctScore >= 55 ? "B" : pctScore >= 35 ? "C" : pctScore >= 15 ? "D" : "F";
               const gradeClass = grade.toLowerCase();
               return (
                 <button
@@ -190,7 +201,7 @@ function AlbertaPoliticians({
                   <div className="ref__ab-party-stats">
                     <span>{p.politicians} MLAs</span>
                     <span>·</span>
-                    <span>{pct}% in Canada</span>
+                    <span>{pctAB}% in Alberta</span>
                   </div>
                   <div className="ref__ab-party-cta">View full report card →</div>
                 </button>
@@ -207,12 +218,12 @@ function SideCard({
   side, title, subtitle, data,
 }: { side: SideKey; title: string; subtitle: string; data: ReferendumSideSummary }) {
   const total = data.total_websites || 0;
-  const ca = data.hosted_in_canada || 0;
-  const allCA = total > 0 && ca === total;
-  const noneCA = ca === 0;
+  const ab = data.hosted_in_alberta || 0;
+  const allAB = total > 0 && ab === total;
+  const noneAB = ab === 0;
   const bigClass =
     "side-card__big " +
-    (noneCA ? "side-card__big--bad" : allCA ? "side-card__big--good" : "side-card__big--warn");
+    (noneAB ? "side-card__big--bad" : allAB ? "side-card__big--good" : "side-card__big--warn");
 
   return (
     <div className={`side-card side-card--${side}`}>
@@ -223,12 +234,13 @@ function SideCard({
       </header>
 
       <div className="side-card__stat">
-        <span className={bigClass}>{ca}</span>
+        <span className={bigClass}>{ab}</span>
         <span className="side-card__denom">/ {total}</span>
-        <div className="side-card__stat-label">websites hosted in Canada</div>
+        <div className="side-card__stat-label">websites hosted in Alberta</div>
       </div>
 
       <div className="side-card__ticks">
+        <div className="side-card__tick"><span className="side-card__tick-n">{data.hosted_in_canada}</span> elsewhere in Canada</div>
         <div className="side-card__tick"><span className="side-card__tick-n">{data.hosted_in_us}</span> in US</div>
         <div className="side-card__tick"><span className="side-card__tick-n">{data.cdn_fronted}</span> CDN-fronted</div>
       </div>

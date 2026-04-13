@@ -154,12 +154,13 @@ export default async function statsRoutes(app: FastifyInstance) {
   async function refSideSummary(side: "leave" | "stay", includeOrgs = false) {
     const rows = await query<{
       org_name: string; org_slug: string; website_url: string; hostname: string;
-      hosting_provider: string | null; ip_country: string | null; ip_city: string | null;
+      hosting_provider: string | null; ip_country: string | null;
+      ip_region: string | null; ip_city: string | null;
       sovereignty_tier: number | null; cdn_detected: string | null;
     }>(
       `SELECT o.name AS org_name, o.slug AS org_slug,
               w.url AS website_url, w.hostname,
-              s.hosting_provider, s.ip_country, s.ip_city,
+              s.hosting_provider, s.ip_country, s.ip_region, s.ip_city,
               s.sovereignty_tier, s.cdn_detected
        FROM organizations o
        JOIN websites w ON w.owner_type='organization' AND w.owner_id=o.id AND w.is_active=true
@@ -174,6 +175,7 @@ export default async function statsRoutes(app: FastifyInstance) {
     );
 
     const totalWebsites = rows.length;
+    const hostedInAlberta = rows.filter(r => r.ip_region === "Alberta").length;
     const hostedInCanada = rows.filter(r => r.ip_country === "CA").length;
     const hostedInUS = rows.filter(r => r.ip_country === "US").length;
     const cdnFronted = rows.filter(r => r.cdn_detected).length;
@@ -186,6 +188,7 @@ export default async function statsRoutes(app: FastifyInstance) {
     const payload: Record<string, unknown> = {
       orgs,
       total_websites: totalWebsites,
+      hosted_in_alberta: hostedInAlberta,
       hosted_in_canada: hostedInCanada,
       hosted_in_us: hostedInUS,
       cdn_fronted: cdnFronted,

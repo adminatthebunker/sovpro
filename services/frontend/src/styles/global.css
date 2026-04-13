@@ -246,6 +246,16 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .ref__hero-strip-num { font-size: 1.6rem; font-weight: 800; color: var(--ink); line-height: 1; }
 .ref__hero-strip-label { font-size: .8rem; color: var(--ink); margin-top: .25rem; }
 .ref__hero-strip-sub { font-size: .75rem; color: var(--ink-muted); margin-top: .35rem; font-weight: 500; }
+.ref__hero-zero-ab {
+  margin-top: 1rem;
+  padding: .65rem .95rem;
+  background: rgba(245, 158, 11, .12);
+  border: 1px solid rgba(245, 158, 11, .35);
+  border-radius: 8px;
+  color: #fcd34d;
+  font-size: .9rem;
+}
+.ref__hero-zero-ab strong { color: #fde68a; font-size: 1.05em; }
 
 .ref__grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

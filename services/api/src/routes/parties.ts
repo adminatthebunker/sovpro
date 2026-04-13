@@ -26,7 +26,7 @@ export default async function partyRoutes(app: FastifyInstance) {
     const rows = await query<{
       party: string; politicians: number; sites: number;
       personal: number; party_managed: number;
-      ca: number; us: number; cdn: number; foreign: number;
+      ca: number; ab: number; us: number; cdn: number; foreign: number;
     }>(
       `SELECT party,
               COUNT(DISTINCT politician_id)::int AS politicians,
@@ -34,6 +34,7 @@ export default async function partyRoutes(app: FastifyInstance) {
               COUNT(DISTINCT website_id) FILTER (WHERE site_class = 'personal')::int AS personal,
               COUNT(DISTINCT website_id) FILTER (WHERE site_class = 'party_managed')::int AS party_managed,
               COUNT(*) FILTER (WHERE sovereignty_tier IN (1,2))::int AS ca,
+              COUNT(*) FILTER (WHERE ip_region = 'Alberta')::int AS ab,
               COUNT(*) FILTER (WHERE sovereignty_tier = 4)::int AS us,
               COUNT(*) FILTER (WHERE sovereignty_tier = 3)::int AS cdn,
               COUNT(*) FILTER (WHERE sovereignty_tier = 5)::int AS foreign
