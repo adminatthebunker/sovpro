@@ -614,18 +614,51 @@ button.active { background: var(--accent); border-color: var(--accent); }
 
 /* ── Map toolbar (postal + party + filters in one row) ─ */
 .map-toolbar {
-  display: flex; flex-wrap: wrap; gap: .75rem;
+  display: flex; flex-wrap: wrap; gap: .5rem;
   align-items: stretch; margin-bottom: .75rem;
 }
-.map-toolbar > .postal-bar {
-  flex: 2 1 320px; min-width: 280px; margin-bottom: 0;
-}
-.map-toolbar > .party-filter {
-  flex: 3 1 420px; min-width: 0; margin-bottom: 0;
-}
+.map-toolbar > .postal-bar,
+.map-toolbar > .party-filter,
 .map-toolbar > .filters {
-  flex: 1 1 280px; min-width: 0; margin-bottom: 0;
+  margin-bottom: 0;
+  padding: .5rem .75rem;
+  border-radius: 8px;
+  min-height: 50px;
+  display: flex; align-items: center; gap: .5rem;
+  background: var(--panel); border: 1px solid var(--border);
+  box-shadow: none;
 }
+.map-toolbar > .postal-bar { flex: 1 1 280px; min-width: 240px; flex-direction: column; align-items: stretch; }
+.map-toolbar > .party-filter { flex: 2 1 420px; min-width: 0; flex-wrap: wrap; padding: .4rem .65rem; }
+.map-toolbar > .filters { flex: 1 1 280px; min-width: 0; padding: .35rem .75rem; gap: .65rem; }
+
+.map-toolbar .postal-bar__form { gap: .35rem; }
+.map-toolbar .postal-bar__label {
+  font-size: .75rem; letter-spacing: .04em; color: var(--ink-muted);
+  text-transform: uppercase; font-weight: 700; margin: 0;
+}
+.map-toolbar .postal-bar__form input { padding: .4rem .6rem; font-size: .85rem; }
+.map-toolbar .postal-bar__form button { padding: .4rem .9rem; font-size: .8rem; }
+.map-toolbar .postal-bar__result { margin-top: .5rem; padding-top: .5rem; }
+
+.map-toolbar .party-filter__label {
+  font-size: .7rem; letter-spacing: .04em; color: var(--ink-muted);
+  text-transform: uppercase; font-weight: 700;
+}
+
+.map-toolbar .filters__field {
+  font-size: .65rem; letter-spacing: .04em; color: var(--ink-muted);
+  text-transform: uppercase;
+}
+.map-toolbar .filters__field select {
+  padding: .25rem .45rem; font-size: .8rem; min-width: 0; width: 100%;
+}
+.map-toolbar .filters__field--check {
+  flex-direction: row; align-items: center; gap: .35rem;
+  font-size: .75rem; text-transform: none; letter-spacing: 0;
+}
+.map-toolbar .filters__field--check span { color: var(--ink); }
+
 @media (max-width: 720px) {
   .map-toolbar { flex-direction: column; }
   .map-toolbar > * { flex: 1 1 auto; }
