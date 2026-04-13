@@ -47,9 +47,56 @@ export default async function mapRoutes(app: FastifyInstance) {
         params
       );
 
-      // Group by constituency so we only emit one polygon per district.
-      const emittedConst = new Set<string>();
+      // Group rows by politician — each politician contributes ONE
+      // constituency feature with their full site list bundled in.
+      type SiteSummary = {
+        url: string; hostname: string; label: string | null;
+        provider: string | null; country: string | null; city: string | null;
+        tier: number;
+      };
+      const byPolitician = new Map<string, {
+        firstRow: MapRow;
+        sites: SiteSummary[];
+        worstTier: number;
+        bestTier: number;
+        canadian: number;
+        cdn: number;
+        us: number;
+        foreign: number;
+      }>();
       for (const row of rows) {
+        const pid = row.politician_id ?? "";
+        if (!pid) continue;
+        let g = byPolitician.get(pid);
+        if (!g) {
+          g = {
+            firstRow: row,
+            sites: [],
+            worstTier: row.sovereignty_tier ?? 6,
+            bestTier: row.sovereignty_tier ?? 6,
+            canadian: 0, cdn: 0, us: 0, foreign: 0,
+          };
+          byPolitician.set(pid, g);
+        }
+        const t = row.sovereignty_tier ?? 6;
+        g.sites.push({
+          url: row.website_url, hostname: row.hostname,
+          label: row.website_label,
+          provider: row.hosting_provider, country: row.ip_country, city: row.ip_city,
+          tier: t,
+        });
+        g.worstTier = Math.max(g.worstTier, t);
+        g.bestTier = Math.min(g.bestTier, t);
+        if (t === 1 || t === 2) g.canadian++;
+        else if (t === 3) g.cdn++;
+        else if (t === 4) g.us++;
+        else if (t === 5) g.foreign++;
+      }
+
+      // Emit one constituency feature per politician with bundled site list.
+      const emittedConst = new Set<string>();
+      for (const [, g] of byPolitician) {
+        const row = g.firstRow;
         if (row.boundary_geojson && row.constituency_id && !emittedConst.has(row.constituency_id)) {
           emittedConst.add(row.constituency_id);
           features.push({
@@ -61,12 +108,26 @@ export default async function mapRoutes(app: FastifyInstance) {
               name: row.constituency_name,
               level: row.level,
               province: row.province_territory,
-              worst_tier: row.sovereignty_tier ?? 6,
+              worst_tier: g.worstTier,
+              // Politician info bundled for tooltip/popup
+              politician_id: row.politician_id,
+              politician_name: row.name,
+              party: row.party,
+              elected_office: row.elected_office,
+              photo_url: (row as MapRow & { photo_url?: string }).photo_url ?? null,
+              sites: g.sites,
+              site_count: g.sites.length,
+              canadian: g.canadian,
+              cdn: g.cdn,
+              us: g.us,
+              foreign: g.foreign,
             },
             geometry: row.boundary_geojson,
           });
         }
+      }
 
+      for (const row of rows) {
         if (row.server_lat != null && row.server_lng != null) {
           features.push({
             type: "Feature",

@@ -67,6 +67,8 @@ export interface MapRow {
   organization_id?: string;
   name: string;
   party?: string | null;
+  elected_office?: string | null;
+  photo_url?: string | null;
   level?: string;
   side?: string | null;
   type?: string;

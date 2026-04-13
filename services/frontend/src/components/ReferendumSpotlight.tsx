@@ -25,24 +25,52 @@ export function ReferendumSpotlight() {
   const irony = data.irony_score ||
     "Organizations advocating Alberta leave Canada for sovereignty store their website data outside Canada.";
 
+  const totalSites = (data.leave_side.total_websites || 0) + (data.stay_side.total_websites || 0);
+  const totalCA = (data.leave_side.hosted_in_canada || 0) + (data.stay_side.hosted_in_canada || 0);
+  const totalOutside = totalSites - totalCA;
+  const pctOutside = totalSites > 0 ? Math.round(100 * totalOutside / totalSites) : 0;
+  const daysUntil = Math.max(0, Math.ceil(
+    (new Date("2026-10-19T00:00:00-06:00").getTime() - Date.now()) / 86400000
+  ));
+  const leaveOrgs = data.leave_side.orgs?.length ?? 0;
+  const stayOrgs = data.stay_side.orgs?.length ?? 0;
+
   return (
     <section className="ref">
       <header className="ref__hero">
-        <div className="ref__hero-eyebrow">Referendum Watch</div>
-        <blockquote className="ref__hero-quote">
-          <span className="ref__hero-mark">&ldquo;</span>
-          {irony}
-          <span className="ref__hero-mark ref__hero-mark--close">&rdquo;</span>
-        </blockquote>
-        <div className="ref__hero-date">October 19, 2026 · Alberta sovereignty referendum</div>
+        <div className="ref__hero-top">
+          <div className="ref__hero-eyebrow">Alberta Sovereignty Referendum · October 19, 2026</div>
+          <div className="ref__hero-countdown">
+            <span className="ref__hero-countdown-num">{daysUntil}</span>
+            <span className="ref__hero-countdown-label">days to vote</span>
+          </div>
+        </div>
+        <h2 className="ref__hero-headline">
+          <span className="ref__hero-headline-num">{pctOutside}%</span>
+          {" "}of referendum-organization websites are hosted{" "}
+          <strong>outside Canada</strong>.
+        </h2>
+        <p className="ref__hero-sub">{irony}</p>
+        <div className="ref__hero-strip">
+          <div className="ref__hero-strip-card ref__hero-strip-card--leave">
+            <div className="ref__hero-strip-num">{leaveOrgs}</div>
+            <div className="ref__hero-strip-label">organizations advocating Alberta leave Canada</div>
+            <div className="ref__hero-strip-sub">{data.leave_side.hosted_in_canada}/{data.leave_side.total_websites} sites in Canada</div>
+          </div>
+          <div className="ref__hero-strip-card ref__hero-strip-card--stay">
+            <div className="ref__hero-strip-num">{stayOrgs}</div>
+            <div className="ref__hero-strip-label">organizations campaigning to stay in Canada</div>
+            <div className="ref__hero-strip-sub">{data.stay_side.hosted_in_canada}/{data.stay_side.total_websites} sites in Canada</div>
+          </div>
+        </div>
       </header>
+
+      {mapData && <RefMiniMap data={mapData} />}
 
       <div className="ref__grid">
         <SideCard side="leave" title="LEAVE Canada" subtitle="Alberta sovereignty advocates" data={data.leave_side} />
         <SideCard side="stay"  title="STAY in Canada" subtitle="Federalist organizations" data={data.stay_side} />
       </div>
-
-      {mapData && <RefMiniMap data={mapData} />}
 
       <p className="ref__footnote">
         Both sides of Alberta&apos;s sovereignty debate host their digital infrastructure outside Canada.

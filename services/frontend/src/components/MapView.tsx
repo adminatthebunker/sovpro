@@ -129,10 +129,8 @@ export function MapView({ filters }: Props) {
               }}
               onEachFeature={(f, layer) => {
                 const p = f.properties || {};
-                layer.bindTooltip(
-                  `<strong>${escapeHtml(String(p.name ?? ""))}</strong><br>` +
-                  `${escapeHtml(String(p.level ?? ""))} · ${escapeHtml(String(p.province ?? ""))}`
-                );
+                layer.bindTooltip(buildConstituencyTooltip(p), { sticky: true });
+                layer.bindPopup(buildConstituencyPopup(p), { maxWidth: 340, minWidth: 280 });
               }}
             />
           </LayersControl.Overlay>
@@ -235,4 +233,81 @@ function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+interface SiteInPopup {
+  url: string; hostname: string; label: string | null;
+  provider: string | null; country: string | null; city: string | null;
+  tier: number;
+}
+
+/** Lightweight hover tooltip — politician + constituency + photo + worst-tier */
+function buildConstituencyTooltip(p: Record<string, unknown>): string {
+  const name = String(p.politician_name ?? "");
+  const constituency = String(p.name ?? "");
+  const office = String(p.elected_office ?? "");
+  const party = String(p.party ?? "");
+  const photo = p.photo_url ? String(p.photo_url) : null;
+  const tier = (p.worst_tier ?? 6) as SovereigntyTier;
+  const meta = TIER_META[tier];
+  const sites = Number(p.site_count ?? 0);
+  const ca = Number(p.canadian ?? 0);
+  return `
+    <div class="map-tooltip">
+      ${photo ? `<img class="map-tooltip__photo" src="${escapeHtml(photo)}" alt="" loading="lazy"/>` : ""}
+      <div class="map-tooltip__body">
+        <div class="map-tooltip__name">${escapeHtml(name) || escapeHtml(constituency)}</div>
+        <div class="map-tooltip__office">${escapeHtml(office)}${party ? ` · ${escapeHtml(party)}` : ""}</div>
+        <div class="map-tooltip__riding">${escapeHtml(constituency)}</div>
+        <div class="map-tooltip__tier" style="color:${meta.color}">${meta.emoji} ${escapeHtml(meta.label)}</div>
+        <div class="map-tooltip__sites">${ca}/${sites} site${sites === 1 ? "" : "s"} in Canada</div>
+      </div>
+    </div>`;
+}
+
+/** Rich click popup — full politician card with all sites listed */
+function buildConstituencyPopup(p: Record<string, unknown>): string {
+  const name = String(p.politician_name ?? "");
+  const constituency = String(p.name ?? "");
+  const office = String(p.elected_office ?? "");
+  const party = String(p.party ?? "");
+  const photo = p.photo_url ? String(p.photo_url) : null;
+  const sites = (p.sites as SiteInPopup[] | undefined) ?? [];
+  const totalSites = sites.length;
+  const ca = Number(p.canadian ?? 0);
+  const us = Number(p.us ?? 0);
+  const cdn = Number(p.cdn ?? 0);
+
+  const siteHtml = sites.map(s => {
+    const tier = (s.tier ?? 6) as SovereigntyTier;
+    const meta = TIER_META[tier];
+    const loc = [s.city, s.country].filter(Boolean).join(", ");
+    return `
+      <li class="map-popup__site">
+        <div class="map-popup__site-host">
+          <a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.hostname)}</a>
+        </div>
+        <div class="map-popup__site-meta" style="color:${meta.color}">${meta.emoji} ${escapeHtml(meta.label)}</div>
+        <div class="map-popup__site-host-name">${escapeHtml(s.provider ?? "—")}${loc ? ` · ${escapeHtml(loc)}` : ""}</div>
+      </li>`;
+  }).join("");
+
+  return `
+    <div class="map-popup">
+      <header class="map-popup__head">
+        ${photo ? `<img class="map-popup__photo" src="${escapeHtml(photo)}" alt="" loading="lazy"/>` : ""}
+        <div>
+          <div class="map-popup__name">${escapeHtml(name) || escapeHtml(constituency)}</div>
+          <div class="map-popup__office">${escapeHtml(office)}${party ? ` · ${escapeHtml(party)}` : ""}</div>
+          <div class="map-popup__riding">${escapeHtml(constituency)}</div>
+        </div>
+      </header>
+      <div class="map-popup__breakdown">
+        <span><strong>${ca}</strong> 🇨🇦 CA</span>
+        <span><strong>${cdn}</strong> 🌐 CDN</span>
+        <span><strong>${us}</strong> 🇺🇸 US</span>
+        <span class="map-popup__total">${totalSites} total</span>
+      </div>
+      ${totalSites > 0 ? `<ul class="map-popup__sites">${siteHtml}</ul>` : `<p class="map-popup__nosites">No personal/campaign website tracked.</p>`}
+    </div>`;
 }

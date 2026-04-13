@@ -39,8 +39,12 @@ export default function App() {
         </nav>
       </header>
 
-      <HeroHeadline />
-      <StatsBar />
+      {activeTab !== "referendum" && (
+        <>
+          <HeroHeadline />
+          <StatsBar />
+        </>
+      )}
 
       {activeTab === "map" && (
         <section className="shell__map-section">
