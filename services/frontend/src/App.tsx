@@ -50,33 +50,42 @@ export default function App() {
 
       {activeTab === "map" && (
         <section className="shell__map-section">
-          <PostalLookupBar
-            onResult={(ids) => setFilters(f => ({ ...f, politicianIds: ids ?? undefined }))}
-          />
-          <PartyFilter
-            active={filters.party}
-            onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
-            onShowReport={(p) => setReportParty(p)}
-          />
-          <Filters value={filters} onChange={setFilters} />
-          <MapView filters={filters} />
+          <div className="map-toolbar">
+            <PostalLookupBar
+              onResult={(ids) => setFilters(f => ({ ...f, politicianIds: ids ?? undefined }))}
+            />
+            <PartyFilter
+              active={filters.party}
+              onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
+              onShowReport={(p) => setReportParty(p)}
+            />
+            <Filters value={filters} onChange={setFilters} />
+          </div>
+          <div className={`map-with-drawer ${reportParty ? "is-open" : ""}`}>
+            <div className="map-with-drawer__map">
+              <MapView filters={filters} />
+            </div>
+            {reportParty && (
+              <PartyReportCard
+                party={reportParty}
+                partyColor={partyColor(reportParty)}
+                onClose={() => setReportParty(null)}
+              />
+            )}
+          </div>
           <TierLegend />
         </section>
       )}
 
       {activeTab === "referendum" && (
-        <ReferendumSpotlight onShowReport={(p) => setReportParty(p)} />
+        <ReferendumSpotlight
+          reportParty={reportParty}
+          onShowReport={(p) => setReportParty(p)}
+          onCloseReport={() => setReportParty(null)}
+        />
       )}
       {activeTab === "changes" && <ChangesFeed />}
       {activeTab === "faq" && <Faq />}
-
-      {reportParty && (
-        <PartyReportCard
-          party={reportParty}
-          partyColor={partyColor(reportParty)}
-          onClose={() => setReportParty(null)}
-        />
-      )}
 
       <footer className="shell__footer">
         <div className="shell__footer-row">

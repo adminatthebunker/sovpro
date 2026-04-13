@@ -23,9 +23,12 @@ interface Props {
   party: string;
   partyColor: string;
   onClose: () => void;
+  /** Layout variant. 'drawer' is inline-beside-map (default).
+   *  'modal' overlays the page with a backdrop. */
+  variant?: "drawer" | "modal";
 }
 
-export function PartyReportCard({ party, partyColor, onClose }: Props) {
+export function PartyReportCard({ party, partyColor, onClose, variant = "drawer" }: Props) {
   const path = `/parties/${encodeURIComponent(party)}/report`;
   const { data, loading, error } = useFetch<ReportData>(path);
 
@@ -36,16 +39,32 @@ export function PartyReportCard({ party, partyColor, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
-    <div className="report-modal" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="report-card" onClick={e => e.stopPropagation()}>
-        <button className="report-card__close" onClick={onClose} aria-label="Close">×</button>
+  const inner = (
+    <>
+      <button className="report-card__close" onClick={onClose} aria-label="Close">×</button>
+      {loading && <div className="report-card__loading">Loading {party} report card…</div>}
+      {error && <div className="report-card__error">{error.message}</div>}
+      {data && <ReportBody data={data} partyColor={partyColor} />}
+    </>
+  );
 
-        {loading && <div className="report-card__loading">Loading {party} report card…</div>}
-        {error && <div className="report-card__error">{error.message}</div>}
-        {data && <ReportBody data={data} partyColor={partyColor} />}
+  if (variant === "modal") {
+    return (
+      <div className="report-modal" role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="report-card" onClick={e => e.stopPropagation()}>
+          {inner}
+        </div>
       </div>
-    </div>
+    );
+  }
+
+  // drawer: inline beside the map
+  return (
+    <aside className="report-drawer" role="complementary" aria-label={`${party} sovereignty report card`}>
+      <div className="report-card report-card--drawer">
+        {inner}
+      </div>
+    </aside>
   );
 }
 

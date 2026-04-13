@@ -7,6 +7,7 @@ import { TIER_META } from "../types";
 import { AntLines } from "./AntLines";
 import { MapView } from "./MapView";
 import { partyColor } from "./PartyFilter";
+import { PartyReportCard } from "./PartyReportCard";
 
 interface RefResponse {
   leave_side: ReferendumSideSummary;
@@ -31,7 +32,9 @@ interface AlbertaStatsResponse {
 }
 
 interface Props {
+  reportParty?: string | null;
   onShowReport?: (party: string) => void;
+  onCloseReport?: () => void;
 }
 
 const AB_PARTIES = [
@@ -39,7 +42,7 @@ const AB_PARTIES = [
   "Alberta New Democratic Party",
 ];
 
-export function ReferendumSpotlight({ onShowReport }: Props) {
+export function ReferendumSpotlight({ reportParty, onShowReport, onCloseReport }: Props) {
   const { data, loading, error } = useFetch<RefResponse>("/stats/referendum");
   const { data: mapData } = useFetch<GeoCollection>("/map/referendum");
   const { data: partyStats } = useFetch<AlbertaStatsResponse>("/parties");
@@ -98,7 +101,12 @@ export function ReferendumSpotlight({ onShowReport }: Props) {
         <SideCard side="stay"  title="STAY in Canada" subtitle="Federalist organizations" data={data.stay_side} />
       </div>
 
-      <AlbertaPoliticians partyStats={partyStats} onShowReport={onShowReport} />
+      <AlbertaPoliticians
+        partyStats={partyStats}
+        reportParty={reportParty ?? null}
+        onShowReport={onShowReport}
+        onCloseReport={onCloseReport}
+      />
 
       <p className="ref__footnote">
         Both sides of Alberta&apos;s sovereignty debate host their digital infrastructure outside Canada.
@@ -112,10 +120,14 @@ export function ReferendumSpotlight({ onShowReport }: Props) {
  *  report-card shortcuts for UCP and Alberta NDP. */
 function AlbertaPoliticians({
   partyStats,
+  reportParty,
   onShowReport,
+  onCloseReport,
 }: {
   partyStats: AlbertaStatsResponse | null;
+  reportParty: string | null;
   onShowReport?: (party: string) => void;
+  onCloseReport?: () => void;
 }) {
   const abPartyRows =
     partyStats?.parties.filter(p => AB_PARTIES.includes(p.party)) ?? [];
@@ -131,17 +143,26 @@ function AlbertaPoliticians({
         </p>
       </header>
 
-      <div className="ref__ab-map">
-        <MapView
-          filters={{
-            layer: "all",
-            level: undefined,
-            province: "AB",
-            party: undefined,
-            includeNoData: true,
-            politicianIds: undefined,
-          }}
-        />
+      <div className={`map-with-drawer ${reportParty ? "is-open" : ""}`}>
+        <div className="map-with-drawer__map ref__ab-map">
+          <MapView
+            filters={{
+              layer: "all",
+              level: undefined,
+              province: "AB",
+              party: undefined,
+              includeNoData: true,
+              politicianIds: undefined,
+            }}
+          />
+        </div>
+        {reportParty && (
+          <PartyReportCard
+            party={reportParty}
+            partyColor={partyColor(reportParty)}
+            onClose={() => onCloseReport?.()}
+          />
+        )}
       </div>
 
       {abPartyRows.length > 0 && (
