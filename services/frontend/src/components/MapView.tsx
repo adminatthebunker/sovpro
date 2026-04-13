@@ -58,6 +58,11 @@ export function MapView({ filters }: Props) {
         minZoom={2}
         style={{ height: "70vh", width: "100%", background: "#0b1220" }}
         preferCanvas
+        zoomAnimation={false}
+        fadeAnimation={false}
+        markerZoomAnimation={false}
+        wheelDebounceTime={40}
+        wheelPxPerZoomLevel={120}
       >
         <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Dark">
@@ -96,7 +101,31 @@ export function MapView({ filters }: Props) {
             />
           </LayersControl.Overlay>
 
-          <LayersControl.Overlay checked name="Data flow (animated)">
+          <LayersControl.Overlay checked name="Connections (Canadian)">
+            <GeoJSON
+              key={`lines-ca-${lines.features.length}`}
+              data={{
+                ...lines,
+                features: lines.features.filter(
+                  (f) => {
+                    const t = (f.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
+                    return t === 1 || t === 2;
+                  }
+                ),
+              } as GeoJSON.FeatureCollection}
+              style={(f) => {
+                const tier = (f?.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
+                return {
+                  color: TIER_META[tier]?.color ?? "#64748b",
+                  weight: 0.6,
+                  opacity: 0.35,
+                  interactive: false,
+                };
+              }}
+            />
+          </LayersControl.Overlay>
+
+          <LayersControl.Overlay checked name="Data flow (animated, foreign)">
             <LayerGroup>
               <AntLines data={lines as GeoCollection} />
             </LayerGroup>
