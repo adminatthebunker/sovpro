@@ -1,11 +1,10 @@
 import { useEffect, useMemo } from "react";
-import { MapContainer, TileLayer, GeoJSON, LayersControl, LayerGroup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, LayersControl, useMap } from "react-leaflet";
 import L from "leaflet";
 import type { GeoCollection, SovereigntyTier } from "../types";
 import { TIER_META } from "../types";
 import { useFetch } from "../hooks/useFetch";
 import type { FilterState } from "./Filters";
-import { AntLines } from "./AntLines";
 
 /** Auto-fits the map to the bounding box of the given features when the
  *  feature set is small (i.e. user just narrowed via postal lookup). */
@@ -34,8 +33,6 @@ function FitToFeatures({ features }: { features: GeoJSON.Feature[] }) {
 
 interface Props {
   filters: FilterState;
-  /** When true, ant-path animations render as static dashed lines. */
-  pauseAnimations?: boolean;
 }
 
 const CANADA_CENTER: [number, number] = [56.1304, -106.3468];
@@ -49,7 +46,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export function MapView({ filters, pauseAnimations = false }: Props) {
+export function MapView({ filters }: Props) {
   const path = useMemo(() => {
     const params = new URLSearchParams();
     if (filters.level) params.set("level", filters.level);
@@ -189,9 +186,27 @@ export function MapView({ filters, pauseAnimations = false }: Props) {
           </LayersControl.Overlay>
 
           <LayersControl.Overlay checked name="Data flow (animated, foreign)">
-            <LayerGroup>
-              <AntLines data={lines as GeoCollection} paused={pauseAnimations} />
-            </LayerGroup>
+            <GeoJSON
+              key={`flow-${lines.features.length}`}
+              data={{
+                ...lines,
+                features: lines.features.filter((f) => {
+                  const t = (f.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
+                  return t === 3 || t === 4 || t === 5;
+                }),
+              } as GeoJSON.FeatureCollection}
+              style={(f) => {
+                const tier = (f?.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
+                return {
+                  color: TIER_META[tier]?.color ?? "#94a3b8",
+                  weight: 1.4,
+                  opacity: 0.75,
+                  // CSS keyframes hook for the marching-dash animation
+                  className: "sw-flow-line",
+                  interactive: false,
+                };
+              }}
+            />
           </LayersControl.Overlay>
 
           <LayersControl.Overlay checked name="Server locations">

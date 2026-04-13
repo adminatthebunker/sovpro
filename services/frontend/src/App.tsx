@@ -25,17 +25,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "faq">("map");
   const [reportParty, setReportParty] = useState<string | null>(null);
   const [postalResult, setPostalResult] = useState<PostalLookupResponse | null>(null);
-  // Persist motion preference across reloads — useful escape hatch over
-  // high-latency networks where the animation appears to flicker.
-  const [pauseAnim, setPauseAnim] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem("sw_pause_anim") === "1";
-  });
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("sw_pause_anim", pauseAnim ? "1" : "0");
-    }
-  }, [pauseAnim]);
 
   return (
     <div className="shell">
@@ -96,7 +85,7 @@ export default function App() {
           </div>
           <div className={`map-with-drawer ${(reportParty || postalResult) ? "is-open" : ""}`}>
             <div className="map-with-drawer__map">
-              <MapView filters={filters} pauseAnimations={pauseAnim} />
+              <MapView filters={filters} />
             </div>
             {postalResult && (
               <PostalResultsDrawer
@@ -115,10 +104,7 @@ export default function App() {
               />
             )}
           </div>
-          <TierLegend
-            pauseAnimations={pauseAnim}
-            onTogglePauseAnimations={() => setPauseAnim(p => !p)}
-          />
+          <TierLegend />
         </section>
       )}
 

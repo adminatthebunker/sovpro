@@ -1,30 +1,14 @@
 import { TIER_META, type SovereigntyTier } from "../types";
 
-interface Props {
-  pauseAnimations?: boolean;
-  onTogglePauseAnimations?: () => void;
-}
-
 /**
  * Map key — explains every glyph the user might see on the map:
  * tier colors, polygon vs pin vs line styles, and the difference between
  * the static (Canadian) and animated (foreign) connection lines.
  */
-export function TierLegend({ pauseAnimations, onTogglePauseAnimations }: Props = {}) {
+export function TierLegend() {
   const tiers: SovereigntyTier[] = [1, 2, 3, 4, 5, 6];
   return (
     <div className="tier-legend">
-      {onTogglePauseAnimations && (
-        <label className="tier-legend__motion" title="Disable map line animations (helps over slow connections)">
-          <input
-            type="checkbox"
-            checked={!!pauseAnimations}
-            onChange={onTogglePauseAnimations}
-          />
-          <span>Pause animations</span>
-        </label>
-      )}
-
       <div className="tier-legend__section">
         <div className="tier-legend__title">Sovereignty tier (color)</div>
         <div className="tier-legend__row">
