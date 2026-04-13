@@ -230,8 +230,8 @@ button.active { background: var(--accent); border-color: var(--accent); }
 
 .ref__hero {
   position: relative;
-  padding: 2.25rem 1.5rem 2rem;
-  margin-bottom: 1.5rem;
+  padding: 1.5rem 1.75rem 1.5rem;
+  margin-bottom: 1.25rem;
   border-radius: 16px;
   background:
     radial-gradient(1200px 300px at 10% -20%, rgba(225,29,72,.18), transparent 60%),
@@ -243,7 +243,7 @@ button.active { background: var(--accent); border-color: var(--accent); }
 }
 .ref__hero-top {
   display: flex; justify-content: space-between; align-items: flex-start;
-  gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;
+  gap: 1rem; margin-bottom: .65rem; flex-wrap: wrap;
 }
 .ref__hero-eyebrow {
   font-size: .75rem; letter-spacing: .25em; text-transform: uppercase;
@@ -258,11 +258,11 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .ref__hero-countdown-label { font-size: .65rem; letter-spacing: .15em; text-transform: uppercase; color: #fca5a5; }
 
 .ref__hero-tagline {
-  margin: 0 0 1.25rem;
-  font-size: clamp(1.5rem, 3.6vw, 2.4rem);
+  margin: 0 0 .85rem;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
   line-height: 1.15; font-weight: 800; letter-spacing: -.02em;
   color: #fca5a5;
-  max-width: 24ch;
+  /* no max-width — let the panel breathe */
 }
 .ref__hero-tagline em {
   font-style: normal;
@@ -275,27 +275,31 @@ button.active { background: var(--accent); border-color: var(--accent); }
   height: 3px; background: var(--accent); opacity: .45; border-radius: 2px;
 }
 
-/* The killer fact: zero in Alberta */
+/* The killer fact: bignum on the LEFT, explanation on the RIGHT — single row. */
 .ref__hero-killer {
-  display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem;
-  margin: 0 0 .5rem; max-width: 60ch;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  margin: 0 0 .65rem;
 }
 .ref__hero-killer-num {
-  font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 900; line-height: 1;
+  font-size: clamp(2.8rem, 6vw, 4rem); font-weight: 900; line-height: .9;
   color: #fcd34d; letter-spacing: -.03em;
 }
-.ref__hero-killer-of { font-size: 1.1rem; color: var(--ink-muted); margin: 0 .15rem; }
-.ref__hero-killer-denom { font-size: 1.4rem; color: var(--ink); font-weight: 700; }
-.ref__hero-killer-label {
-  margin-left: .5rem; font-size: 1rem; color: var(--ink); font-weight: 500;
-  line-height: 1.35; flex: 1 0 100%;
+.ref__hero-killer-of {
+  font-size: 1rem; color: var(--ink-muted); margin: 0 .15rem;
+  align-self: center;
 }
-@media (min-width: 720px) {
-  .ref__hero-killer-label { flex: 0 1 auto; margin-left: .65rem; }
+.ref__hero-killer-denom {
+  font-size: 1.6rem; color: var(--ink); font-weight: 700;
+  align-self: center;
+}
+.ref__hero-killer-label {
+  font-size: 1rem; color: var(--ink); font-weight: 500;
+  line-height: 1.35; flex: 1 1 240px;
+  border-left: 1px solid var(--border); padding-left: 1rem;
 }
 
 .ref__hero-sub {
-  margin: 0 0 1.25rem; color: var(--ink-muted); font-size: .9rem; max-width: 70ch;
+  margin: 0 0 1rem; color: var(--ink-muted); font-size: .88rem; max-width: 80ch;
 }
 
 .ref__hero-strip {
