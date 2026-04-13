@@ -7,6 +7,8 @@ import { TIER_META } from "../types";
 
 interface Props {
   data: GeoCollection;
+  /** When true, render paths as static (no animation loop). */
+  paused?: boolean;
 }
 
 interface AntPathLayer extends L.Polyline {
@@ -28,9 +30,10 @@ const PREFERS_REDUCED_MOTION =
  * dashOffset on the SVG stroke. Mid-zoom that fights Leaflet's transform
  * pipeline. We pause every animation on zoomstart and resume on zoomend.
  */
-export function AntLines({ data }: Props) {
+export function AntLines({ data, paused = false }: Props) {
   const map = useMap();
   const layersRef = useRef<AntPathLayer[]>([]);
+  const wantPaused = paused || PREFERS_REDUCED_MOTION;
 
   useEffect(() => {
     for (const l of layersRef.current) {
@@ -54,8 +57,7 @@ export function AntLines({ data }: Props) {
         color: meta.color,
         pulseColor: "#fafafa",
         opacity: 0.7,
-        // Reduced-motion users: render statically (no animation loop)
-        paused: PREFERS_REDUCED_MOTION,
+        paused: wantPaused,
         reverse: false,
         hardwareAccelerated: true,
         interactive: false,
@@ -70,31 +72,17 @@ export function AntLines({ data }: Props) {
       }
       layersRef.current = [];
     };
-  }, [data, map]);
+  }, [data, map, wantPaused]);
 
-  // Pause during interaction OR while tiles are loading — over high-latency
-  // links (e.g. Tailscale) tile loads cause SVG reflows that compete with
-  // the ant-path setInterval, producing visible flicker.
+  // Pause only on user-initiated zoom/pan. Removed the per-tile-load
+  // listeners — over high-latency links those fire constantly and the
+  // pause/resume thrash itself caused flicker.
   useMapEvents({
     zoomstart: () => pauseAll(layersRef.current),
-    zoomend:   () => resumeAll(layersRef.current),
+    zoomend:   () => !wantPaused && resumeAll(layersRef.current),
     movestart: () => pauseAll(layersRef.current),
-    moveend:   () => resumeAll(layersRef.current),
+    moveend:   () => !wantPaused && resumeAll(layersRef.current),
   });
-
-  // Tile-load events fire on the map (not the parent container).
-  // useMapEvents only handles the typed subset; for `tileloadstart` /
-  // `tileload` we attach via map.on directly.
-  useEffect(() => {
-    const onLoadStart = () => pauseAll(layersRef.current);
-    const onLoadEnd   = () => resumeAll(layersRef.current);
-    map.on("tileloadstart", onLoadStart);
-    map.on("tileload", onLoadEnd);
-    return () => {
-      map.off("tileloadstart", onLoadStart);
-      map.off("tileload", onLoadEnd);
-    };
-  }, [map]);
 
   return null;
 }
@@ -103,6 +91,5 @@ function pauseAll(layers: AntPathLayer[]) {
   for (const l of layers) { try { l.pause?.(); } catch { /* noop */ } }
 }
 function resumeAll(layers: AntPathLayer[]) {
-  if (PREFERS_REDUCED_MOTION) return;  // never resume if user opted out
   for (const l of layers) { try { l.resume?.(); } catch { /* noop */ } }
 }

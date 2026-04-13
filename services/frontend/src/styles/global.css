@@ -193,7 +193,16 @@ button.active { background: var(--accent); border-color: var(--accent); }
   display: flex; flex-direction: column; gap: .75rem;
   padding: .85rem 1rem; background: var(--panel); border: 1px solid var(--border);
   border-radius: 10px; margin-top: .75rem; font-size: .8rem;
+  position: relative;
 }
+.tier-legend__motion {
+  position: absolute; top: .55rem; right: .85rem;
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-size: .72rem; color: var(--ink-muted); cursor: pointer;
+  user-select: none;
+}
+.tier-legend__motion input { cursor: pointer; }
+.tier-legend__motion:hover { color: var(--ink); }
 .tier-legend__section { display: flex; flex-direction: column; gap: .35rem; }
 .tier-legend__section + .tier-legend__section {
   padding-top: .75rem; border-top: 1px solid var(--border);

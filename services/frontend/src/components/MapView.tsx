@@ -34,6 +34,8 @@ function FitToFeatures({ features }: { features: GeoJSON.Feature[] }) {
 
 interface Props {
   filters: FilterState;
+  /** When true, ant-path animations render as static dashed lines. */
+  pauseAnimations?: boolean;
 }
 
 const CANADA_CENTER: [number, number] = [56.1304, -106.3468];
@@ -47,7 +49,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export function MapView({ filters }: Props) {
+export function MapView({ filters, pauseAnimations = false }: Props) {
   const path = useMemo(() => {
     const params = new URLSearchParams();
     if (filters.level) params.set("level", filters.level);
@@ -105,9 +107,7 @@ export function MapView({ filters }: Props) {
             <TileLayer
               attribution='&copy; OpenStreetMap, &copy; CARTO'
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-              keepBuffer={6}
-              updateWhenIdle={true}
-              updateWhenZooming={false}
+              keepBuffer={4}
               maxNativeZoom={18}
             />
           </LayersControl.BaseLayer>
@@ -115,9 +115,7 @@ export function MapView({ filters }: Props) {
             <TileLayer
               attribution='&copy; OpenStreetMap'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              keepBuffer={6}
-              updateWhenIdle={true}
-              updateWhenZooming={false}
+              keepBuffer={4}
             />
           </LayersControl.BaseLayer>
 
@@ -192,7 +190,7 @@ export function MapView({ filters }: Props) {
 
           <LayersControl.Overlay checked name="Data flow (animated, foreign)">
             <LayerGroup>
-              <AntLines data={lines as GeoCollection} />
+              <AntLines data={lines as GeoCollection} paused={pauseAnimations} />
             </LayerGroup>
           </LayersControl.Overlay>
 
