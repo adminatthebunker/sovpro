@@ -1,10 +1,11 @@
 import { useMemo } from "react";
-import { MapContainer, TileLayer, GeoJSON, LayersControl, Marker, Popup, CircleMarker } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, LayersControl, LayerGroup } from "react-leaflet";
 import L from "leaflet";
 import type { GeoCollection, SovereigntyTier } from "../types";
 import { TIER_META } from "../types";
 import { useFetch } from "../hooks/useFetch";
 import type { FilterState } from "./Filters";
+import { AntLines } from "./AntLines";
 
 interface Props {
   filters: FilterState;
@@ -95,19 +96,10 @@ export function MapView({ filters }: Props) {
             />
           </LayersControl.Overlay>
 
-          <LayersControl.Overlay checked name="Connections">
-            <GeoJSON
-              key={`lines-${lines.features.length}`}
-              data={lines as GeoJSON.FeatureCollection}
-              style={(f) => {
-                const tier = (f?.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
-                return {
-                  color: TIER_META[tier]?.color ?? "#64748b",
-                  weight: 0.8,
-                  opacity: 0.4,
-                };
-              }}
-            />
+          <LayersControl.Overlay checked name="Data flow (animated)">
+            <LayerGroup>
+              <AntLines data={lines as GeoCollection} />
+            </LayerGroup>
           </LayersControl.Overlay>
 
           <LayersControl.Overlay checked name="Server locations">

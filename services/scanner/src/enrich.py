@@ -116,7 +116,7 @@ async def _attach(db: Database, politician_id: str, url: str, label: str = "pers
         politician_id, url, label,
     )
     await db.execute(
-        "UPDATE politicians SET personal_url = COALESCE(personal_url, $2), updated_at = now() WHERE id = $1",
+        "UPDATE politicians SET personal_url = COALESCE(NULLIF(personal_url,''), $2), updated_at = now() WHERE id = $1",
         politician_id, url,
     )
     return row is not None

@@ -256,7 +256,8 @@ LEFT JOIN LATERAL (
     SELECT * FROM infrastructure_scans
     WHERE website_id = w.id ORDER BY scanned_at DESC LIMIT 1
 ) s ON true
-WHERE p.is_active = true;
+WHERE p.is_active = true
+  AND COALESCE(w.label, '') <> 'shared_official';
 
 CREATE INDEX IF NOT EXISTS idx_mp_level        ON map_politicians(level);
 CREATE INDEX IF NOT EXISTS idx_mp_province     ON map_politicians(province_territory);
