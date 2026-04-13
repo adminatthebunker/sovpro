@@ -70,6 +70,17 @@ X-Signature: sha256=<hex(hmac_sha256(WEBHOOK_SECRET, raw_body))>
 ```
 If `WEBHOOK_SECRET` is unset, the endpoint accepts unsigned posts (dev mode only).
 
+## Open Graph
+
+### `GET /og/share`
+Returns a dynamic **1200×630 PNG** share card with the current headline stat
+(% of Canadian politicians hosting outside Canada) and a sovereignty-tier bar
+chart. Intended for use in `<meta property="og:image">` tags.
+
+- `Content-Type: image/png`
+- `Cache-Control: public, max-age=300`
+- In-process cache refreshes every 5 minutes from live `/stats` data.
+
 ## Health
 
 ### `GET /health`
