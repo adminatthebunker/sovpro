@@ -128,12 +128,21 @@ export default async function statsRoutes(app: FastifyInstance) {
     leave: Record<string, unknown>,
     stay: Record<string, unknown>
   ): string {
-    const leaveUS = leave.hosted_in_us as number;
     const leaveTotal = leave.total_websites as number;
-    if (leaveTotal > 0 && leaveUS / leaveTotal >= 0.5) {
-      return `Organizations advocating to leave Canada for sovereignty store ${Math.round(
-        100 * leaveUS / leaveTotal
-      )}% of their website data outside Canada.`;
+    const leaveCA = leave.hosted_in_canada as number;
+    const stayTotal = stay.total_websites as number;
+    const stayCA = stay.hosted_in_canada as number;
+    if (leaveTotal === 0) return "";
+
+    const leaveOutside = leaveTotal - leaveCA;
+    const stayOutside = stayTotal - stayCA;
+
+    if (leaveCA === 0 && stayCA === 0 && stayTotal > 0) {
+      return "Neither side of Alberta's sovereignty debate hosts their digital infrastructure in Canada.";
+    }
+    if (leaveOutside / leaveTotal >= 0.5) {
+      const pct = Math.round(100 * leaveOutside / leaveTotal);
+      return `Organizations advocating Alberta leave Canada for sovereignty store ${pct}% of their website data outside Canada.`;
     }
     return "";
   }
