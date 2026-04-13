@@ -85,7 +85,7 @@ export function PostalLookupBar({ onResult }: Props) {
       <form onSubmit={submit} className="postal-bar__form">
         <label className="postal-bar__label">
           <span className="postal-bar__icon">📍</span>
-          Find your representatives
+          Find Your Data
         </label>
         <input
           type="text"

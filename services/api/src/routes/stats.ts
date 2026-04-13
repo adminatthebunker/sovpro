@@ -80,6 +80,19 @@ export default async function statsRoutes(app: FastifyInstance) {
        SELECT ip_city AS city, ip_country AS country, COUNT(*)::int AS n
        FROM uniq WHERE ip_city IS NOT NULL
        GROUP BY ip_city, ip_country ORDER BY n DESC LIMIT 10`);
+
+    // Top destination outside Canada — answers "where does the data go?"
+    const topForeignCities = await query<{ city: string; country: string; n: number }>(
+      `WITH uniq AS (
+         SELECT DISTINCT ON (w.hostname) s.ip_city, s.ip_country
+         FROM websites w
+         JOIN infrastructure_scans s ON s.website_id = w.id
+         WHERE COALESCE(w.label,'') <> 'shared_official'
+         ORDER BY w.hostname, s.scanned_at DESC
+       )
+       SELECT ip_city AS city, ip_country AS country, COUNT(*)::int AS n
+       FROM uniq WHERE ip_city IS NOT NULL AND ip_country <> 'CA'
+       GROUP BY ip_city, ip_country ORDER BY n DESC LIMIT 5`);
     const topProviders = await query<{ provider: string; n: number }>(
       `WITH uniq AS (
          SELECT DISTINCT ON (w.hostname) s.hosting_provider
@@ -119,6 +132,7 @@ export default async function statsRoutes(app: FastifyInstance) {
         referendum: { leave: refLeave, stay: refStay },
       },
       top_server_locations: topCities,
+      top_foreign_locations: topForeignCities,
       top_providers: topProviders,
     };
   });

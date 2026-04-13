@@ -25,8 +25,14 @@ export interface StatsResponse {
     };
   };
   top_server_locations: Array<{ city: string; country: string; n: number }>;
+  top_foreign_locations: Array<{ city: string; country: string; n: number }>;
   top_providers: Array<{ provider: string; n: number }>;
 }
+
+export const COUNTRY_FLAGS: Record<string, string> = {
+  CA: "🇨🇦", US: "🇺🇸", GB: "🇬🇧", FR: "🇫🇷", DE: "🇩🇪",
+  NL: "🇳🇱", IE: "🇮🇪", SG: "🇸🇬", JP: "🇯🇵", AU: "🇦🇺",
+};
 
 export interface ReferendumSideSummary {
   orgs: string[];

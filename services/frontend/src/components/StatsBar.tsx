@@ -1,5 +1,6 @@
 import { useFetch } from "../hooks/useFetch";
 import type { StatsResponse } from "../types";
+import { COUNTRY_FLAGS } from "../types";
 
 export function StatsBar() {
   const { data } = useFetch<StatsResponse>("/stats");
@@ -7,20 +8,20 @@ export function StatsBar() {
   if (!data) return <div className="statsbar statsbar--loading">Loading stats…</div>;
 
   const notCanadian = data.politicians.pct_not_canadian;
-  const topCity = data.top_server_locations[0];
   const tier1 = data.politicians.sovereignty?.tier_1 ?? 0;
   const totalPoliticians = data.politicians.total;
+  const topForeign = data.top_foreign_locations?.[0];
 
   return (
     <div className="statsbar">
       <Stat value={`${notCanadian}%`} label="of politicians' websites are hosted outside Canada" />
       <Stat value={String(totalPoliticians)} label="politicians tracked" />
       <Stat value={String(tier1)} label="use Canadian-owned hosting" />
-      {topCity && (
+      {topForeign && (
         <Stat
-          value={topCity.city}
-          sub={topCity.country}
-          label={`most popular location for Canadian political data (${topCity.n} sites)`}
+          value={topForeign.city}
+          sub={`${COUNTRY_FLAGS[topForeign.country] ?? ""} ${topForeign.country}`}
+          label={`top destination outside Canada (${topForeign.n} sites)`}
         />
       )}
     </div>
