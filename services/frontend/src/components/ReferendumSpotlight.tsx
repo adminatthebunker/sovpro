@@ -70,9 +70,15 @@ export function ReferendumSpotlight({ reportParty, onShowReport, onCloseReport }
           </div>
         </div>
         <h2 className="ref__hero-headline">
-          <span className="ref__hero-headline-num">{pctOutside}%</span>
-          {" "}of referendum-organization websites are hosted{" "}
-          <strong>outside Canada</strong>.
+          <span className="ref__hero-headline-tagline">
+            For Canada, Against Canada, <em>All American</em>
+          </span>
+          <span className="ref__hero-headline-divider">&mdash;</span>
+          <span>
+            <span className="ref__hero-headline-num">{pctOutside}%</span>
+            {" "}of referendum-organization websites are hosted{" "}
+            <strong>outside Canada</strong>.
+          </span>
         </h2>
         <p className="ref__hero-sub">{irony}</p>
         <div className="ref__hero-strip">

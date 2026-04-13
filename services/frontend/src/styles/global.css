@@ -202,9 +202,29 @@ button.active { background: var(--accent); border-color: var(--accent); }
 
 .ref__hero-headline {
   margin: 0 0 .5rem;
-  font-size: clamp(1.4rem, 3.2vw, 2.1rem);
+  font-size: clamp(1.3rem, 3.0vw, 2rem);
   line-height: 1.25; font-weight: 700; letter-spacing: -.015em;
-  color: var(--ink); max-width: 60ch;
+  color: var(--ink); max-width: 64ch;
+  display: flex; flex-direction: column; gap: .35rem;
+}
+.ref__hero-headline-tagline {
+  display: block;
+  font-size: 1.1em;
+  color: #fca5a5;
+  letter-spacing: .005em;
+  text-transform: none;
+}
+.ref__hero-headline-tagline em {
+  font-style: normal;
+  color: var(--accent);
+  position: relative;
+}
+.ref__hero-headline-tagline em::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -2px;
+  height: 2px; background: var(--accent); opacity: .35; border-radius: 2px;
+}
+.ref__hero-headline-divider {
+  display: none;        /* divider held in DOM for screen readers, hidden visually since we already break with flex column */
 }
 .ref__hero-headline-num {
   display: inline; font-size: 1.4em; color: var(--accent); font-weight: 800;
