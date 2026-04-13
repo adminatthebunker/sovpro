@@ -815,7 +815,7 @@ button.active { background: var(--accent); border-color: var(--accent); }
   background: var(--panel); border: 1px solid var(--border);
   box-shadow: none;
 }
-.map-toolbar > .postal-bar { flex: 1 1 280px; min-width: 240px; flex-direction: column; align-items: stretch; }
+.map-toolbar > .postal-bar { flex: 1 1 280px; min-width: 240px; flex-direction: row; align-items: center; flex-wrap: wrap; }
 .map-toolbar > .party-filter { flex: 2 1 420px; min-width: 0; flex-wrap: wrap; padding: .4rem .65rem; }
 .map-toolbar > .filters { flex: 1 1 280px; min-width: 0; padding: .35rem .75rem; gap: .65rem; }
 
@@ -847,8 +847,37 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .map-toolbar .filters__field--check span { color: var(--ink); }
 
 @media (max-width: 720px) {
-  .map-toolbar { flex-direction: column; }
-  .map-toolbar > * { flex: 1 1 auto; }
+  .map-toolbar {
+    flex-direction: column;
+    align-items: stretch;          /* full width, but each card hugs its content */
+    gap: .5rem;
+  }
+  .map-toolbar > .postal-bar,
+  .map-toolbar > .party-filter,
+  .map-toolbar > .filters {
+    flex: 0 0 auto;                /* don't stretch height to match siblings */
+    min-height: 0;                  /* drop the 50px desktop floor */
+    width: 100%;
+    padding: .55rem .75rem;
+  }
+  .map-toolbar > .party-filter {
+    align-items: center;           /* pills hug top, no centering void */
+    align-content: flex-start;
+    gap: .35rem;
+  }
+  .map-toolbar > .filters {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .map-toolbar .filters__field {
+    flex: 1 1 calc(50% - .35rem);  /* 2-up grid for the dropdowns */
+    min-width: 0;
+  }
+  .map-toolbar .filters__field--check { flex: 1 1 100%; }
+  .map-toolbar .postal-bar__label { font-size: .7rem; }
+  .map-toolbar .postal-bar__form { flex-wrap: wrap; }
+  .map-toolbar .postal-bar__form input { flex: 1 1 60%; min-width: 140px; }
+  .map-toolbar .postal-bar__form button { flex: 0 0 auto; }
 }
 
 /* ── Postal lookup bar (inline, on map page) ─────────── */
@@ -1061,10 +1090,55 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .changes__verify-panel ul { margin: .5rem 0 0; padding-left: 1.25rem; font-size: .85rem; }
 
 @media (max-width: 640px) {
-  .shell__header { flex-direction: column; align-items: flex-start; gap: 1rem; }
-  .hero__headline { font-size: 1.3rem; }
-  .hero__number { font-size: 2.5rem; }
+  .shell { padding: .65rem .75rem 2rem; }
+  .shell__header { flex-direction: column; align-items: flex-start; gap: .65rem; padding-bottom: .65rem; }
+  .shell__brand h1 { font-size: 1.2rem; }
+  .shell__tabs {
+    width: 100%; gap: .35rem; flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .shell__tabs button, .shell__contact {
+    flex: 0 1 auto; padding: .35rem .6rem; font-size: .8rem;
+  }
+  .shell__contact { margin-left: 0; }
+  .hero { padding: .65rem 0 .35rem; }
+  .hero__headline { font-size: 1.25rem; line-height: 1.25; }
+  .hero__number { font-size: 2.2rem; }
+  .hero__subhead { font-size: .82rem; }
+
+  /* Map: prevent it from eating the whole viewport on phones */
+  .mapview .leaflet-container,
+  .map-with-drawer__map .leaflet-container {
+    height: 60vh !important; min-height: 360px;
+  }
+  /* No drawer-side-by-side on phones — drawer drops below */
+  .map-with-drawer { overflow: visible; }
+
   .rep-card { flex-direction: column; }
   .rep-card__photo { width: 48px; height: 48px; }
   .postal__form { flex-direction: column; max-width: 100%; }
+
+  /* Tighten footer */
+  .shell__footer-row { gap: .5rem; flex-wrap: wrap; }
+
+  /* WhoWeTrack — smaller heading on phone */
+  .who-we-track h3 { font-size: .85rem; }
+  .who-we-track__list { font-size: .78rem; }
+  .who-we-track__sub { font-size: .65rem; }
+
+  /* StatsBar — single column on the smallest screens for breathing room */
+  .statsbar { grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .statcard { padding: .55rem .7rem; }
+  .statcard__value { font-size: 1.25rem; }
+  .statcard__label { font-size: .68rem; }
+
+  /* Referendum hero — stack countdown below eyebrow */
+  .ref__hero { padding: 1.1rem 1rem; }
+  .ref__hero-tagline { font-size: 1.4rem; }
+  .ref__hero-killer { gap: .65rem; }
+  .ref__hero-killer-label { padding-left: 0; border-left: 0; }
+  .ref__hero-killer-num { font-size: 2.4rem; }
+
+  /* Drawer takes full width on mobile (already stacks below map) */
+  .report-card--drawer { max-height: none; }
 }
