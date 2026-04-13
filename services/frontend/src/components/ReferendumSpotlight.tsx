@@ -71,35 +71,39 @@ export function ReferendumSpotlight({ reportParty, onShowReport, onCloseReport }
             <span className="ref__hero-countdown-label">days to vote</span>
           </div>
         </div>
-        <h2 className="ref__hero-headline">
-          <span className="ref__hero-headline-tagline">
-            For Canada, Against Canada, <em>All American</em>
-          </span>
-          <span className="ref__hero-headline-divider">&mdash;</span>
-          <span>
-            <span className="ref__hero-headline-num">{pctOutside}%</span>
-            {" "}of referendum-organization websites are hosted{" "}
-            <strong>outside Canada</strong>.
-          </span>
+        <h2 className="ref__hero-tagline">
+          For Canada, against Canada, <em>mostly American</em>.
         </h2>
-        <p className="ref__hero-sub">{irony}</p>
-        <div className="ref__hero-strip">
-          <div className="ref__hero-strip-card ref__hero-strip-card--leave">
-            <div className="ref__hero-strip-num">{leaveOrgs}</div>
-            <div className="ref__hero-strip-label">organizations advocating Alberta leave Canada</div>
-            <div className="ref__hero-strip-sub">{data.leave_side.hosted_in_alberta}/{data.leave_side.total_websites} sites hosted in Alberta · {data.leave_side.hosted_in_canada}/{data.leave_side.total_websites} in Canada</div>
-          </div>
-          <div className="ref__hero-strip-card ref__hero-strip-card--stay">
-            <div className="ref__hero-strip-num">{stayOrgs}</div>
-            <div className="ref__hero-strip-label">organizations campaigning to stay in Canada</div>
-            <div className="ref__hero-strip-sub">{data.stay_side.hosted_in_alberta}/{data.stay_side.total_websites} sites hosted in Alberta · {data.stay_side.hosted_in_canada}/{data.stay_side.total_websites} in Canada</div>
-          </div>
+
+        <div className="ref__hero-killer">
+          <span className="ref__hero-killer-num">{totalAB}</span>
+          <span className="ref__hero-killer-of">of</span>
+          <span className="ref__hero-killer-denom">{totalSites}</span>
+          <span className="ref__hero-killer-label">
+            referendum-organization websites are physically hosted in Alberta.
+          </span>
         </div>
-        {totalSites > 0 && totalAB === 0 && (
-          <div className="ref__hero-zero-ab">
-            <strong>0 of {totalSites}</strong> referendum-organization sites are physically hosted in Alberta &mdash; not even one.
-          </div>
-        )}
+
+        <p className="ref__hero-sub">
+          {pctOutside}% are hosted outside Canada entirely. {irony}
+        </p>
+
+        <div className="ref__hero-strip">
+          <SideStrip
+            side="leave"
+            orgs={leaveOrgs}
+            label="advocating Alberta leave Canada"
+            ab={data.leave_side.hosted_in_alberta}
+            total={data.leave_side.total_websites}
+          />
+          <SideStrip
+            side="stay"
+            orgs={stayOrgs}
+            label="campaigning to stay in Canada"
+            ab={data.stay_side.hosted_in_alberta}
+            total={data.stay_side.total_websites}
+          />
+        </div>
       </header>
 
       <AlbertaPoliticians
@@ -211,6 +215,23 @@ function AlbertaPoliticians({
         </div>
       )}
     </section>
+  );
+}
+
+/** Compact "N orgs · M/N sites in AB" strip used in the hero. */
+function SideStrip({
+  side, orgs, label, ab, total,
+}: { side: SideKey; orgs: number; label: string; ab: number; total: number }) {
+  return (
+    <div className={`ref__hero-strip-card ref__hero-strip-card--${side}`}>
+      <div className="ref__hero-strip-line">
+        <span className="ref__hero-strip-num">{orgs}</span>
+        <span className="ref__hero-strip-label">{label}</span>
+      </div>
+      <div className="ref__hero-strip-sub">
+        <strong>{ab}/{total}</strong> sites hosted in Alberta
+      </div>
+    </div>
   );
 }
 
