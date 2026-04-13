@@ -5,6 +5,8 @@ import { useFetch } from "../hooks/useFetch";
 import type { GeoCollection, ReferendumSideSummary, SovereigntyTier } from "../types";
 import { TIER_META } from "../types";
 import { AntLines } from "./AntLines";
+import { MapView } from "./MapView";
+import { partyColor } from "./PartyFilter";
 
 interface RefResponse {
   leave_side: ReferendumSideSummary;
@@ -14,9 +16,33 @@ interface RefResponse {
 
 type SideKey = "leave" | "stay";
 
-export function ReferendumSpotlight() {
+interface AlbertaStatsResponse {
+  parties: Array<{
+    party: string;
+    politicians: number;
+    sites: number;
+    personal: number;
+    party_managed: number;
+    ca: number;
+    us: number;
+    cdn: number;
+    foreign: number;
+  }>;
+}
+
+interface Props {
+  onShowReport?: (party: string) => void;
+}
+
+const AB_PARTIES = [
+  "United Conservative Party",
+  "Alberta New Democratic Party",
+];
+
+export function ReferendumSpotlight({ onShowReport }: Props) {
   const { data, loading, error } = useFetch<RefResponse>("/stats/referendum");
   const { data: mapData } = useFetch<GeoCollection>("/map/referendum");
+  const { data: partyStats } = useFetch<AlbertaStatsResponse>("/parties");
 
   if (loading) return <div className="ref">Loading referendum data…</div>;
   if (error)   return <div className="ref ref--error">{error.message}</div>;
@@ -72,10 +98,87 @@ export function ReferendumSpotlight() {
         <SideCard side="stay"  title="STAY in Canada" subtitle="Federalist organizations" data={data.stay_side} />
       </div>
 
+      <AlbertaPoliticians partyStats={partyStats} onShowReport={onShowReport} />
+
       <p className="ref__footnote">
         Both sides of Alberta&apos;s sovereignty debate host their digital infrastructure outside Canada.
         If you can&apos;t keep your website in Canada, what exactly are you liberating?
       </p>
+    </section>
+  );
+}
+
+/** Section showing all Alberta MLAs + councillors on the map plus quick
+ *  report-card shortcuts for UCP and Alberta NDP. */
+function AlbertaPoliticians({
+  partyStats,
+  onShowReport,
+}: {
+  partyStats: AlbertaStatsResponse | null;
+  onShowReport?: (party: string) => void;
+}) {
+  const abPartyRows =
+    partyStats?.parties.filter(p => AB_PARTIES.includes(p.party)) ?? [];
+
+  return (
+    <section className="ref__ab">
+      <header className="ref__ab-head">
+        <h3>Every Alberta politician we track</h3>
+        <p>
+          MLAs, Edmonton + Calgary councillors, and the referendum organizations &mdash;
+          all on one map. Click any riding for the politician&apos;s photo, party,
+          and where their data lives.
+        </p>
+      </header>
+
+      <div className="ref__ab-map">
+        <MapView
+          filters={{
+            layer: "all",
+            level: undefined,
+            province: "AB",
+            party: undefined,
+            includeNoData: true,
+            politicianIds: undefined,
+          }}
+        />
+      </div>
+
+      {abPartyRows.length > 0 && (
+        <div className="ref__ab-parties">
+          <h4>Provincial parties &mdash; sovereignty report</h4>
+          <div className="ref__ab-party-grid">
+            {abPartyRows.map(p => {
+              const total = p.sites || 0;
+              const ca = p.ca || 0;
+              const pct = total > 0 ? Math.round(100 * ca / total) : 0;
+              const grade =
+                pct >= 85 ? "A" : pct >= 70 ? "B" : pct >= 50 ? "C" : pct >= 30 ? "D" : "F";
+              const gradeClass = grade.toLowerCase();
+              return (
+                <button
+                  key={p.party}
+                  className={`ref__ab-party report-card__grade--${gradeClass}`}
+                  style={{ borderColor: partyColor(p.party) }}
+                  onClick={() => onShowReport?.(p.party)}
+                  title={`Open ${p.party} report card`}
+                >
+                  <div className="ref__ab-party-name" style={{ color: partyColor(p.party) }}>
+                    {p.party}
+                  </div>
+                  <div className="ref__ab-party-grade">{grade}</div>
+                  <div className="ref__ab-party-stats">
+                    <span>{p.politicians} MLAs</span>
+                    <span>·</span>
+                    <span>{pct}% in Canada</span>
+                  </div>
+                  <div className="ref__ab-party-cta">View full report card →</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

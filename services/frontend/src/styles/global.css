@@ -329,6 +329,48 @@ button.active { background: var(--accent); border-color: var(--accent); }
   max-width: 70ch;
 }
 
+/* ── Alberta politicians block on the referendum tab ─── */
+.ref__ab { margin-top: 2rem; }
+.ref__ab-head h3 { margin: 0 0 .35rem; font-size: 1.2rem; }
+.ref__ab-head p { margin: 0 0 1rem; color: var(--ink-muted); font-size: .9rem; max-width: 70ch; }
+.ref__ab-map {
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  background: var(--panel);
+}
+.ref__ab-parties { margin-top: 1.25rem; }
+.ref__ab-parties h4 {
+  margin: 0 0 .65rem; font-size: .85rem;
+  text-transform: uppercase; letter-spacing: .15em; color: var(--ink-muted);
+}
+.ref__ab-party-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: .75rem;
+}
+.ref__ab-party {
+  display: flex; flex-direction: column; gap: .35rem;
+  background: var(--panel); border: 1px solid var(--border);
+  border-left-width: 4px; border-radius: 10px;
+  padding: 1rem 1.1rem; text-align: left; cursor: pointer;
+  transition: transform .12s, background .15s;
+  position: relative;
+}
+.ref__ab-party:hover { transform: translateY(-2px); background: var(--panel-2); }
+.ref__ab-party-name { font-weight: 700; font-size: .95rem; }
+.ref__ab-party-grade {
+  font-size: 2.4rem; font-weight: 900; line-height: 1;
+  position: absolute; top: 1rem; right: 1.1rem;
+}
+.ref__ab-party.report-card__grade--a .ref__ab-party-grade { color: #22c55e; }
+.ref__ab-party.report-card__grade--b .ref__ab-party-grade { color: #84cc16; }
+.ref__ab-party.report-card__grade--c .ref__ab-party-grade { color: #eab308; }
+.ref__ab-party.report-card__grade--d .ref__ab-party-grade { color: #f97316; }
+.ref__ab-party.report-card__grade--f .ref__ab-party-grade { color: #ef4444; }
+.ref__ab-party-stats {
+  font-size: .8rem; color: var(--ink-muted);
+  display: flex; gap: .35rem; flex-wrap: wrap;
+}
+.ref__ab-party-cta { font-size: .75rem; color: #93c5fd; margin-top: .35rem; }
+
 @media (max-width: 480px) {
   .ref__hero { padding: 1.5rem 1rem; }
   .side-card { padding: 1.1rem; }

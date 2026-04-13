@@ -35,7 +35,7 @@ export default function App() {
         </div>
         <nav className="shell__tabs">
           <button className={activeTab === "map" ? "active" : ""} onClick={() => setActiveTab("map")}>Map</button>
-          <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>Referendum</button>
+          <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>Alberta Referendum</button>
           <button className={activeTab === "changes" ? "active" : ""} onClick={() => setActiveTab("changes")}>Changes</button>
           <button className={activeTab === "faq" ? "active" : ""} onClick={() => setActiveTab("faq")}>FAQ</button>
         </nav>
@@ -64,7 +64,9 @@ export default function App() {
         </section>
       )}
 
-      {activeTab === "referendum" && <ReferendumSpotlight />}
+      {activeTab === "referendum" && (
+        <ReferendumSpotlight onShowReport={(p) => setReportParty(p)} />
+      )}
       {activeTab === "changes" && <ChangesFeed />}
       {activeTab === "faq" && <Faq />}
 
