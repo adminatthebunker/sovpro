@@ -199,12 +199,23 @@ export function MapView({ filters }: Props) {
                 const tier = (f?.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
                 return {
                   color: TIER_META[tier]?.color ?? "#94a3b8",
-                  weight: 1.4,
-                  opacity: 0.75,
-                  // CSS keyframes hook for the marching-dash animation
-                  className: "sw-flow-line",
+                  weight: 1.6,
+                  opacity: 0.8,
+                  // dashArray lands on the SVG element via Leaflet — guarantees
+                  // a dashed line even before the CSS animation kicks in.
+                  dashArray: "10 14",
+                  lineCap: "round",
                   interactive: false,
                 };
+              }}
+              onEachFeature={(_f, layer) => {
+                // Leaflet's setStyle does NOT update className. Apply the
+                // animation hook directly on the rendered SVG path so the
+                // CSS keyframes (sw-flow-dash) match.
+                const lp = layer as L.Path & { _path?: SVGPathElement };
+                const apply = () => lp._path?.classList.add("sw-flow-line");
+                apply();
+                layer.on("add", apply);  // re-apply if Leaflet recreates the path on zoom
               }}
             />
           </LayersControl.Overlay>
