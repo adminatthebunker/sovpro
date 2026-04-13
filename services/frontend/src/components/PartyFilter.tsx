@@ -15,12 +15,18 @@ const PARTIES: Party[] = [
   { key: "Alberta New Democratic Party", label: "AB NDP",     color: "#f97316", level: "provincial" },
 ];
 
+/** Resolve a party name → display color (for the report card border, etc.) */
+export function partyColor(name: string): string {
+  return PARTIES.find(p => p.key === name)?.color ?? "#94a3b8";
+}
+
 interface Props {
   active?: string;
   onChange: (party: string | undefined) => void;
+  onShowReport?: (party: string) => void;
 }
 
-export function PartyFilter({ active, onChange }: Props) {
+export function PartyFilter({ active, onChange, onShowReport }: Props) {
   return (
     <div className="party-filter">
       <span className="party-filter__label">Party:</span>
@@ -31,18 +37,28 @@ export function PartyFilter({ active, onChange }: Props) {
         All
       </button>
       {PARTIES.map(p => (
-        <button
-          key={p.key}
-          className={`party-filter__pill ${active === p.key ? "is-active" : ""}`}
-          style={{
-            "--party-color": p.color,
-          } as React.CSSProperties}
-          onClick={() => onChange(active === p.key ? undefined : p.key)}
-          title={p.key}
-        >
-          <span className="party-filter__dot" style={{ background: p.color }} />
-          {p.label}
-        </button>
+        <span key={p.key} className="party-filter__group">
+          <button
+            className={`party-filter__pill ${active === p.key ? "is-active" : ""}`}
+            style={{ "--party-color": p.color } as React.CSSProperties}
+            onClick={() => onChange(active === p.key ? undefined : p.key)}
+            title={`Filter map to ${p.key}`}
+          >
+            <span className="party-filter__dot" style={{ background: p.color }} />
+            {p.label}
+          </button>
+          {onShowReport && (
+            <button
+              className="party-filter__report"
+              style={{ "--party-color": p.color } as React.CSSProperties}
+              onClick={() => onShowReport(p.key)}
+              title={`Open ${p.key} report card`}
+              aria-label={`Open ${p.key} report card`}
+            >
+              📋
+            </button>
+          )}
+        </span>
       ))}
     </div>
   );

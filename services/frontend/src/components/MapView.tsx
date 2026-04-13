@@ -209,9 +209,15 @@ export function MapView({ filters }: Props) {
                 const title = (p.politician_name ?? p.organization_name ?? p.hostname) as string;
                 const tier = (p.sovereignty_tier ?? 6) as SovereigntyTier;
                 const meta = TIER_META[tier];
+                const cls = String(p.site_class ?? "personal");
+                const classBadge = cls === "party_managed"
+                  ? `<span class="popup__badge popup__badge--party">PARTY MANAGED</span>`
+                  : cls === "personal"
+                    ? `<span class="popup__badge popup__badge--personal">PERSONAL</span>`
+                    : "";
                 layer.bindPopup(
                   `<div class="popup">
-                     <div class="popup__title">${escapeHtml(String(title))}</div>
+                     <div class="popup__title">${escapeHtml(String(title))} ${classBadge}</div>
                      <div class="popup__url"><a href="${encodeURI(String(p.website_url ?? ''))}" target="_blank" rel="noopener">${escapeHtml(String(p.hostname ?? p.website_url ?? ''))}</a></div>
                      <div class="popup__tier" style="color:${meta.color}">${meta.emoji} Tier ${tier} · ${escapeHtml(meta.label)}</div>
                      <div class="popup__row">${escapeHtml(String(p.hosting_provider ?? 'unknown'))} · ${escapeHtml(String(p.city ?? ''))} ${escapeHtml(String(p.hosting_country ?? ''))}</div>

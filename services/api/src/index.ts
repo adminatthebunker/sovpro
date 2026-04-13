@@ -11,6 +11,7 @@ import mapRoutes from "./routes/map.js";
 import statsRoutes from "./routes/stats.js";
 import changesRoutes from "./routes/changes.js";
 import lookupRoutes from "./routes/lookup.js";
+import partyRoutes from "./routes/parties.js";
 import webhookRoutes from "./routes/webhooks.js";
 import ogRoutes from "./routes/og.js";
 
@@ -60,6 +61,7 @@ await app.register(mapRoutes, { prefix: "/api/v1/map" });
 await app.register(statsRoutes, { prefix: "/api/v1/stats" });
 await app.register(changesRoutes, { prefix: "/api/v1/changes" });
 await app.register(lookupRoutes, { prefix: "/api/v1/lookup" });
+await app.register(partyRoutes, { prefix: "/api/v1/parties" });
 await app.register(webhookRoutes, { prefix: "/api/v1/webhooks" });
 await app.register(ogRoutes, { prefix: "/api/v1/og" });
 

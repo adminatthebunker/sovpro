@@ -44,7 +44,14 @@ export function TierLegend() {
             <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden>
               <circle cx="11" cy="7" r="5" fill="#6366f1" stroke="#0b1220" strokeWidth="1"/>
             </svg>
-            <span>Server location · pin colored by tier</span>
+            <span>Server · personal site (their own choice)</span>
+          </span>
+
+          <span className="tier-legend__item">
+            <svg width="22" height="14" viewBox="0 0 22 14" aria-hidden>
+              <circle cx="11" cy="7" r="5.5" fill="transparent" stroke="#6366f1" strokeWidth="2"/>
+            </svg>
+            <span>Server · party-managed subdomain</span>
           </span>
 
           <span className="tier-legend__item">

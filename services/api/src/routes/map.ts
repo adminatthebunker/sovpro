@@ -51,6 +51,7 @@ export default async function mapRoutes(app: FastifyInstance) {
       // constituency feature with their full site list bundled in.
       type SiteSummary = {
         url: string; hostname: string; label: string | null;
+        site_class: string;
         provider: string | null; country: string | null; city: string | null;
         tier: number;
       };
@@ -82,6 +83,7 @@ export default async function mapRoutes(app: FastifyInstance) {
         g.sites.push({
           url: row.website_url, hostname: row.hostname,
           label: row.website_label,
+          site_class: row.site_class ?? "personal",
           provider: row.hosting_provider, country: row.ip_country, city: row.ip_city,
           tier: t,
         });
@@ -142,6 +144,7 @@ export default async function mapRoutes(app: FastifyInstance) {
               website_id: row.website_id,
               website_url: row.website_url,
               hostname: row.hostname,
+              site_class: row.site_class ?? "personal",
               hosting_provider: row.hosting_provider,
               hosting_country: row.hosting_country,
               city: row.ip_city,

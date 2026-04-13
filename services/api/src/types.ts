@@ -82,6 +82,7 @@ export interface MapRow {
   website_url: string;
   website_label: string | null;
   hostname: string;
+  site_class?: "personal" | "party_managed" | "shared_official";
   ip_country: string | null;
   ip_city: string | null;
   server_lat: number | null;

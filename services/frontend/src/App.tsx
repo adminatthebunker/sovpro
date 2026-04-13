@@ -6,8 +6,9 @@ import { ChangesFeed } from "./components/ChangesFeed";
 import { Filters, type FilterState } from "./components/Filters";
 import { HeroHeadline } from "./components/HeroHeadline";
 import { TierLegend } from "./components/TierLegend";
-import { PartyFilter } from "./components/PartyFilter";
+import { PartyFilter, partyColor } from "./components/PartyFilter";
 import { PostalLookupBar } from "./components/PostalLookupBar";
+import { PartyReportCard } from "./components/PartyReportCard";
 import { Faq } from "./components/Faq";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
     politicianIds: undefined,
   });
   const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "faq">("map");
+  const [reportParty, setReportParty] = useState<string | null>(null);
 
   return (
     <div className="shell">
@@ -54,6 +56,7 @@ export default function App() {
           <PartyFilter
             active={filters.party}
             onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
+            onShowReport={(p) => setReportParty(p)}
           />
           <Filters value={filters} onChange={setFilters} />
           <MapView filters={filters} />
@@ -64,6 +67,14 @@ export default function App() {
       {activeTab === "referendum" && <ReferendumSpotlight />}
       {activeTab === "changes" && <ChangesFeed />}
       {activeTab === "faq" && <Faq />}
+
+      {reportParty && (
+        <PartyReportCard
+          party={reportParty}
+          partyColor={partyColor(reportParty)}
+          onClose={() => setReportParty(null)}
+        />
+      )}
 
       <footer className="shell__footer">
         <div className="shell__footer-row">

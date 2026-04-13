@@ -241,6 +241,14 @@ SELECT
     w.url               AS website_url,
     w.label             AS website_label,
     w.hostname,
+    -- Classify the site as personal vs party_managed (subdomain on a party-controlled domain)
+    CASE
+        WHEN COALESCE(w.label,'') = 'shared_official' THEN 'shared_official'
+        WHEN w.hostname ~* '\.(libparl|liberal|conservative|conservativeeda|ndp|albertandp|ucp2023|unitedconservative|blocquebecois|greenparty|partiquebecois|pq)\.(ca|org|com|quebec)$'
+          OR w.hostname ~* '^(libparl|liberal|conservative|conservativeeda|ndp|albertandp|ucp2023|unitedconservative|blocquebecois|greenparty|partiquebecois|pq)\.(ca|org|com|quebec)$'
+        THEN 'party_managed'
+        ELSE 'personal'
+    END             AS site_class,
     s.id                AS scan_id,
     s.ip_country, s.ip_region, s.ip_city,
     s.ip_latitude       AS server_lat,
@@ -263,6 +271,7 @@ CREATE INDEX IF NOT EXISTS idx_mp_level        ON map_politicians(level);
 CREATE INDEX IF NOT EXISTS idx_mp_province     ON map_politicians(province_territory);
 CREATE INDEX IF NOT EXISTS idx_mp_party        ON map_politicians(party);
 CREATE INDEX IF NOT EXISTS idx_mp_tier         ON map_politicians(sovereignty_tier);
+CREATE INDEX IF NOT EXISTS idx_mp_class        ON map_politicians(site_class);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mp_unique ON map_politicians(politician_id, website_id);
 
 -- ─────────────────────────────────────────────────────────────

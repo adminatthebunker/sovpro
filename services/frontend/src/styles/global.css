@@ -392,6 +392,136 @@ button.active { background: var(--accent); border-color: var(--accent); }
   color: #fff;
 }
 .party-filter__dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.party-filter__group { display: inline-flex; align-items: center; gap: .15rem; }
+.party-filter__report {
+  background: var(--panel-2); color: var(--ink-muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: .25rem .5rem; cursor: pointer;
+  font-size: .8rem; transition: background .15s, color .15s, transform .1s;
+}
+.party-filter__report:hover {
+  background: var(--party-color, var(--accent));
+  color: #fff; transform: translateY(-1px);
+}
+
+/* ── Party report card modal ─────────────────────────── */
+.report-modal {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(2,6,23,.75); backdrop-filter: blur(4px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 4vh 1rem; overflow-y: auto;
+  animation: report-fade .15s ease-out;
+}
+@keyframes report-fade { from { opacity: 0; } to { opacity: 1; } }
+.report-card {
+  position: relative; width: 100%; max-width: 720px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 24px 72px rgba(0,0,0,.6);
+  animation: report-slide .2s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes report-slide { from { transform: translateY(-12px); opacity: .8; } to { transform: none; opacity: 1; } }
+.report-card__close {
+  position: absolute; top: .5rem; right: .65rem;
+  background: transparent; border: 0; color: var(--ink-muted); font-size: 1.6rem;
+  line-height: 1; cursor: pointer; padding: .25rem .5rem;
+}
+.report-card__close:hover { color: var(--ink); }
+.report-card__loading, .report-card__error { padding: 3rem 1.5rem; text-align: center; color: var(--ink-muted); }
+.report-card__error { color: #fca5a5; }
+
+.report-card__head {
+  display: flex; gap: 1.25rem; align-items: center; justify-content: space-between;
+  padding: 1.5rem 1.5rem 1.25rem;
+  border-top: 4px solid var(--accent); border-radius: 14px 14px 0 0;
+  background: linear-gradient(180deg, rgba(255,255,255,.03), transparent);
+}
+.report-card__title { flex: 1; min-width: 0; }
+.report-card__eyebrow { font-size: .7rem; letter-spacing: .25em; color: var(--ink-muted); font-weight: 700; }
+.report-card__title h2 { margin: .25rem 0 .15rem; font-size: 1.4rem; letter-spacing: -.01em; }
+.report-card__count { font-size: .85rem; color: var(--ink-muted); }
+.report-card__grade {
+  display: flex; flex-direction: column; align-items: center;
+  padding: .8rem 1.1rem; border-radius: 12px; min-width: 110px;
+  border: 2px solid currentColor;
+}
+.report-card__grade--a { color: #22c55e; }
+.report-card__grade--b { color: #84cc16; }
+.report-card__grade--c { color: #eab308; }
+.report-card__grade--d { color: #f97316; }
+.report-card__grade--f { color: #ef4444; }
+.report-card__grade-letter { font-size: 3.4rem; font-weight: 900; line-height: 1; }
+.report-card__grade-pct { font-size: .7rem; color: var(--ink-muted); margin-top: .1rem; }
+
+.report-card__bars {
+  padding: 0 1.5rem 1rem; display: flex; flex-direction: column; gap: .55rem;
+}
+.report-card__bar-label {
+  display: flex; justify-content: space-between; font-size: .8rem; color: var(--ink); margin-bottom: .25rem;
+}
+.report-card__bar-track {
+  height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden;
+}
+.report-card__bar-fill { height: 100%; transition: width .4s ease-out; border-radius: 4px; }
+
+.report-card__keystats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: .5rem; padding: 0 1.5rem 1rem;
+}
+.report-card__keystat {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .6rem .75rem;
+}
+.report-card__keystat-num { font-size: 1.4rem; font-weight: 800; color: var(--ink); line-height: 1; }
+.report-card__keystat-label { font-size: .72rem; color: var(--ink-muted); margin-top: .2rem; }
+
+.report-card__section { padding: 0 1.5rem 1rem; }
+.report-card__section h3 { margin: 0 0 .5rem; font-size: .9rem; color: var(--ink); }
+.report-card__chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .35rem; }
+.report-card__chip {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: .25rem .65rem; font-size: .8rem;
+}
+.report-card__chip span { color: var(--ink-muted); margin-left: .35rem; font-weight: 600; }
+
+.report-card__split {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .75rem;
+  padding: 0 1.5rem 1rem;
+}
+.report-card__split-side {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: .85rem 1rem;
+}
+.report-card__split-side--good { border-left: 3px solid #22c55e; }
+.report-card__split-side--bad  { border-left: 3px solid #ef4444; }
+.report-card__split-side h3 { margin: 0 0 .5rem; font-size: .9rem; }
+.report-card__mps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: .4rem; }
+.report-card__mps li { font-size: .85rem; }
+.report-card__mp-meta { font-size: .72rem; color: var(--ink-muted); }
+.report-card__muted { color: var(--ink-muted); font-size: .85rem; font-style: italic; margin: 0; }
+
+.report-card__foot {
+  padding: 1rem 1.5rem 1.25rem; border-top: 1px solid var(--border);
+  background: rgba(255,255,255,.02); border-radius: 0 0 14px 14px;
+}
+.report-card__methodology {
+  font-size: .72rem; color: var(--ink-muted); line-height: 1.5;
+}
+.report-card__methodology strong { color: var(--ink); }
+
+@media (max-width: 540px) {
+  .report-card__head { flex-direction: column; align-items: flex-start; gap: .75rem; }
+  .report-card__split { grid-template-columns: 1fr; }
+  .report-card__grade { align-self: stretch; flex-direction: row; justify-content: space-between; }
+  .report-card__grade-letter { font-size: 2.5rem; }
+}
+
+/* ── Map popup site_class badges ─────────────────────── */
+.leaflet-container .popup__badge {
+  display: inline-block; padding: 1px .35rem; border-radius: 3px;
+  font-size: .55rem; letter-spacing: .12em; font-weight: 700;
+  vertical-align: middle; margin-left: .35rem;
+}
+.leaflet-container .popup__badge--personal { background: #1e293b; color: #fff; }
+.leaflet-container .popup__badge--party { background: #475569; color: #fff; }
 .filters__field--check {
   flex-direction: row; align-items: center; gap: .5rem; cursor: pointer;
 }
