@@ -62,8 +62,14 @@ export default function App() {
       {activeTab === "faq" && <Faq />}
 
       <footer className="shell__footer">
-        <span>Open data from <a href="https://represent.opennorth.ca">Open North</a> · Geolocation via MaxMind GeoLite2</span>
-        <span>· <a href="https://github.com/adminatthebunker/sovpro">Source on GitHub</a></span>
+        <div className="shell__footer-row">
+          <span>© {new Date().getFullYear()} SovereignWatch</span>
+          <span>· Built by <a href="https://bnkops.com/" target="_blank" rel="noopener noreferrer">The Bunker Operations</a></span>
+          <span>· <a href="https://github.com/adminatthebunker/sovpro" target="_blank" rel="noopener noreferrer">Source on GitHub</a></span>
+        </div>
+        <div className="shell__footer-row shell__footer-row--muted">
+          <span>Open data from <a href="https://represent.opennorth.ca" target="_blank" rel="noopener noreferrer">Open North</a> · Geolocation via MaxMind GeoLite2 · Released under the MIT license</span>
+        </div>
       </footer>
     </div>
   );
