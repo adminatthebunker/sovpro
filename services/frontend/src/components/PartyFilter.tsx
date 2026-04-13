@@ -22,43 +22,52 @@ export function partyColor(name: string): string {
 
 interface Props {
   active?: string;
+  /** Called when filter changes (clearing if user picks "All" or re-picks the same party) */
   onChange: (party: string | undefined) => void;
+  /** Called whenever a party button is clicked. Combines with onChange so a single click both
+   *  filters the map AND opens the report drawer. */
   onShowReport?: (party: string) => void;
 }
 
+/**
+ * Single-button-per-party row. Clicking a party simultaneously filters the
+ * map to that party and opens its report-card drawer. Each button is solid
+ * party-color so the row reads as a color-coded shortcut bar.
+ */
 export function PartyFilter({ active, onChange, onShowReport }: Props) {
+  function handleClick(p: Party) {
+    if (active === p.key) {
+      // Re-clicking the active party clears the filter (and any drawer)
+      onChange(undefined);
+    } else {
+      onChange(p.key);
+      onShowReport?.(p.key);
+    }
+  }
+
   return (
     <div className="party-filter">
       <span className="party-filter__label">Party:</span>
       <button
-        className={`party-filter__pill ${!active ? "is-active" : ""}`}
+        className={`party-filter__pill party-filter__pill--all ${!active ? "is-active" : ""}`}
         onClick={() => onChange(undefined)}
+        title="Clear party filter"
       >
         All
       </button>
       {PARTIES.map(p => (
-        <span key={p.key} className="party-filter__group">
-          <button
-            className={`party-filter__pill ${active === p.key ? "is-active" : ""}`}
-            style={{ "--party-color": p.color } as React.CSSProperties}
-            onClick={() => onChange(active === p.key ? undefined : p.key)}
-            title={`Filter map to ${p.key}`}
-          >
-            <span className="party-filter__dot" style={{ background: p.color }} />
-            {p.label}
-          </button>
-          {onShowReport && (
-            <button
-              className="party-filter__report"
-              style={{ "--party-color": p.color } as React.CSSProperties}
-              onClick={() => onShowReport(p.key)}
-              title={`Open ${p.key} report card`}
-              aria-label={`Open ${p.key} report card`}
-            >
-              📋
-            </button>
-          )}
-        </span>
+        <button
+          key={p.key}
+          className={`party-filter__pill party-filter__pill--colored ${active === p.key ? "is-active" : ""}`}
+          style={{
+            "--party-color": p.color,
+            background: p.color,
+          } as React.CSSProperties}
+          onClick={() => handleClick(p)}
+          title={`Filter to ${p.key} and open report card`}
+        >
+          {p.label}
+        </button>
       ))}
     </div>
   );
