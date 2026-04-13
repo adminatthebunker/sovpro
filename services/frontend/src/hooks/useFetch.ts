@@ -11,7 +11,7 @@ const cache = new Map<string, unknown>();
 
 export function useFetch<T>(path: string | null, deps: unknown[] = []): State<T> & { refresh: () => void } {
   const [state, setState] = useState<State<T>>(() => ({
-    data: (path && (cache.get(path) as T)) ?? null,
+    data: path && cache.has(path) ? (cache.get(path) as T) : null,
     error: null,
     loading: !!path && !cache.has(path),
   }));

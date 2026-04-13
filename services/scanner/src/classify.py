@@ -187,50 +187,50 @@ def classify(
     had_error: bool,
 ) -> Classification:
     """Turn raw scan data into a sovereignty classification."""
-    if had_error or not ip_country:
+    cname_chain = cname_chain or []
+    nameservers = nameservers or []
+
+    # Detection always runs — even if we lack ip_country we may know the provider.
+    cdn = _match_cdn([*cname_chain, ip_org or "", *nameservers])
+    provider = _match_provider([ip_org or "", *cname_chain, http_server_header or ""])
+    if not provider and cdn:
+        provider = cdn
+    cms = _match_cms([http_server_header or "", http_powered_by or "", *cname_chain])
+
+    # Truly nothing to go on: tier 6.
+    if had_error and not ip_country and not provider and not cdn:
         return Classification(
             sovereignty_tier=6,
             hosting_provider=None,
             hosting_country=None,
             datacenter_region=None,
             cdn_detected=None,
-            cms_detected=None,
+            cms_detected=cms,
         )
 
-    cname_chain = cname_chain or []
-    nameservers = nameservers or []
-
-    # CDN check: look at CNAME chain, ip_org, nameservers
-    cdn = _match_cdn([*cname_chain, ip_org or "", *nameservers])
-
-    # Provider: if a non-CDN pattern hits first, prefer it — else fall back to CDN label.
-    provider = _match_provider([ip_org or "", *cname_chain, http_server_header or ""])
-    if not provider and cdn:
-        provider = cdn
-
-    # CMS
-    cms = _match_cms([http_server_header or "", http_powered_by or "", *cname_chain])
-
-    # Sovereignty tier decision tree
     is_ca_provider = _is_canadian_provider(ip_org, ip_asn)
 
+    # Decision tree
     if ip_country == "CA" and is_ca_provider:
-        tier = 1  # Canadian sovereign
+        tier = 1
     elif ip_country == "CA":
-        tier = 2  # Canadian soil, foreign provider
-    elif cdn and ip_country in (None, "US"):
-        # CDN fronted: origin could be anywhere; if US we still mark CDN-fronted
+        tier = 2
+    elif cdn:
+        # CDN-fronted: origin opaque (Cloudflare anycast often returns no country)
         tier = 3
     elif ip_country == "US":
         tier = 4
-    else:
+    elif ip_country:
         tier = 5
+    else:
+        # We have a provider but no country (rare) — best guess "other foreign"
+        tier = 5 if provider else 6
 
     return Classification(
         sovereignty_tier=tier,
         hosting_provider=provider,
         hosting_country=ip_country,
-        datacenter_region=None,  # may be filled later from IP city/region
+        datacenter_region=None,
         cdn_detected=cdn,
         cms_detected=cms,
     )

@@ -57,6 +57,11 @@ DATA INGESTION
   ingest all           Run all three plus seed orgs
   seed orgs            Seed referendum organizations
 
+DISCOVERY (find personal sites)
+  enrich mps           Discover MP personal sites from ourcommons.ca
+  enrich mlas          Discover MLA personal sites from assembly.ab.ca
+  enrich all           Run both
+
 SCANNING
   scan [--limit N]     Scan stale websites
   scan full            Scan everything (ignore staleness)
@@ -140,6 +145,19 @@ cmd_seed() {
     case "${1:-orgs}" in
         orgs) scan_run seed-orgs ;;
         *) die "Usage: sovpro seed orgs" ;;
+    esac
+}
+
+cmd_enrich() {
+    require_env
+    case "${1:-}" in
+        mps)  shift; scan_run enrich-mps "$@" ;;
+        mlas) shift; scan_run enrich-mlas "$@" ;;
+        all)
+            scan_run enrich-mps
+            scan_run enrich-mlas
+            ;;
+        *) die "Usage: sovpro enrich {mps|mlas|all}" ;;
     esac
 }
 
@@ -289,6 +307,7 @@ case "$cmd" in
     rebuild)  cmd_rebuild "$@" ;;
     ingest)   cmd_ingest "$@" ;;
     seed)     cmd_seed "$@" ;;
+    enrich)   cmd_enrich "$@" ;;
     scan)     cmd_scan "$@" ;;
     refresh)  cmd_refresh "$@" ;;
     stats)    cmd_stats "$@" ;;

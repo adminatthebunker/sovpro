@@ -258,13 +258,13 @@ async def persist(db: Database, res: ScanResult) -> str:
           http_status, http_server_header, http_powered_by, http_final_url,
           duration_ms, error, raw_data
         ) VALUES (
-          $1,$2,$3,$4,$5,$6,
+          $1,$2,$3::text[],$4::text[],$5::text[],$6::text[],
           $7,$8,$9,$10,$11,$12,$13,
           $14,$15,$16,$17,
           $18,$19,
           $20,$21,$22,$23,
           $24,$25,$26,$27,
-          $28,$29,$30
+          $28,$29,$30::jsonb
         )
         RETURNING id
         """,
@@ -304,8 +304,8 @@ async def persist(db: Database, res: ScanResult) -> str:
         """
         UPDATE websites
         SET last_scanned_at = $2,
-            last_changed_at = CASE WHEN $3 THEN $2 ELSE last_changed_at END,
-            scan_failures = CASE WHEN $4 IS NULL THEN 0 ELSE scan_failures + 1 END
+            last_changed_at = CASE WHEN $3::boolean THEN $2 ELSE last_changed_at END,
+            scan_failures = CASE WHEN $4::text IS NULL THEN 0 ELSE scan_failures + 1 END
         WHERE id = $1
         """,
         res.website_id, res.scanned_at, changed, res.error,

@@ -22,6 +22,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .db import Database, get_dsn
+from .enrich import enrich_alberta_mlas, enrich_federal_mps
 from .opennorth import ingest_councils, ingest_mlas, ingest_mps
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
@@ -67,6 +68,23 @@ def cmd_ingest_councils(ctx: click.Context) -> None:
 def cmd_seed_orgs(ctx: click.Context) -> None:
     """Seed referendum organizations (idempotent)."""
     asyncio.run(_run(seed_organizations, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-mps")
+@click.option("--limit", type=int, default=None)
+@click.option("--force", is_flag=True, help="Re-discover even if personal_url is set")
+@click.pass_context
+def cmd_enrich_mps(ctx: click.Context, limit, force) -> None:
+    """Discover personal/campaign websites for federal MPs (via ourcommons.ca)."""
+    asyncio.run(_run(enrich_federal_mps, ctx.obj["dsn"], limit=limit, force=force))
+
+
+@cli.command("enrich-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal websites for Alberta MLAs (via assembly.ab.ca)."""
+    asyncio.run(_run(enrich_alberta_mlas, ctx.obj["dsn"], limit=limit))
 
 
 @cli.command("scan")

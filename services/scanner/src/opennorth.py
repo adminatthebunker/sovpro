@@ -114,23 +114,15 @@ def _social_urls(rep: dict) -> dict:
 
 
 def _constituency_id(rep: dict, set_def: OpenNorthSet) -> Optional[str]:
-    """Try a few places Open North might stash the district slug."""
-    dn = rep.get("district_name") or ""
-    # Prefer the districts boundary link if present
-    for link in rep.get("related", {}).get("boundary_set_name", []) if isinstance(rep.get("related"), dict) else []:
-        pass
-    # Fall back to "boundary_url"
-    b = rep.get("boundary_url")
+    """Return '{boundary_set}/{slug-or-id}' parsed from rep['related']['boundary_url']."""
+    related = rep.get("related") or {}
+    b = related.get("boundary_url") or rep.get("boundary_url")
     if b:
-        # b looks like /boundaries/{set}/{slug}/
+        # b looks like '/boundaries/{set}/{slug}/'
         parts = [p for p in b.strip("/").split("/") if p]
-        if len(parts) >= 3:
-            return parts[-1]
-    # Fall back to slugified district_name within set
-    if dn:
-        import re
-        slug = re.sub(r"[^a-z0-9]+", "-", dn.lower()).strip("-")
-        return f"{set_def.boundary_set}/{slug}"
+        # ['boundaries', '{set}', '{slug}']
+        if len(parts) >= 3 and parts[0] == "boundaries":
+            return f"{parts[1]}/{parts[2]}"
     return None
 
 
@@ -216,19 +208,23 @@ def _extract_websites(rep: dict) -> Iterable[tuple[str, str]]:
 
 
 async def _fetch_boundary(client: httpx.AsyncClient, set_def: OpenNorthSet, constituency_id: str) -> Optional[dict]:
-    # constituency_id is already "{set}/{slug}" OR just "{slug}"
-    if "/" in constituency_id:
-        path = f"/boundaries/{constituency_id}/simple_shape"
-    else:
-        path = f"/boundaries/{set_def.boundary_set}/{constituency_id}/simple_shape"
-    url = f"{BASE}{path}"
-    try:
-        r = await client.get(url)
-        if r.status_code != 200:
+    # constituency_id is "{boundary_set}/{slug}" produced by _constituency_id.
+    if "/" not in constituency_id:
+        constituency_id = f"{set_def.boundary_set}/{constituency_id}"
+    url = f"{BASE}/boundaries/{constituency_id}/simple_shape"
+    # Open North rate-limits aggressively; retry with backoff on 429/5xx.
+    for attempt in range(5):
+        try:
+            r = await client.get(url)
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (429, 502, 503, 504):
+                await asyncio.sleep(0.5 * (2 ** attempt))
+                continue
             return None
-        return r.json()
-    except Exception:
-        return None
+        except Exception:
+            await asyncio.sleep(0.5 * (2 ** attempt))
+    return None
 
 
 async def _upsert_boundary(db: Database, set_def: OpenNorthSet, constituency_id: str,
@@ -272,7 +268,7 @@ async def _ingest_set(db: Database, set_def: OpenNorthSet, limit: int) -> None:
             TextColumn("{task.completed}/{task.total}"), TimeElapsedColumn(),
         ) as progress:
             task = progress.add_task("Upserting politicians", total=len(reps))
-            bsem = asyncio.Semaphore(8)
+            bsem = asyncio.Semaphore(3)
             seen_ids: set[str] = set()
 
             async def handle(rep: dict) -> None:
