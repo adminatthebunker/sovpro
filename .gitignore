@@ -70,3 +70,7 @@ coverage/
 .local/
 tmp/
 sovpro
+
+# Playwright MCP artifacts
+.playwright-mcp/
+*.playwright.png
