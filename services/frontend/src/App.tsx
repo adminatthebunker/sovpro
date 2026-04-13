@@ -32,7 +32,7 @@ export default function App() {
         <div className="shell__brand">
           <span className="shell__logo">🍁</span>
           <div>
-            <h1>SovereignWatch</h1>
+            <h1>Canadian Political Data</h1>
             <p className="shell__tag">Where do Canadian politicians actually host their data?</p>
           </div>
         </div>
@@ -43,7 +43,7 @@ export default function App() {
           <button className={activeTab === "faq" ? "active" : ""} onClick={() => setActiveTab("faq")}>FAQ</button>
           <a
             className="shell__contact"
-            href="mailto:admin@thebunkerops.ca?subject=SovereignWatch%20feedback"
+            href="mailto:admin@thebunkerops.ca?subject=CanadianPoliticalData%20feedback"
             title="Send feedback by email"
           >
             ✉ Contact
@@ -120,10 +120,10 @@ export default function App() {
 
       <footer className="shell__footer">
         <div className="shell__footer-row">
-          <span>© {new Date().getFullYear()} SovereignWatch</span>
+          <span>© {new Date().getFullYear()} Canadian Political Data</span>
           <span>· Built by <a href="https://bnkops.com/" target="_blank" rel="noopener noreferrer">The Bunker Operations</a></span>
-          <span>· <a href="https://github.com/adminatthebunker/sovpro" target="_blank" rel="noopener noreferrer">Source on GitHub</a></span>
-          <span>· <a href="mailto:admin@thebunkerops.ca?subject=SovereignWatch%20feedback">Contact &amp; feedback</a></span>
+          <span>· <a href="https://github.com/adminatthebunker/CanadianPoliticalData" target="_blank" rel="noopener noreferrer">Source on GitHub</a></span>
+          <span>· <a href="mailto:admin@thebunkerops.ca?subject=CanadianPoliticalData%20feedback">Contact &amp; feedback</a></span>
         </div>
         <div className="shell__footer-row shell__footer-row--muted">
           <span>Open data from <a href="https://represent.opennorth.ca" target="_blank" rel="noopener noreferrer">Open North</a> · Geolocation via MaxMind GeoLite2 · Released under the MIT license</span>

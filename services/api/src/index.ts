@@ -50,7 +50,7 @@ app.get("/health", async () => {
 });
 
 app.get("/", async () => ({
-  service: "sovereignwatch-api",
+  service: "canadianpoliticaldata-api",
   version: "0.1.0",
   docs: "/api/v1",
 }));

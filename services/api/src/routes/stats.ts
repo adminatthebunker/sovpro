@@ -216,7 +216,7 @@ export default async function statsRoutes(app: FastifyInstance) {
     }
     if (leaveOutside / leaveTotal >= 0.5) {
       const pct = Math.round(100 * leaveOutside / leaveTotal);
-      return `Organizations advocating Alberta leave Canada for sovereignty store 100% of their website data outside Alberta.`;
+      return `Organizations advocating Alberta leave Canada for sovereignty, and those organizing to keep Alberta in Canada, store 100% of their website data outside Alberta.`;
     }
     return "";
   }

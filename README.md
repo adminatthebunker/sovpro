@@ -1,8 +1,8 @@
-# SovereignWatch
+# Canadian Political Data
 
 > A civic transparency tool that answers one question: **where do Canadian politicians and political organizations actually store their website data?**
 
-SovereignWatch scans the websites of every federal MP, every Alberta MLA, Edmonton and Calgary city councillors, and the organizations driving Alberta's October 19, 2026 independence referendum — and plots the result on an interactive map. Constituency polygons are drawn, then connected by lines to server pins, overwhelmingly clustered in the United States.
+Canadian Political Data scans the websites of every federal MP, every Alberta MLA, Edmonton and Calgary city councillors, and the organizations driving Alberta's October 19, 2026 independence referendum — and plots the result on an interactive map. Constituency polygons are drawn, then connected by lines to server pins, overwhelmingly clustered in the United States.
 
 Change detection monitors all tracked sites and emits alerts when hosting moves.
 

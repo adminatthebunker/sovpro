@@ -312,7 +312,7 @@ async def _upsert_boundary(db: Database, set_def: OpenNorthSet, constituency_id:
 
 
 async def _ingest_set(db: Database, set_def: OpenNorthSet, limit: int) -> None:
-    async with httpx.AsyncClient(timeout=30, headers={"User-Agent": "SovereignWatchBot/1.0"}) as client:
+    async with httpx.AsyncClient(timeout=30, headers={"User-Agent": "CanadianPoliticalDataBot/1.0"}) as client:
         console.print(f"[cyan]Fetching {set_def.path}[/cyan]")
         reps = await _fetch_reps(client, set_def, limit)
         console.print(f"[cyan]  got {len(reps)} representatives[/cyan]")

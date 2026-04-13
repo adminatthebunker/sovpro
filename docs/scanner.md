@@ -25,7 +25,7 @@ After a batch finishes, `SELECT refresh_map_views()` re-materializes `map_politi
 | `SCANNER_CONCURRENCY` | 16 | Parallel scans in flight |
 | `SCANNER_HTTP_TIMEOUT` | 15 | Per-request HTTP timeout (s) |
 | `SCANNER_DNS_TIMEOUT` | 5 | DNS resolver timeout (s) |
-| `SCANNER_USER_AGENT` | `SovereignWatchBot/1.0 (+...)` | Sent on every scan request |
+| `SCANNER_USER_AGENT` | `CanadianPoliticalDataBot/1.0 (+...)` | Sent on every scan request |
 | `GEOIP_CITY_PATH` | `/data/GeoLite2-City.mmdb` | Geo DB |
 | `GEOIP_ASN_PATH` | `/data/GeoLite2-ASN.mmdb` | ASN DB |
 

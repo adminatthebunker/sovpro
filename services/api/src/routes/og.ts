@@ -147,7 +147,7 @@ function buildSvg(stats: Awaited<ReturnType<typeof gatherStats>>): string {
   <g transform="translate(80, 70)">
     <text x="0" y="0" font-family="Inter,Arial,sans-serif" font-size="30" font-weight="700" fill="#e2e8f0">
       <tspan fill="#e11d48">🍁</tspan>
-      <tspan dx="12">SovereignWatch</tspan>
+      <tspan dx="12">Canadian Political Data</tspan>
     </text>
   </g>
 
@@ -177,8 +177,8 @@ function buildSvg(stats: Awaited<ReturnType<typeof gatherStats>>): string {
 
   <!-- Footer -->
   <g transform="translate(80, 588)">
-    <text x="0" y="0" font-family="Inter,Arial,sans-serif" font-size="20" font-weight="600" fill="#e2e8f0">sovereignwatch.ca</text>
-    <text x="180" y="0" font-family="Inter,Arial,sans-serif" font-size="20" fill="#94a3b8">· scanned ${totalPoliticians} politicians</text>
+    <text x="0" y="0" font-family="Inter,Arial,sans-serif" font-size="20" font-weight="600" fill="#e2e8f0">canadianpoliticaldata.ca</text>
+    <text x="220" y="0" font-family="Inter,Arial,sans-serif" font-size="20" fill="#94a3b8">· scanned ${totalPoliticians} politicians</text>
   </g>
   <!-- suppress unused refs -->
   <!-- headline=${escapeXml(headline)} sub=${escapeXml(subHeadline)} -->

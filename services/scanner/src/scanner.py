@@ -327,7 +327,7 @@ async def scan_all(
     dns_timeout = float(os.environ.get("SCANNER_DNS_TIMEOUT", 5))
     user_agent = os.environ.get(
         "SCANNER_USER_AGENT",
-        "SovereignWatchBot/1.0 (+https://sovereignwatch.ca)",
+        "CanadianPoliticalDataBot/1.0 (+https://canadianpoliticaldata.ca)",
     )
     city_path = os.environ.get("GEOIP_CITY_PATH", "/data/GeoLite2-City.mmdb")
     asn_path = os.environ.get("GEOIP_ASN_PATH", "/data/GeoLite2-ASN.mmdb")

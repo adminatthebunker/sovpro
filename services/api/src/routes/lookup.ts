@@ -45,7 +45,7 @@ export default async function lookupRoutes(app: FastifyInstance) {
     try {
       const r = await fetch(
         `https://represent.opennorth.ca/postcodes/${norm}/?format=json`,
-        { headers: { "User-Agent": "SovereignWatch/1.0" } }
+        { headers: { "User-Agent": "CanadianPoliticalData/1.0" } }
       );
       if (r.status === 404) return reply.notFound("Postal code not found");
       if (!r.ok) {

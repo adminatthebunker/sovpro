@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- SovereignWatch — database schema
+-- Canadian Political Data — database schema
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- Runs once on first container start (mounted into /docker-entrypoint-initdb.d).

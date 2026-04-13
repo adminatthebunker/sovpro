@@ -1,6 +1,6 @@
 # Architecture
 
-SovereignWatch is a small fleet of cooperating services orchestrated by Docker Compose. Each service owns one concern.
+Canadian Political Data is a small fleet of cooperating services orchestrated by Docker Compose. Each service owns one concern.
 
 ```
                 ┌───────────────────────────────────────┐

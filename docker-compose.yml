@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# SovereignWatch — docker-compose orchestration
+# Canadian Political Data — docker-compose orchestration
 # ═══════════════════════════════════════════════════════════════════════════
 # Start everything:           docker compose up -d
 # Run a scan (on demand):     docker compose run --rm scanner scan
@@ -74,7 +74,7 @@ services:
       DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
       SCANNER_CONCURRENCY: ${SCANNER_CONCURRENCY:-16}
       SCANNER_HTTP_TIMEOUT: ${SCANNER_HTTP_TIMEOUT:-15}
-      SCANNER_USER_AGENT: ${SCANNER_USER_AGENT:-SovereignWatchBot/1.0 (+https://sovereignwatch.ca)}
+      SCANNER_USER_AGENT: ${SCANNER_USER_AGENT:-CanadianPoliticalDataBot/1.0 (+https://canadianpoliticaldata.ca)}
       GEOIP_CITY_PATH: /data/GeoLite2-City.mmdb
       GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
       SEED_SQL_PATH: /app/db/seed.sql

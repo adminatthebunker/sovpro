@@ -35,7 +35,7 @@ console = Console()
 @click.option("--database-url", envvar="DATABASE_URL", default=None, help="Postgres DSN")
 @click.pass_context
 def cli(ctx: click.Context, database_url: Optional[str]) -> None:
-    """SovereignWatch scanner — ingest, scan, and classify political websites."""
+    """Canadian Political Data scanner — ingest, scan, and classify political websites."""
     ctx.ensure_object(dict)
     ctx.obj["dsn"] = database_url or get_dsn()
 

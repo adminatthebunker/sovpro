@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════════════
--- SovereignWatch — seed data for referendum organizations
+-- Canadian Political Data — seed data for referendum organizations
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Idempotent: uses ON CONFLICT so it's safe to run multiple times.
 -- Runs automatically after init.sql (mounted into /docker-entrypoint-initdb.d).

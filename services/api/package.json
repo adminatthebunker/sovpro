@@ -1,7 +1,7 @@
 {
-  "name": "@sovereignwatch/api",
+  "name": "@canadianpoliticaldata/api",
   "version": "0.1.0",
-  "description": "SovereignWatch API — Fastify service",
+  "description": "Canadian Political Data API — Fastify service",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

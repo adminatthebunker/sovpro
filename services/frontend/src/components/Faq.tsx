@@ -117,7 +117,7 @@ https://ipinfo.io/<ip>`}</pre>
     q: "Is this open source?",
     a: (
       <>
-        <p>Yes. The whole stack is MIT-licensed: <a href="https://github.com/adminatthebunker/sovpro" target="_blank" rel="noopener">github.com/adminatthebunker/sovpro</a>. Pull requests, dataset corrections, and additional municipal scrapers welcome.</p>
+        <p>Yes. The whole stack is MIT-licensed: <a href="https://github.com/adminatthebunker/CanadianPoliticalData" target="_blank" rel="noopener">github.com/adminatthebunker/CanadianPoliticalData</a>. Pull requests, dataset corrections, and additional municipal scrapers welcome.</p>
       </>
     ),
   },

@@ -19,7 +19,7 @@ interface AlbertaOverview {
 }
 
 /**
- * Compact panel that itemizes every group SovereignWatch is tracking.
+ * Compact panel that itemizes every group Canadian Political Data is tracking.
  * Sits beside the hero so visitors immediately see "of whom" the headline
  * percentage applies to.
  */

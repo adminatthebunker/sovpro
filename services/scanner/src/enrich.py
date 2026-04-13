@@ -29,7 +29,7 @@ console = Console()
 
 
 OPENPARL_BASE = "https://api.openparliament.ca"
-USER_AGENT = "SovereignWatchBot/1.0 (+https://sovereignwatch.ca)"
+USER_AGENT = "CanadianPoliticalDataBot/1.0 (+https://canadianpoliticaldata.ca)"
 
 # Match the ourcommons "Website" block:  <h4>Website</h4>\s*<p><a href="URL">
 WEBSITE_RE = re.compile(
