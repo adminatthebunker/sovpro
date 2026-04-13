@@ -80,10 +80,21 @@ export function AntLines({ data }: Props) {
     zoomend:   () => resumeAll(layersRef.current),
     movestart: () => pauseAll(layersRef.current),
     moveend:   () => resumeAll(layersRef.current),
-    // @ts-expect-error - loading/load are real Leaflet events not in the type
-    loading:   () => pauseAll(layersRef.current),
-    load:      () => resumeAll(layersRef.current),
   });
+
+  // Tile-load events fire on the map (not the parent container).
+  // useMapEvents only handles the typed subset; for `tileloadstart` /
+  // `tileload` we attach via map.on directly.
+  useEffect(() => {
+    const onLoadStart = () => pauseAll(layersRef.current);
+    const onLoadEnd   = () => resumeAll(layersRef.current);
+    map.on("tileloadstart", onLoadStart);
+    map.on("tileload", onLoadEnd);
+    return () => {
+      map.off("tileloadstart", onLoadStart);
+      map.off("tileload", onLoadEnd);
+    };
+  }, [map]);
 
   return null;
 }
