@@ -10,16 +10,30 @@ export function HeroHeadline() {
   }>("/stats/referendum");
 
   const usPct = data ? Math.round(data.politicians.pct_not_canadian) : null;
+  // Headline: "X of Y tracked Canadian politicians host their data in Canada."
+  const tier = data?.politicians?.sovereignty ?? {};
+  const totalScored =
+    (tier.tier_1 ?? 0) + (tier.tier_2 ?? 0) +
+    (tier.tier_3 ?? 0) + (tier.tier_4 ?? 0) +
+    (tier.tier_5 ?? 0);
+  const inCanada = (tier.tier_1 ?? 0) + (tier.tier_2 ?? 0);
 
   return (
     <section className="hero">
-      {usPct !== null && (
-        <h2 className="hero__headline">
-          <span className="hero__number">{usPct}%</span> of tracked Canadian politicians host their websites <strong>outside Canada</strong>.
+      {totalScored > 0 && (
+        <h2 className="hero__killer">
+          <span className="hero__killer-num">{inCanada}</span>
+          <span className="hero__killer-of">of</span>
+          <span className="hero__killer-denom">{totalScored}</span>
+          <span className="hero__killer-label">
+            tracked Canadian-politician websites are physically hosted in Canada.
+          </span>
         </h2>
       )}
-      {ref?.irony_score && (
-        <p className="hero__subhead">{ref.irony_score}</p>
+      {usPct !== null && (
+        <p className="hero__subhead">
+          <strong>{usPct}%</strong> are hosted outside Canada entirely.{ref?.irony_score ? ` ${ref.irony_score}` : ""}
+        </p>
       )}
     </section>
   );
