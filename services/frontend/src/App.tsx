@@ -10,6 +10,7 @@ import { PartyFilter, partyColor } from "./components/PartyFilter";
 import { PostalLookupBar } from "./components/PostalLookupBar";
 import { PartyReportCard } from "./components/PartyReportCard";
 import { Faq } from "./components/Faq";
+import { WhoWeTrack } from "./components/WhoWeTrack";
 
 export default function App() {
   const [filters, setFilters] = useState<FilterState>({
@@ -43,7 +44,10 @@ export default function App() {
 
       {activeTab !== "referendum" && (
         <>
-          <HeroHeadline />
+          <div className="hero-row">
+            <HeroHeadline />
+            <WhoWeTrack />
+          </div>
           <StatsBar />
         </>
       )}
