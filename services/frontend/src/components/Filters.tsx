@@ -2,6 +2,8 @@ export interface FilterState {
   layer: "all" | "politicians" | "organizations";
   level?: "federal" | "provincial" | "municipal";
   province?: string;
+  party?: string;
+  includeNoData?: boolean;
 }
 
 interface Props {
@@ -48,6 +50,15 @@ export function Filters({ value, onChange }: Props) {
             <option key={p} value={p}>{p}</option>
           ))}
         </select>
+      </label>
+
+      <label className="filters__field filters__field--check">
+        <input
+          type="checkbox"
+          checked={value.includeNoData ?? true}
+          onChange={e => onChange({ ...value, includeNoData: e.target.checked })}
+        />
+        <span>Show ridings without a website</span>
       </label>
     </div>
   );

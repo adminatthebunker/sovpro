@@ -6,14 +6,19 @@ import { ChangesFeed } from "./components/ChangesFeed";
 import { Filters, type FilterState } from "./components/Filters";
 import { HeroHeadline } from "./components/HeroHeadline";
 import { TierLegend } from "./components/TierLegend";
+import { PartyFilter } from "./components/PartyFilter";
+import { PostalLookup } from "./components/PostalLookup";
+import { Faq } from "./components/Faq";
 
 export default function App() {
   const [filters, setFilters] = useState<FilterState>({
     layer: "all",
     level: undefined,
     province: undefined,
+    party: undefined,
+    includeNoData: true,
   });
-  const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes">("map");
+  const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "lookup" | "faq">("map");
 
   return (
     <div className="shell">
@@ -27,8 +32,10 @@ export default function App() {
         </div>
         <nav className="shell__tabs">
           <button className={activeTab === "map" ? "active" : ""} onClick={() => setActiveTab("map")}>Map</button>
+          <button className={activeTab === "lookup" ? "active" : ""} onClick={() => setActiveTab("lookup")}>Find your reps</button>
           <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>Referendum</button>
           <button className={activeTab === "changes" ? "active" : ""} onClick={() => setActiveTab("changes")}>Changes</button>
+          <button className={activeTab === "faq" ? "active" : ""} onClick={() => setActiveTab("faq")}>FAQ</button>
         </nav>
       </header>
 
@@ -37,18 +44,24 @@ export default function App() {
 
       {activeTab === "map" && (
         <section className="shell__map-section">
+          <PartyFilter
+            active={filters.party}
+            onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
+          />
           <Filters value={filters} onChange={setFilters} />
           <MapView filters={filters} />
           <TierLegend />
         </section>
       )}
 
+      {activeTab === "lookup" && <PostalLookup />}
       {activeTab === "referendum" && <ReferendumSpotlight />}
       {activeTab === "changes" && <ChangesFeed />}
+      {activeTab === "faq" && <Faq />}
 
       <footer className="shell__footer">
         <span>Open data from <a href="https://represent.opennorth.ca">Open North</a> · Geolocation via MaxMind GeoLite2</span>
-        <span>· <a href="https://github.com/">Source</a></span>
+        <span>· <a href="https://github.com/adminatthebunker/sovpro">Source on GitHub</a></span>
       </footer>
     </div>
   );

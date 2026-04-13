@@ -6,7 +6,9 @@ import type { MapRow } from "../types.js";
 const geoQuery = z.object({
   level: z.enum(["federal","provincial","municipal"]).optional(),
   province: z.string().length(2).optional(),
+  party: z.string().optional(),
   group: z.enum(["politicians","organizations","all"]).default("all"),
+  include_no_data: z.coerce.boolean().default(false),
 });
 
 type GeoFeature = {
@@ -22,7 +24,7 @@ export default async function mapRoutes(app: FastifyInstance) {
   app.get("/geojson", async (req, reply) => {
     const q = geoQuery.safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
-    const { level, province, group } = q.data;
+    const { level, province, party, group, include_no_data } = q.data;
 
     const features: GeoFeature[] = [];
 
@@ -32,6 +34,7 @@ export default async function mapRoutes(app: FastifyInstance) {
       const params: (string | number)[] = [];
       if (level)    { params.push(level);    where.push(`level = $${params.length}`); }
       if (province) { params.push(province); where.push(`province_territory = $${params.length}`); }
+      if (party)    { params.push(party);    where.push(`party = $${params.length}`); }
       const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
       const rows = await query<MapRow>(
@@ -102,6 +105,46 @@ export default async function mapRoutes(app: FastifyInstance) {
               },
             });
           }
+        }
+      }
+
+      // ── Constituencies with NO scanned website (no-data overlay) ─────
+      if (include_no_data) {
+        const noDataWhere: string[] = ["p.is_active = true",
+          `NOT EXISTS (SELECT 1 FROM map_politicians mp WHERE mp.politician_id = p.id)`];
+        const ndParams: (string | number)[] = [];
+        if (level)    { ndParams.push(level);    noDataWhere.push(`p.level = $${ndParams.length}`); }
+        if (province) { ndParams.push(province); noDataWhere.push(`p.province_territory = $${ndParams.length}`); }
+        if (party)    { ndParams.push(party);    noDataWhere.push(`p.party = $${ndParams.length}`); }
+
+        const noDataRows = await query<{
+          politician_id: string; name: string; party: string | null; level: string;
+          constituency_id: string; constituency_name: string | null;
+          boundary_geojson: unknown;
+        }>(
+          `SELECT p.id AS politician_id, p.name, p.party, p.level,
+                  cb.constituency_id, p.constituency_name,
+                  ST_AsGeoJSON(cb.boundary_simple)::jsonb AS boundary_geojson
+           FROM politicians p
+           JOIN constituency_boundaries cb ON cb.constituency_id = p.constituency_id
+           WHERE ${noDataWhere.join(" AND ")}`,
+          ndParams
+        );
+        for (const r of noDataRows) {
+          if (!r.boundary_geojson) continue;
+          features.push({
+            type: "Feature",
+            id: `no-data-${r.constituency_id}`,
+            properties: {
+              kind: "constituency_no_data",
+              constituency_id: r.constituency_id,
+              constituency_name: r.constituency_name,
+              politician_name: r.name,
+              party: r.party,
+              level: r.level,
+            },
+            geometry: r.boundary_geojson,
+          });
         }
       }
     }

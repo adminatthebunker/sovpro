@@ -27,24 +27,28 @@ export function MapView({ filters }: Props) {
     const params = new URLSearchParams();
     if (filters.level) params.set("level", filters.level);
     if (filters.province) params.set("province", filters.province);
+    if (filters.party) params.set("party", filters.party);
+    if (filters.includeNoData) params.set("include_no_data", "true");
     params.set("group", filters.layer === "all" ? "all" : filters.layer);
     return `/map/geojson?${params.toString()}`;
   }, [filters]);
 
   const { data, loading, error } = useFetch<GeoCollection>(path);
 
-  const { polygons, servers, lines } = useMemo(() => {
+  const { polygons, polygonsNoData, servers, lines } = useMemo(() => {
     const polys: typeof data = { type: "FeatureCollection", features: [] };
+    const polysNo: typeof data = { type: "FeatureCollection", features: [] };
     const srv:  typeof data = { type: "FeatureCollection", features: [] };
     const lns:  typeof data = { type: "FeatureCollection", features: [] };
-    if (!data) return { polygons: polys, servers: srv, lines: lns };
+    if (!data) return { polygons: polys, polygonsNoData: polysNo, servers: srv, lines: lns };
     for (const f of data.features) {
       const kind = f.properties.kind;
       if (kind === "constituency") polys.features.push(f);
+      else if (kind === "constituency_no_data") polysNo.features.push(f);
       else if (kind === "server") srv.features.push(f);
       else if (kind === "connection") lns.features.push(f);
     }
-    return { polygons: polys, servers: srv, lines: lns };
+    return { polygons: polys, polygonsNoData: polysNo, servers: srv, lines: lns };
   }, [data]);
 
   return (
@@ -100,6 +104,30 @@ export function MapView({ filters }: Props) {
               }}
             />
           </LayersControl.Overlay>
+
+          {polygonsNoData.features.length > 0 && (
+            <LayersControl.Overlay checked name={`Ridings without a website (${polygonsNoData.features.length})`}>
+              <GeoJSON
+                key={`nodata-${polygonsNoData.features.length}`}
+                data={polygonsNoData as GeoJSON.FeatureCollection}
+                style={() => ({
+                  color: "#475569",
+                  weight: 0.7,
+                  fillColor: "#1e293b",
+                  fillOpacity: 0.45,
+                  dashArray: "3 4",
+                })}
+                onEachFeature={(f, layer) => {
+                  const p = f.properties || {};
+                  layer.bindTooltip(
+                    `<strong>${escapeHtml(String(p.constituency_name ?? ""))}</strong><br>` +
+                    `${escapeHtml(String(p.politician_name ?? ""))}${p.party ? ` · ${escapeHtml(String(p.party))}` : ""}<br>` +
+                    `<em>No personal/campaign website found</em>`
+                  );
+                }}
+              />
+            </LayersControl.Overlay>
+          )}
 
           <LayersControl.Overlay checked name="Connections (Canadian)">
             <GeoJSON

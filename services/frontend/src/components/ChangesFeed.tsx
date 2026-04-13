@@ -1,5 +1,6 @@
 import { useFetch } from "../hooks/useFetch";
 import type { ChangeItem } from "../types";
+import { ChangeRow } from "./ChangeRow";
 
 interface ChangesResp {
   items: ChangeItem[];
@@ -23,25 +24,23 @@ export function ChangesFeed() {
       </header>
       {items.length === 0 && <p>No changes recorded yet — changes appear here after the scanner detects differences between scans.</p>}
       <ol className="changes__list">
-        {items.map(c => (
-          <li key={c.id} className={`changes__row changes__row--${c.severity}`}>
-            <div className="changes__time">{new Date(c.detected_at).toLocaleString()}</div>
-            <div className="changes__summary">
-              <strong>{c.owner_name}</strong>
-              <a href={c.website_url} target="_blank" rel="noopener">{c.website_url}</a>
-              <span className={`changes__type changes__type--${c.change_type}`}>{c.change_type.replace(/_/g, " ")}</span>
-              <p>{c.summary}</p>
-              {(c.old_value || c.new_value) && (
-                <div className="changes__diff">
-                  <del>{c.old_value ?? "—"}</del>
-                  <span> → </span>
-                  <ins>{c.new_value ?? "—"}</ins>
-                </div>
-              )}
-            </div>
-          </li>
-        ))}
+        {items.map(c => <ChangeRow key={c.id} change={c} />)}
       </ol>
+
+      <aside className="changes__verify">
+        <h3>Self-verify any claim above</h3>
+        <p>Don't trust us — check it yourself in 10 seconds.</p>
+        <pre>{`# Resolve the IP
+dig +short <hostname>
+
+# Look up who owns it
+whois $(dig +short <hostname> | head -1)
+
+# Or use a no-install web tool:
+https://hackertarget.com/ip-tools/
+https://viewdns.info/iplocation/?ip=<ip>
+https://ipinfo.io/<ip>`}</pre>
+      </aside>
     </section>
   );
 }
