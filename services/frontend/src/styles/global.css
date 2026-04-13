@@ -904,6 +904,60 @@ button.active { background: var(--accent); border-color: var(--accent); }
   border: 1px solid var(--border); font-size: .8em;
 }
 
+/* ── Postal results drawer ──────────────────────────── */
+.postal-drawer__head {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.postal-drawer__pct {
+  text-align: center; flex-shrink: 0;
+  padding: .35rem .65rem;
+  border: 2px solid var(--accent); border-radius: 8px;
+}
+.postal-drawer__pct-num {
+  font-size: 1.5rem; font-weight: 900; color: var(--accent); line-height: 1;
+}
+.postal-drawer__pct-label {
+  font-size: .6rem; letter-spacing: .15em; color: var(--ink-muted);
+  text-transform: uppercase; margin-top: .15rem;
+}
+
+.postal-drawer__list {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: .55rem;
+  padding: .35rem 1rem .65rem;
+}
+.postal-drawer__row {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 8px; padding: .65rem .75rem;
+}
+.postal-drawer__row-head {
+  display: flex; gap: .55rem; align-items: flex-start;
+}
+.postal-drawer__photo {
+  width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
+  flex-shrink: 0; border: 1px solid var(--border);
+}
+.postal-drawer__row-body { flex: 1; min-width: 0; }
+.postal-drawer__row-name { font-weight: 700; font-size: .85rem; color: var(--ink); line-height: 1.2; }
+.postal-drawer__row-office { font-size: .72rem; color: var(--ink-muted); margin-top: .15rem; }
+.postal-drawer__row-district { font-size: .72rem; color: var(--ink); opacity: .85; }
+.postal-drawer__row-pct {
+  flex-shrink: 0; font-size: .9rem; font-weight: 800; color: var(--accent);
+  padding: .25rem .45rem; border: 1px solid currentColor; border-radius: 6px;
+  align-self: center;
+}
+.postal-drawer__sites {
+  list-style: none; padding: 0; margin: .5rem 0 0;
+  display: flex; flex-direction: column; gap: .25rem;
+  font-size: .72rem; color: var(--ink-muted);
+}
+.postal-drawer__sites li { word-break: break-all; }
+.postal-drawer__sites a { color: #93c5fd; font-weight: 500; }
+.postal-drawer__city { color: var(--ink-muted); }
+.postal-drawer__nowebsite {
+  margin-top: .35rem; font-size: .7rem; color: var(--ink-muted); font-style: italic;
+}
+
 /* ── Postal lookup ────────────────────────────────────── */
 .postal { padding: 1rem 0; }
 .postal h2 { margin: 0 0 .25rem; }

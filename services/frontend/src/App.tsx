@@ -7,7 +7,8 @@ import { Filters, type FilterState } from "./components/Filters";
 import { HeroHeadline } from "./components/HeroHeadline";
 import { TierLegend } from "./components/TierLegend";
 import { PartyFilter, partyColor } from "./components/PartyFilter";
-import { PostalLookupBar } from "./components/PostalLookupBar";
+import { PostalLookupBar, type PostalLookupResponse } from "./components/PostalLookupBar";
+import { PostalResultsDrawer } from "./components/PostalResultsDrawer";
 import { PartyReportCard } from "./components/PartyReportCard";
 import { Faq } from "./components/Faq";
 import { WhoWeTrack } from "./components/WhoWeTrack";
@@ -23,6 +24,7 @@ export default function App() {
   });
   const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "faq">("map");
   const [reportParty, setReportParty] = useState<string | null>(null);
+  const [postalResult, setPostalResult] = useState<PostalLookupResponse | null>(null);
 
   return (
     <div className="shell">
@@ -56,20 +58,38 @@ export default function App() {
         <section className="shell__map-section">
           <div className="map-toolbar">
             <PostalLookupBar
-              onResult={(ids) => setFilters(f => ({ ...f, politicianIds: ids ?? undefined }))}
+              activePostalCode={postalResult?.postal_code ?? null}
+              onResult={(res, ids) => {
+                setPostalResult(res);
+                setFilters(f => ({ ...f, politicianIds: ids ?? undefined }));
+                if (res) setReportParty(null);  // mutually exclusive with party report
+              }}
             />
             <PartyFilter
               active={filters.party}
               onChange={(p) => setFilters({ ...filters, party: p, level: p ? "federal" : filters.level })}
-              onShowReport={(p) => setReportParty(p)}
+              onShowReport={(p) => {
+                setReportParty(p);
+                setPostalResult(null);  // mutually exclusive with postal result
+                setFilters(f => ({ ...f, politicianIds: undefined }));
+              }}
             />
             <Filters value={filters} onChange={setFilters} />
           </div>
-          <div className={`map-with-drawer ${reportParty ? "is-open" : ""}`}>
+          <div className={`map-with-drawer ${(reportParty || postalResult) ? "is-open" : ""}`}>
             <div className="map-with-drawer__map">
               <MapView filters={filters} />
             </div>
-            {reportParty && (
+            {postalResult && (
+              <PostalResultsDrawer
+                data={postalResult}
+                onClose={() => {
+                  setPostalResult(null);
+                  setFilters(f => ({ ...f, politicianIds: undefined }));
+                }}
+              />
+            )}
+            {!postalResult && reportParty && (
               <PartyReportCard
                 party={reportParty}
                 partyColor={partyColor(reportParty)}
