@@ -67,21 +67,30 @@ export default async function statsRoutes(app: FastifyInstance) {
        GROUP BY mp.hostname, mp.ip_country, mp.ip_city, mp.hosting_provider, mp.sovereignty_tier
        ORDER BY counted_for DESC`);
 
-    // Top cities / providers (all scanned websites)
+    // Top cities / providers — exclude shared parliamentary infra and dedup
+    // by hostname so ourcommons.ca / assembly.ab.ca don't dominate.
     const topCities = await query<{ city: string; country: string; n: number }>(
-      `SELECT ip_city AS city, ip_country AS country, COUNT(*)::int AS n
-       FROM (
-         SELECT DISTINCT ON (website_id) ip_city, ip_country
-         FROM infrastructure_scans ORDER BY website_id, scanned_at DESC
-       ) t
-       WHERE ip_city IS NOT NULL GROUP BY ip_city, ip_country ORDER BY n DESC LIMIT 10`);
+      `WITH uniq AS (
+         SELECT DISTINCT ON (w.hostname) s.ip_city, s.ip_country
+         FROM websites w
+         JOIN infrastructure_scans s ON s.website_id = w.id
+         WHERE COALESCE(w.label,'') <> 'shared_official'
+         ORDER BY w.hostname, s.scanned_at DESC
+       )
+       SELECT ip_city AS city, ip_country AS country, COUNT(*)::int AS n
+       FROM uniq WHERE ip_city IS NOT NULL
+       GROUP BY ip_city, ip_country ORDER BY n DESC LIMIT 10`);
     const topProviders = await query<{ provider: string; n: number }>(
-      `SELECT hosting_provider AS provider, COUNT(*)::int AS n
-       FROM (
-         SELECT DISTINCT ON (website_id) hosting_provider
-         FROM infrastructure_scans ORDER BY website_id, scanned_at DESC
-       ) t
-       WHERE hosting_provider IS NOT NULL GROUP BY hosting_provider ORDER BY n DESC LIMIT 10`);
+      `WITH uniq AS (
+         SELECT DISTINCT ON (w.hostname) s.hosting_provider
+         FROM websites w
+         JOIN infrastructure_scans s ON s.website_id = w.id
+         WHERE COALESCE(w.label,'') <> 'shared_official'
+         ORDER BY w.hostname, s.scanned_at DESC
+       )
+       SELECT hosting_provider AS provider, COUNT(*)::int AS n
+       FROM uniq WHERE hosting_provider IS NOT NULL
+       GROUP BY hosting_provider ORDER BY n DESC LIMIT 10`);
 
     // ── Organizations totals + referendum breakdown ─────────
     const orgTotal = (await query<{ n: number }>(
