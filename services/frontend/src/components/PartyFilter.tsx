@@ -5,19 +5,29 @@ interface Party {
   level?: "federal" | "provincial";
 }
 
+// Federal parties for the main-map filter row. Provincial parties (UCP,
+// Alberta NDP) live on the Alberta Referendum tab via the AB grade cards
+// — they don't belong here because filtering the federal-MP map by a
+// provincial party returns nothing.
 const PARTIES: Party[] = [
-  { key: "Liberal",                    label: "Liberal",      color: "#e11d48", level: "federal" },
-  { key: "Conservative",               label: "Conservative", color: "#1e3a8a", level: "federal" },
-  { key: "NDP",                        label: "NDP",          color: "#ea580c", level: "federal" },
-  { key: "Bloc Québécois",             label: "Bloc",         color: "#0891b2", level: "federal" },
-  { key: "Green Party",                label: "Green",        color: "#16a34a", level: "federal" },
-  { key: "United Conservative Party",  label: "UCP",          color: "#1e40af", level: "provincial" },
-  { key: "Alberta New Democratic Party", label: "AB NDP",     color: "#f97316", level: "provincial" },
+  { key: "Liberal",        label: "Liberal",      color: "#e11d48", level: "federal" },
+  { key: "Conservative",   label: "Conservative", color: "#1e3a8a", level: "federal" },
+  { key: "NDP",            label: "NDP",          color: "#ea580c", level: "federal" },
+  { key: "Bloc Québécois", label: "Bloc",         color: "#0891b2", level: "federal" },
+  { key: "Green Party",    label: "Green",        color: "#16a34a", level: "federal" },
 ];
+
+// Color lookup needs to know about provincial parties too so the AB tab's
+// report card buttons can grab the right border color.
+const ALL_PARTY_COLORS: Record<string, string> = {
+  ...Object.fromEntries(PARTIES.map(p => [p.key, p.color])),
+  "United Conservative Party":   "#1e40af",
+  "Alberta New Democratic Party": "#f97316",
+};
 
 /** Resolve a party name → display color (for the report card border, etc.) */
 export function partyColor(name: string): string {
-  return PARTIES.find(p => p.key === name)?.color ?? "#94a3b8";
+  return ALL_PARTY_COLORS[name] ?? "#94a3b8";
 }
 
 interface Props {
