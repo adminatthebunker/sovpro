@@ -77,6 +77,32 @@ SETS = {
         boundary_set="calgary-wards",
         boundary_level="municipal",
     ),
+    # ── Additional Alberta municipal councils ────────────────────────
+    "strathcona_county": OpenNorthSet(
+        path="/representatives/strathcona-county-council/",
+        level="municipal", province="AB", office="Councillor",
+        boundary_set="strathcona-county-wards", boundary_level="municipal",
+    ),
+    "wood_buffalo": OpenNorthSet(
+        path="/representatives/wood-buffalo-municipal-council/",
+        level="municipal", province="AB", office="Councillor",
+        boundary_set="wood-buffalo-wards", boundary_level="municipal",
+    ),
+    "lethbridge_council": OpenNorthSet(
+        path="/representatives/lethbridge-city-council/",
+        level="municipal", province="AB", office="City Councillor",
+        boundary_set="lethbridge-wards", boundary_level="municipal",
+    ),
+    "grande_prairie_council": OpenNorthSet(
+        path="/representatives/grande-prairie-city-council/",
+        level="municipal", province="AB", office="City Councillor",
+        boundary_set="grande-prairie-wards", boundary_level="municipal",
+    ),
+    "county_grande_prairie": OpenNorthSet(
+        path="/representatives/county-of-grande-prairie-no-1-council/",
+        level="municipal", province="AB", office="Councillor",
+        boundary_set="county-of-grande-prairie-no-1-wards", boundary_level="municipal",
+    ),
 }
 
 
@@ -325,3 +351,11 @@ async def ingest_mlas(db: Database, *, limit: int = 100) -> None:
 async def ingest_councils(db: Database) -> None:
     await _ingest_set(db, SETS["edmonton_council"], 25)
     await _ingest_set(db, SETS["calgary_council"], 25)
+
+
+async def ingest_alberta_extras(db: Database) -> None:
+    """Ingest the smaller AB municipal councils (Strathcona, Wood Buffalo,
+    Lethbridge, Grande Prairie city + county)."""
+    for key in ("strathcona_county", "wood_buffalo", "lethbridge_council",
+                "grande_prairie_council", "county_grande_prairie"):
+        await _ingest_set(db, SETS[key], 25)

@@ -130,13 +130,15 @@ cmd_ingest() {
         mps)      scan_run ingest-mps ;;
         mlas)     scan_run ingest-mlas ;;
         councils) scan_run ingest-councils ;;
+        ab-extras) scan_run ingest-ab-extras ;;
         all)
             scan_run seed-orgs
             scan_run ingest-mps
             scan_run ingest-mlas
             scan_run ingest-councils
+            scan_run ingest-ab-extras
             ;;
-        *) die "Usage: sovpro ingest {mps|mlas|councils|all}" ;;
+        *) die "Usage: sovpro ingest {mps|mlas|councils|ab-extras|all}" ;;
     esac
 }
 

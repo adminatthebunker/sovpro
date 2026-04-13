@@ -23,7 +23,7 @@ from rich.table import Table
 
 from .db import Database, get_dsn
 from .enrich import enrich_alberta_mlas, enrich_federal_mps
-from .opennorth import ingest_councils, ingest_mlas, ingest_mps
+from .opennorth import ingest_alberta_extras, ingest_councils, ingest_mlas, ingest_mps
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
 from .stats import print_stats
@@ -61,6 +61,13 @@ def cmd_ingest_mlas(ctx: click.Context, limit: int) -> None:
 def cmd_ingest_councils(ctx: click.Context) -> None:
     """Fetch Edmonton + Calgary councils from Open North."""
     asyncio.run(_run(ingest_councils, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-ab-extras")
+@click.pass_context
+def cmd_ingest_ab_extras(ctx: click.Context) -> None:
+    """Fetch additional Alberta municipal councils (Strathcona, Wood Buffalo, Lethbridge, Grande Prairie)."""
+    asyncio.run(_run(ingest_alberta_extras, ctx.obj["dsn"]))
 
 
 @cli.command("seed-orgs")
