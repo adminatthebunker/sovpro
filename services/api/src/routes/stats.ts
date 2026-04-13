@@ -12,19 +12,60 @@ export default async function statsRoutes(app: FastifyInstance) {
       `SELECT party, COUNT(*)::int AS n FROM politicians WHERE is_active=true AND party IS NOT NULL
        GROUP BY party ORDER BY n DESC LIMIT 20`);
 
-    // Sovereignty tier distribution for politicians (latest scan per website)
+    // Headline stats: unique hostnames, EXCLUDING shared_official infrastructure
+    // (ourcommons.ca, assembly.ab.ca, city council pages). Those are shared
+    // institutional sites — not a personal political choice — so they're
+    // surfaced separately as `parliamentary_infrastructure`.
     const polTiers = await query<{ tier: number; n: number }>(
-      `SELECT sovereignty_tier AS tier, COUNT(*)::int AS n
-       FROM map_politicians WHERE sovereignty_tier IS NOT NULL
-       GROUP BY sovereignty_tier ORDER BY sovereignty_tier`);
+      `WITH uniq AS (
+         SELECT DISTINCT ON (mp.hostname) mp.sovereignty_tier
+         FROM map_politicians mp
+         JOIN websites w ON w.id = mp.website_id
+         WHERE mp.sovereignty_tier IS NOT NULL
+           AND COALESCE(w.label, '') <> 'shared_official'
+         ORDER BY mp.hostname, mp.scanned_at DESC
+       )
+       SELECT sovereignty_tier AS tier, COUNT(*)::int AS n
+       FROM uniq GROUP BY sovereignty_tier ORDER BY sovereignty_tier`);
 
-    // Percent not Canadian (tiers 3-5)
     const notCanadian = await query<{ pct: number }>(
-      `SELECT COALESCE(
+      `WITH uniq AS (
+         SELECT DISTINCT ON (mp.hostname) mp.sovereignty_tier
+         FROM map_politicians mp
+         JOIN websites w ON w.id = mp.website_id
+         WHERE mp.sovereignty_tier IS NOT NULL
+           AND COALESCE(w.label, '') <> 'shared_official'
+         ORDER BY mp.hostname, mp.scanned_at DESC
+       )
+       SELECT COALESCE(
          100.0 * SUM(CASE WHEN sovereignty_tier IN (3,4,5) THEN 1 ELSE 0 END)
                / NULLIF(COUNT(*),0),
          0)::float AS pct
-       FROM map_politicians WHERE sovereignty_tier IS NOT NULL`);
+       FROM uniq`);
+
+    const personalTiers = await query<{ tier: number; n: number }>(
+      `WITH uniq AS (
+         SELECT DISTINCT ON (mp.hostname) mp.sovereignty_tier
+         FROM map_politicians mp
+         JOIN websites w ON w.id = mp.website_id
+         WHERE mp.sovereignty_tier IS NOT NULL AND w.label = 'personal'
+         ORDER BY mp.hostname, mp.scanned_at DESC
+       )
+       SELECT sovereignty_tier AS tier, COUNT(*)::int AS n
+       FROM uniq GROUP BY sovereignty_tier ORDER BY sovereignty_tier`);
+
+    // Footnote dataset: where the shared parliamentary infra lives.
+    const sharedInfra = await query<{
+      hostname: string; ip_country: string | null; ip_city: string | null;
+      hosting_provider: string | null; sovereignty_tier: number; counted_for: number;
+    }>(
+      `SELECT mp.hostname, mp.ip_country, mp.ip_city, mp.hosting_provider,
+              mp.sovereignty_tier, COUNT(*)::int AS counted_for
+       FROM map_politicians mp
+       JOIN websites w ON w.id = mp.website_id
+       WHERE w.label = 'shared_official'
+       GROUP BY mp.hostname, mp.ip_country, mp.ip_city, mp.hosting_provider, mp.sovereignty_tier
+       ORDER BY counted_for DESC`);
 
     // Top cities / providers (all scanned websites)
     const topCities = await query<{ city: string; country: string; n: number }>(
@@ -54,8 +95,15 @@ export default async function statsRoutes(app: FastifyInstance) {
         total: totalRow?.total ?? 0,
         by_level: Object.fromEntries(byLevel.map(r => [r.level, r.n])),
         by_party: byParty,
+        // Headline numbers exclude shared parliamentary infrastructure
+        // (ourcommons.ca, assembly.ab.ca, city council pages).
         sovereignty: Object.fromEntries(polTiers.map(r => [`tier_${r.tier}`, r.n])),
+        sovereignty_personal: Object.fromEntries(personalTiers.map(r => [`tier_${r.tier}`, r.n])),
         pct_not_canadian: Math.round((notCanadian[0]?.pct ?? 0) * 10) / 10,
+      },
+      parliamentary_infrastructure: {
+        note: "Shared institutional sites (ourcommons.ca, assembly.ab.ca, city council pages) are excluded from the headline stats. They are shared infrastructure, not personal political choices.",
+        sites: sharedInfra,
       },
       organizations: {
         total: orgTotal?.n ?? 0,

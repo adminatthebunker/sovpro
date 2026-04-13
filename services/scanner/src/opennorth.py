@@ -191,11 +191,33 @@ async def _attach_websites(db: Database, politician_id: str, rep: dict) -> None:
         )
 
 
+# Hostnames that are shared institutional infrastructure (NOT a personal
+# political choice). They get scanned but excluded from headline stats.
+SHARED_OFFICIAL_HOSTS: frozenset[str] = frozenset({
+    "www.ourcommons.ca",
+    "www.assembly.ab.ca",
+    "www.edmonton.ca",
+    "www.calgary.ca",
+    "edmonton.ca",
+    "calgary.ca",
+})
+
+
+def _label_for(url: str, default: str) -> str:
+    """Return 'shared_official' if the URL points at known shared infra."""
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return default
+    return "shared_official" if host in SHARED_OFFICIAL_HOSTS else default
+
+
 def _extract_websites(rep: dict) -> Iterable[tuple[str, str]]:
     if rep.get("personal_url"):
-        yield rep["personal_url"], "personal"
+        yield rep["personal_url"], _label_for(rep["personal_url"], "personal")
     if rep.get("url"):
-        yield rep["url"], "party"
+        yield rep["url"], _label_for(rep["url"], "party")
     for link in rep.get("extra", {}).get("urls", []) or []:
         u = link.get("url")
         note = (link.get("note") or "").lower()
@@ -204,7 +226,7 @@ def _extract_websites(rep: dict) -> Iterable[tuple[str, str]]:
         if any(s in note for s in ("twitter","facebook","instagram","youtube","tiktok","linkedin","x.com")):
             continue
         if "campaign" in note or "personal" in note or "official" in note:
-            yield u, note or "related"
+            yield u, _label_for(u, note or "related")
 
 
 async def _fetch_boundary(client: httpx.AsyncClient, set_def: OpenNorthSet, constituency_id: str) -> Optional[dict]:
