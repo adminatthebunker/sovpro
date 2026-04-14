@@ -11,8 +11,6 @@ export function StatsBar() {
   const tier2 = data.politicians.sovereignty?.tier_2 ?? 0;
   const canadianSoil = tier1 + tier2;
   const topForeign = data.top_foreign_locations?.[0];
-  const offices = data.dataset_depth?.offices_mapped ?? 0;
-  const committees = data.dataset_depth?.committees_tracked ?? 0;
 
   const tierCounts = data.politicians.sovereignty ?? {};
   const totalSites =
@@ -36,13 +34,6 @@ export function StatsBar() {
         value={String(top3.length)}
         label={`hosting companies hold ${top3Pct}% of Canadian political web data`}
         title={top3Names ? `${top3Names} together host ${top3Sum} of ${totalSites} unique sites` : undefined}
-      />
-      <Stat
-        accent="info"
-        icon="📍"
-        value={offices.toLocaleString()}
-        label="constituency & legislature offices mapped"
-        title={committees > 0 ? `Plus ${committees.toLocaleString()} committee memberships tracked` : undefined}
       />
       <SplitStat
         accent="good"
