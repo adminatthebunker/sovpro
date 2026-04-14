@@ -2,12 +2,37 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { query, queryOne } from "../db.js";
 
+// ── Shared helpers ────────────────────────────────────────────────
+//
+// Coerces the classic `?has_twitter=true` shape that HTML forms emit.
+// `z.coerce.boolean()` is unsafe here because it treats "false" as truthy.
+const boolish = z
+  .union([z.string(), z.boolean()])
+  .transform((v) => {
+    if (typeof v === "boolean") return v;
+    const s = v.toLowerCase();
+    if (s === "true" || s === "1" || s === "yes") return true;
+    if (s === "false" || s === "0" || s === "no") return false;
+    return undefined;
+  })
+  .pipe(z.boolean());
+
 const listQuery = z.object({
   level: z.enum(["federal", "provincial", "municipal"]).optional(),
   province: z.string().length(2).optional(),
   party: z.string().optional(),
   sovereignty_tier: z.coerce.number().int().min(1).max(6).optional(),
   search: z.string().optional(),
+  // Phase 7a additions
+  committee: z.string().optional(),
+  office: z.string().optional(),
+  has_twitter: boolish.optional(),
+  has_facebook: boolish.optional(),
+  has_instagram: boolish.optional(),
+  has_youtube: boolish.optional(),
+  has_tiktok: boolish.optional(),
+  has_linkedin: boolish.optional(),
+  socials_live: boolish.optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(500).default(50),
 });
@@ -32,6 +57,17 @@ const changesQuery = z.object({
   severity: z.enum(["info", "notable", "major"]).optional(),
   limit: z.coerce.number().int().min(1).max(500).default(50),
 });
+
+// Each (platform -> column name in EXISTS subquery). Used to build
+// EXISTS/NOT EXISTS predicates in a data-driven way.
+const PLATFORM_FILTERS: Array<{ param: keyof z.infer<typeof listQuery>; platform: string }> = [
+  { param: "has_twitter",   platform: "twitter"   },
+  { param: "has_facebook",  platform: "facebook"  },
+  { param: "has_instagram", platform: "instagram" },
+  { param: "has_youtube",   platform: "youtube"   },
+  { param: "has_tiktok",    platform: "tiktok"    },
+  { param: "has_linkedin",  platform: "linkedin"  },
+];
 
 export default async function politicianRoutes(app: FastifyInstance) {
   // Recent politician-level changes (party switches, retirements, etc.).
@@ -88,10 +124,62 @@ export default async function politicianRoutes(app: FastifyInstance) {
     return { politician: pol, terms };
   });
 
+  // Constituency / legislature offices for a single politician (Phase 7a).
+  app.get("/:id/offices", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pol = await queryOne(
+      `SELECT id, name FROM politicians WHERE id = $1`,
+      [id],
+    );
+    if (!pol) return reply.notFound();
+
+    const offices = await query(
+      `
+      SELECT id, politician_id, kind, address, city, province_territory,
+             postal_code, phone, fax, email, hours, lat, lon,
+             source, created_at, updated_at
+        FROM politician_offices
+       WHERE politician_id = $1
+       ORDER BY kind NULLS LAST, city NULLS LAST
+      `,
+      [id],
+    );
+    return { politician: pol, offices };
+  });
+
+  // Committee memberships for a single politician (Phase 7a).
+  app.get("/:id/committees", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pol = await queryOne(
+      `SELECT id, name FROM politicians WHERE id = $1`,
+      [id],
+    );
+    if (!pol) return reply.notFound();
+
+    const committees = await query(
+      `
+      SELECT id, politician_id, committee_name, role, level,
+             started_at, ended_at, source, created_at
+        FROM politician_committees
+       WHERE politician_id = $1
+       ORDER BY ended_at NULLS FIRST, committee_name
+      `,
+      [id],
+    );
+    return { politician: pol, committees };
+  });
+
   app.get("/", async (req, reply) => {
     const q = listQuery.safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
-    const { level, province, party, sovereignty_tier, search, page, limit } = q.data;
+    const {
+      level, province, party, sovereignty_tier, search,
+      committee, office,
+      has_twitter, has_facebook, has_instagram,
+      has_youtube, has_tiktok, has_linkedin,
+      socials_live,
+      page, limit,
+    } = q.data;
     const offset = (page - 1) * limit;
 
     const where: string[] = ["p.is_active = true"];
@@ -100,6 +188,40 @@ export default async function politicianRoutes(app: FastifyInstance) {
     if (province) { params.push(province); where.push(`p.province_territory = $${params.length}`); }
     if (party)    { params.push(party);    where.push(`p.party = $${params.length}`); }
     if (search)   { params.push(`%${search}%`); where.push(`p.name ILIKE $${params.length}`); }
+    if (office)   { params.push(`%${office}%`); where.push(`p.elected_office ILIKE $${params.length}`); }
+
+    if (committee) {
+      params.push(`%${committee}%`);
+      where.push(
+        `EXISTS (SELECT 1 FROM politician_committees pc
+                  WHERE pc.politician_id = p.id
+                    AND pc.committee_name ILIKE $${params.length})`
+      );
+    }
+
+    // Per-platform has_<platform> filters.
+    const hasFlags: Record<string, boolean | undefined> = {
+      has_twitter, has_facebook, has_instagram,
+      has_youtube, has_tiktok, has_linkedin,
+    };
+    for (const { param, platform } of PLATFORM_FILTERS) {
+      const v = hasFlags[param as string];
+      if (v === undefined) continue;
+      params.push(platform);
+      const predicate =
+        `(SELECT 1 FROM politician_socials ps
+           WHERE ps.politician_id = p.id AND ps.platform = $${params.length})`;
+      where.push(v ? `EXISTS ${predicate}` : `NOT EXISTS ${predicate}`);
+    }
+
+    // socials_live=true: has at least one live handle.
+    // socials_live=false: zero live handles (dead-only or no-verification).
+    if (socials_live !== undefined) {
+      const predicate =
+        `(SELECT 1 FROM politician_socials ps
+           WHERE ps.politician_id = p.id AND ps.is_live = true)`;
+      where.push(socials_live ? `EXISTS ${predicate}` : `NOT EXISTS ${predicate}`);
+    }
 
     // sovereignty_tier joins latest scan across any of their websites
     let tierJoin = "";
@@ -120,10 +242,38 @@ export default async function politicianRoutes(app: FastifyInstance) {
     const countSql = `SELECT COUNT(*)::int AS n FROM politicians p ${tierJoin} WHERE ${where.join(" AND ")}`;
     const total = (await queryOne<{ n: number }>(countSql, params))?.n ?? 0;
 
+    // Aggregate fields: platforms array + office/committee counts +
+    // current-term start timestamp. All joined via LEFT JOIN LATERAL
+    // so the row is returned even when no related rows exist.
     const listSql = `
-      SELECT p.*, (SELECT COUNT(*) FROM websites w WHERE w.owner_type='politician' AND w.owner_id=p.id AND w.is_active)::int AS website_count
+      SELECT
+        p.*,
+        (SELECT COUNT(*) FROM websites w
+           WHERE w.owner_type='politician' AND w.owner_id=p.id AND w.is_active)::int
+          AS website_count,
+        COALESCE(socials.platforms, '{}'::text[]) AS social_platforms,
+        COALESCE(offices.n, 0)::int               AS office_count,
+        COALESCE(committees.n, 0)::int            AS committee_count,
+        term.started_at                           AS current_term_started_at
       FROM politicians p
       ${tierJoin}
+      LEFT JOIN LATERAL (
+        SELECT array_agg(DISTINCT platform ORDER BY platform) AS platforms
+          FROM politician_socials
+         WHERE politician_id = p.id
+      ) socials ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS n FROM politician_offices WHERE politician_id = p.id
+      ) offices ON true
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS n FROM politician_committees WHERE politician_id = p.id
+      ) committees ON true
+      LEFT JOIN LATERAL (
+        SELECT started_at FROM politician_terms
+         WHERE politician_id = p.id AND ended_at IS NULL
+         ORDER BY started_at DESC
+         LIMIT 1
+      ) term ON true
       WHERE ${where.join(" AND ")}
       ORDER BY p.last_name NULLS LAST, p.name
       LIMIT ${limit} OFFSET ${offset}

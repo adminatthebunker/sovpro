@@ -105,6 +105,80 @@ export default async function statsRoutes(app: FastifyInstance) {
        FROM uniq WHERE hosting_provider IS NOT NULL
        GROUP BY hosting_provider ORDER BY n DESC LIMIT 10`);
 
+    // ── Phase 7a: nationwide headline additions ────────────
+    // These are additive — existing fields above are untouched.
+    const polsByProvince = await query<{ province: string | null; n: number }>(
+      `SELECT province_territory AS province, COUNT(*)::int AS n
+         FROM politicians
+        WHERE is_active = true
+        GROUP BY province_territory`);
+    const polsByLevel = await query<{ level: string; n: number }>(
+      `SELECT level, COUNT(*)::int AS n
+         FROM politicians
+        WHERE is_active = true
+        GROUP BY level`);
+
+    // Social media adoption across active politicians only.
+    const socialsByPlatform = await query<{ platform: string; n: number }>(
+      `SELECT ps.platform, COUNT(DISTINCT ps.politician_id)::int AS n
+         FROM politician_socials ps
+         JOIN politicians p ON p.id = ps.politician_id
+        WHERE p.is_active = true
+        GROUP BY ps.platform
+        ORDER BY n DESC`);
+    const socialsTotals = (await query<{
+      total_with_any: number; total_without: number; dead_pct: number;
+    }>(
+      `WITH active_pols AS (
+         SELECT id FROM politicians WHERE is_active = true
+       ),
+       with_any AS (
+         SELECT DISTINCT politician_id
+           FROM politician_socials
+          WHERE politician_id IN (SELECT id FROM active_pols)
+       ),
+       all_rows AS (
+         SELECT ps.is_live
+           FROM politician_socials ps
+           JOIN active_pols a ON a.id = ps.politician_id
+       )
+       SELECT
+         (SELECT COUNT(*) FROM with_any)::int                                AS total_with_any,
+         ((SELECT COUNT(*) FROM active_pols)
+           - (SELECT COUNT(*) FROM with_any))::int                           AS total_without,
+         COALESCE(
+           100.0 * SUM(CASE WHEN is_live = false THEN 1 ELSE 0 END)
+                 / NULLIF(COUNT(*), 0),
+           0)::float                                                         AS dead_pct
+         FROM all_rows`
+    ))[0];
+
+    const recentChanges24h = (await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n
+         FROM politician_changes
+        WHERE detected_at > now() - interval '24 hours'`))[0];
+
+    const topPartiesBySeatCount = await query<{ party: string; n: number }>(
+      `SELECT party, COUNT(*)::int AS n
+         FROM politicians
+        WHERE is_active = true AND party IS NOT NULL
+        GROUP BY party
+        ORDER BY n DESC
+        LIMIT 10`);
+
+    // Shape: { AB: 92, BC: 5, ..., total: N }
+    const politiciansByProvince: Record<string, number> = {};
+    let politiciansByProvinceTotal = 0;
+    for (const r of polsByProvince) {
+      const key = r.province ?? "unknown";
+      politiciansByProvince[key] = r.n;
+      politiciansByProvinceTotal += r.n;
+    }
+    politiciansByProvince.total = politiciansByProvinceTotal;
+
+    const politiciansByLevel: Record<string, number> = {};
+    for (const r of polsByLevel) politiciansByLevel[r.level] = r.n;
+
     // ── Organizations totals + referendum breakdown ─────────
     const orgTotal = (await query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM organizations WHERE is_active=true`))[0];
@@ -134,6 +208,17 @@ export default async function statsRoutes(app: FastifyInstance) {
       top_server_locations: topCities,
       top_foreign_locations: topForeignCities,
       top_providers: topProviders,
+      // ── Phase 7a headlines ─────────────────────────────
+      politicians_by_province: politiciansByProvince,
+      politicians_by_level: politiciansByLevel,
+      socials_adoption: {
+        by_platform: Object.fromEntries(socialsByPlatform.map(r => [r.platform, r.n])),
+        total_with_any: socialsTotals?.total_with_any ?? 0,
+        total_without: socialsTotals?.total_without ?? 0,
+      },
+      dead_socials_pct: Math.round((socialsTotals?.dead_pct ?? 0) * 10) / 10,
+      recent_changes_24h: recentChanges24h?.n ?? 0,
+      top_parties_by_seat_count: topPartiesBySeatCount,
     };
   });
 
