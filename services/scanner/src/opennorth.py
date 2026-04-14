@@ -27,6 +27,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from . import compare_politicians
 from .db import Database
+from .offices import _upsert_offices
 
 log = logging.getLogger(__name__)
 console = Console()
@@ -345,6 +346,22 @@ async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> 
     except Exception as exc:
         log.exception(
             "compare_politicians failed for %s (%s): %s",
+            rep.get("name"), source_id, exc,
+        )
+
+    # Materialise Open North's `offices` array into the normalized
+    # politician_offices table. Kept non-fatal so a parse failure on one
+    # rep's postal string never aborts the ingest batch.
+    try:
+        rep_offices = rep.get("offices")
+        if rep_offices is None:
+            # Some rep objects nest offices under 'extra'; be defensive.
+            rep_offices = (rep.get("extra") or {}).get("offices")
+        if rep_offices:
+            await _upsert_offices(db, politician_id, rep_offices)
+    except Exception as exc:
+        log.warning(
+            "_upsert_offices failed for %s (%s): %s",
             rep.get("name"), source_id, exc,
         )
 

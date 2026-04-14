@@ -630,6 +630,31 @@ def cmd_fill_ontario(ctx: click.Context) -> None:
     asyncio.run(_run(_gf_ontario.run, ctx.obj["dsn"]))
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Offices backfill (final gap fill)
+# ─────────────────────────────────────────────────────────────────────
+from .offices import backfill_offices  # noqa: E402
+
+
+@cli.command("backfill-offices")
+@click.pass_context
+def cmd_backfill_offices(ctx: click.Context) -> None:
+    """Materialise politicians.extras->'offices' into politician_offices.
+
+    Idempotent one-time backfill. Ongoing ingestion also populates the
+    table automatically via opennorth._upsert_politician.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await backfill_offices(db)
+        console.print(
+            f"[green]backfill-offices[/green]: "
+            f"inserted={stats['inserted']} skipped={stats['skipped']} "
+            f"politicians_touched={stats['politicians_touched']} "
+            f"parse_failures={stats['parse_failures']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})
