@@ -12,7 +12,82 @@ const listQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(50),
 });
 
+// Politician change-tracking filters (Phase 6).
+const changesQuery = z.object({
+  change_type: z
+    .enum([
+      "party_switch",
+      "office_change",
+      "retired",
+      "newly_elected",
+      "social_added",
+      "social_removed",
+      "social_dead",
+      "constituency_change",
+      "name_change",
+    ])
+    .optional(),
+  level: z.enum(["federal", "provincial", "municipal"]).optional(),
+  province: z.string().length(2).optional(),
+  severity: z.enum(["info", "notable", "major"]).optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(50),
+});
+
 export default async function politicianRoutes(app: FastifyInstance) {
+  // Recent politician-level changes (party switches, retirements, etc.).
+  // Registered before /:id so the static path wins routing.
+  app.get("/changes", async (req, reply) => {
+    const q = changesQuery.safeParse(req.query);
+    if (!q.success) return reply.badRequest(q.error.message);
+    const { change_type, level, province, severity, limit } = q.data;
+
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    if (change_type) { params.push(change_type); where.push(`c.change_type = $${params.length}`); }
+    if (level)       { params.push(level);       where.push(`p.level = $${params.length}`); }
+    if (province)    { params.push(province);    where.push(`p.province_territory = $${params.length}`); }
+    if (severity)    { params.push(severity);    where.push(`c.severity = $${params.length}`); }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const items = await query(
+      `
+      SELECT c.id, c.politician_id, c.change_type, c.old_value, c.new_value,
+             c.severity, c.detected_at,
+             p.name AS politician_name, p.level, p.province_territory,
+             p.party, p.elected_office, p.constituency_name, p.is_active
+        FROM politician_changes c
+        JOIN politicians p ON p.id = c.politician_id
+        ${whereSql}
+       ORDER BY c.detected_at DESC
+       LIMIT ${limit}
+      `,
+      params,
+    );
+    return { items, limit };
+  });
+
+  // Term history for a single politician.
+  app.get("/:id/terms", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pol = await queryOne(
+      `SELECT id, name FROM politicians WHERE id = $1`,
+      [id],
+    );
+    if (!pol) return reply.notFound();
+
+    const terms = await query(
+      `
+      SELECT id, politician_id, office, party, level, province_territory,
+             constituency_id, started_at, ended_at, source, created_at
+        FROM politician_terms
+       WHERE politician_id = $1
+       ORDER BY started_at DESC, created_at DESC
+      `,
+      [id],
+    );
+    return { politician: pol, terms };
+  });
+
   app.get("/", async (req, reply) => {
     const q = listQuery.safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);

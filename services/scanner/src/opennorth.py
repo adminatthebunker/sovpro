@@ -25,6 +25,7 @@ import orjson
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
+from . import compare_politicians
 from .db import Database
 
 log = logging.getLogger(__name__)
@@ -254,10 +255,31 @@ def _constituency_id(rep: dict, set_def: OpenNorthSet) -> Optional[str]:
     return None
 
 
-async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> str:
-    """Return politician id."""
-    source_id = f"opennorth:{set_def.path.rstrip('/').split('/')[-1]}:{rep.get('name','').lower().replace(' ','-')}"
+def _build_source_id(rep: dict, set_def: OpenNorthSet) -> str:
+    return f"opennorth:{set_def.path.rstrip('/').split('/')[-1]}:{rep.get('name','').lower().replace(' ','-')}"
+
+
+async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> tuple[str, str]:
+    """Upsert the politician, detecting and recording changes.
+
+    Returns a tuple of ``(politician_id, source_id)``. Change-tracking is
+    non-fatal: any exception in compare_politicians is logged and swallowed
+    so ingestion proceeds.
+    """
+    source_id = _build_source_id(rep, set_def)
     cid = _constituency_id(rep, set_def)
+
+    # Pre-upsert snapshot so we can diff.
+    existing = await db.fetchrow(
+        """
+        SELECT id, name, party, elected_office, constituency_id, level,
+               province_territory
+          FROM politicians
+         WHERE source_id = $1
+        """,
+        source_id,
+    )
+
     row = await db.fetchrow(
         """
         INSERT INTO politicians (
@@ -280,7 +302,8 @@ async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> 
             official_url = EXCLUDED.official_url,
             social_urls = EXCLUDED.social_urls,
             extras = EXCLUDED.extras,
-            updated_at = now()
+            updated_at = now(),
+            is_active = true
         RETURNING id
         """,
         source_id,
@@ -304,7 +327,28 @@ async def _upsert_politician(db: Database, rep: dict, set_def: OpenNorthSet) -> 
                                   "elected_office","district_name","email",
                                   "photo_url","personal_url","url")}).decode(),
     )
-    return str(row["id"])
+    politician_id = str(row["id"])
+
+    # Change-detection must not break ingestion — wrap in try/except.
+    try:
+        changes = await compare_politicians.diff_and_record(
+            db, existing, rep, set_def
+        )
+        if changes:
+            await compare_politicians.apply_changes(
+                db, politician_id, changes, set_def=set_def, incoming=rep,
+            )
+        if existing is None:
+            await compare_politicians.open_initial_term(
+                db, politician_id, rep, set_def,
+            )
+    except Exception as exc:
+        log.exception(
+            "compare_politicians failed for %s (%s): %s",
+            rep.get("name"), source_id, exc,
+        )
+
+    return politician_id, source_id
 
 
 async def _attach_websites(db: Database, politician_id: str, rep: dict) -> None:
@@ -497,10 +541,12 @@ async def _ingest_set(db: Database, set_def: OpenNorthSet, limit: int) -> None:
             task = progress.add_task("Upserting politicians", total=len(reps))
             bsem = asyncio.Semaphore(3)
             seen_ids: set[str] = set()
+            seen_source_ids: set[str] = set()
 
             async def handle(rep: dict) -> None:
                 try:
-                    pid = await _upsert_politician(db, rep, set_def)
+                    pid, sid = await _upsert_politician(db, rep, set_def)
+                    seen_source_ids.add(sid)
                     await _attach_websites(db, pid, rep)
                     cid = _constituency_id(rep, set_def)
                     if cid and cid not in seen_ids:
@@ -517,6 +563,25 @@ async def _ingest_set(db: Database, set_def: OpenNorthSet, limit: int) -> None:
                     progress.update(task, advance=1)
 
             await asyncio.gather(*(handle(r) for r in reps))
+
+        # Only run retirement detection when we processed a *full* set (not a
+        # --limit=N debugging run), otherwise every politician past the limit
+        # would look retired.
+        if len(reps) >= limit:
+            # Limit was the cap; we may not have a complete picture. Skip.
+            log.info(
+                "skipping retirement detection for %s (limit=%d hit; ran partial fetch)",
+                set_def.path, limit,
+            )
+        else:
+            try:
+                await compare_politicians.detect_retirements(
+                    db, set_def, seen_source_ids,
+                )
+            except Exception as exc:
+                log.exception(
+                    "detect_retirements failed for %s: %s", set_def.path, exc,
+                )
 
 
 async def ingest_mps(db: Database, *, limit: int = 500) -> None:

@@ -5,6 +5,7 @@ Usage:
     python -m src ingest-mps
     python -m src ingest-mlas
     python -m src ingest-councils
+    python -m src backfill-terms
     python -m src seed-orgs
     python -m src scan [--limit N] [--stale-hours N]
     python -m src refresh-views
@@ -23,6 +24,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from .compare_politicians import backfill_initial_terms
 from .db import Database, get_dsn
 from .enrich import (
     enrich_alberta_mlas,
@@ -238,6 +240,20 @@ def cmd_ingest_all_councils(ctx: click.Context, limit_per_set: int) -> None:
 def cmd_seed_orgs(ctx: click.Context) -> None:
     """Seed referendum organizations (idempotent)."""
     asyncio.run(_run(seed_organizations, ctx.obj["dsn"]))
+
+
+@cli.command("backfill-terms")
+@click.pass_context
+def cmd_backfill_terms(ctx: click.Context) -> None:
+    """One-time: open an initial politician_terms row for every active
+    politician without an existing open term."""
+    async def _wrap(db: Database) -> None:
+        stats = await backfill_initial_terms(db)
+        console.print(
+            f"[green]backfill-terms[/green]: inserted={stats['inserted']} "
+            f"skipped={stats['skipped']} candidates={stats['candidates']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
 @cli.command("enrich-mps")
