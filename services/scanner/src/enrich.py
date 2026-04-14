@@ -16,7 +16,7 @@ import asyncio
 import logging
 import re
 import unicodedata
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 import httpx
 from rich.console import Console
@@ -207,26 +207,114 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
 
 
 async def enrich_alberta_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    await _enrich_legislature(
+        db, province="AB", label="Alberta MLA",
+        host_match="%assembly.ab.ca%",
+        website_re=ASSEMBLY_WEBSITE_RE,
+        limit=limit,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Generic provincial-legislature enricher (Phase 3)
+# ─────────────────────────────────────────────────────────────────────
+# Each `enrich_<prov>()` below follows the Alberta pattern: look up politicians
+# for the province whose stored `websites.url` points at the assembly site,
+# fetch that page, and try to find an external "Website/Personal/Campaign"
+# link that isn't itself on the assembly hostname or a known social network.
+#
+# The regex patterns are best-effort — most provincial legislature sites do
+# NOT expose personal URLs in a consistent way. Patterns with no match are
+# harmless; they just yield "discovered 0 sites". A legislature gets a TODO
+# stub when even the URL-discovery heuristic can't be expressed in regex.
+
+
+def _legislature_website_re(exclude_host_substrs: tuple[str, ...]) -> re.Pattern[str]:
+    """Build a regex that matches an <a href="URL"> ... (Website|Personal|Campaign|Constituency)
+    block, excluding links back to the legislature host itself and common
+    social / infra domains.
+    """
+    # Turn each host fragment into a negative-lookahead clause.
+    excl = "".join(f"(?!{re.escape(h)})" for h in exclude_host_substrs)
+    pattern = (
+        r"<a[^>]*href=\""
+        r"(https?://"
+        + excl
+        + r"(?!facebook|twitter|x\.com|instagram|youtube|linkedin|tiktok|mailto)"
+        r"[^\"]+)\"[^>]*>\s*(?:Website|Personal|Campaign|Constituency)"
+    )
+    return re.compile(pattern, re.IGNORECASE)
+
+
+# Pre-built regexes per legislature. Kept as module-level constants both for
+# speed and so tests can import + exercise them directly.
+BC_WEBSITE_RE          = _legislature_website_re(("leg.bc.ca",))
+ON_WEBSITE_RE          = _legislature_website_re(("ola.org",))
+QC_WEBSITE_RE          = _legislature_website_re(("assnat.qc.ca",))
+MB_WEBSITE_RE          = _legislature_website_re(("gov.mb.ca",))
+SK_WEBSITE_RE          = _legislature_website_re(("legassembly.sk.ca",))
+NS_WEBSITE_RE          = _legislature_website_re(("nslegislature.ca",))
+NB_WEBSITE_RE          = _legislature_website_re(("legnb.ca",))
+PE_WEBSITE_RE          = _legislature_website_re(("assembly.pe.ca",))
+NL_WEBSITE_RE          = _legislature_website_re(("assembly.nl.ca",))
+YT_WEBSITE_RE          = _legislature_website_re(("yukonassembly.ca",))
+NT_WEBSITE_RE          = _legislature_website_re(
+    ("ntassembly.ca", "ntlegislativeassembly.ca"),
+)
+
+
+async def _scrape_legislature_page(
+    client: httpx.AsyncClient, url: str, pattern: re.Pattern[str],
+) -> Optional[str]:
+    """Best-effort scrape of an arbitrary provincial-legislature member page."""
+    try:
+        r = await client.get(url)
+        if r.status_code != 200:
+            return None
+        m = pattern.search(r.text)
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        return None
+    return None
+
+
+async def _enrich_legislature(
+    db: Database,
+    *,
+    province: str,
+    label: str,
+    host_match: str,
+    website_re: re.Pattern[str],
+    limit: Optional[int] = None,
+) -> int:
+    """Shared driver for per-legislature enrichment.
+
+    Returns the count of newly-discovered personal URLs.
+    """
     rows = await db.fetch(
         """
         SELECT p.id, p.name, w.url
         FROM politicians p
         JOIN websites w ON w.owner_type='politician' AND w.owner_id=p.id
-        WHERE p.level='provincial' AND p.province_territory='AB'
+        WHERE p.level='provincial' AND p.province_territory=$1
           AND (p.personal_url IS NULL OR p.personal_url='')
-          AND w.url ILIKE '%assembly.ab.ca%'
-        """ + (f" LIMIT {int(limit)}" if limit else "")
+          AND w.url ILIKE $2
+        """ + (f" LIMIT {int(limit)}" if limit else ""),
+        province, host_match,
     )
     if not rows:
-        console.print("[yellow]No MLAs needing enrichment[/yellow]")
-        return
-    console.print(f"[cyan]Enriching {len(rows)} Alberta MLAs[/cyan]")
+        console.print(f"[yellow]No {label}s needing enrichment[/yellow]")
+        return 0
+
+    console.print(f"[cyan]Enriching {len(rows)} {label}s[/cyan]")
 
     async with httpx.AsyncClient(
-        timeout=20, headers={"User-Agent": USER_AGENT}, follow_redirects=True
+        timeout=20, headers={"User-Agent": USER_AGENT}, follow_redirects=True,
     ) as client:
         sem = asyncio.Semaphore(4)
         found = 0
+
         with Progress(
             SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
             TextColumn("{task.completed}/{task.total}"), TimeElapsedColumn(),
@@ -237,7 +325,7 @@ async def enrich_alberta_mlas(db: Database, *, limit: Optional[int] = None) -> N
                 nonlocal found
                 async with sem:
                     try:
-                        url = await _scrape_assembly(client, r["url"])
+                        url = await _scrape_legislature_page(client, r["url"], website_re)
                         if url:
                             if not url.startswith("http"):
                                 url = "http://" + url
@@ -248,4 +336,156 @@ async def enrich_alberta_mlas(db: Database, *, limit: Optional[int] = None) -> N
 
             await asyncio.gather(*(handle(r) for r in rows))
 
-    console.print(f"[green]✓ discovered {found} MLA personal sites[/green]")
+    console.print(f"[green]✓ discovered {found} {label} personal sites[/green]")
+    return found
+
+
+async def enrich_bc_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    # NOTE: www.leg.bc.ca member pages are rendered client-side from LIMS data
+    # and Open North's per-rep `url` is typically empty for BC. Enrichment here
+    # will usually be a no-op until ingestion starts populating per-MLA pages.
+    await _enrich_legislature(
+        db, province="BC", label="BC MLA",
+        host_match="%leg.bc.ca%",
+        website_re=BC_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_ontario_mpps(db: Database, *, limit: Optional[int] = None) -> None:
+    # ola.org doesn't link to personal sites on /en/members/all/<slug> pages
+    # we've sampled (2026-04-13). Pattern is kept in case a subset of members
+    # add a "Website" section. TODO: revisit if yield remains 0% after a run.
+    await _enrich_legislature(
+        db, province="ON", label="Ontario MPP",
+        host_match="%ola.org%",
+        website_re=ON_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_quebec_mnas(db: Database, *, limit: Optional[int] = None) -> None:
+    # assnat.qc.ca /fr/deputes/<slug>/index.html — regex targets French labels.
+    # The exclusion list also blocks returning any assnat page as "personal".
+    await _enrich_legislature(
+        db, province="QC", label="Quebec MNA",
+        host_match="%assnat.qc.ca%",
+        website_re=QC_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_manitoba_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    await _enrich_legislature(
+        db, province="MB", label="Manitoba MLA",
+        host_match="%gov.mb.ca%",
+        website_re=MB_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_saskatchewan_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    await _enrich_legislature(
+        db, province="SK", label="Saskatchewan MLA",
+        host_match="%legassembly.sk.ca%",
+        website_re=SK_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_nova_scotia_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    await _enrich_legislature(
+        db, province="NS", label="Nova Scotia MLA",
+        host_match="%nslegislature.ca%",
+        website_re=NS_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_new_brunswick_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    # Open North currently emits empty `url` for all NB reps, so there's
+    # nothing to scrape until ingestion begins populating legnb.ca member
+    # pages. TODO: switch to scraping the legnb.ca roster directly if needed.
+    await _enrich_legislature(
+        db, province="NB", label="New Brunswick MLA",
+        host_match="%legnb.ca%",
+        website_re=NB_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_pei_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    await _enrich_legislature(
+        db, province="PE", label="PEI MLA",
+        host_match="%assembly.pe.ca%",
+        website_re=PE_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_nl_mhas(db: Database, *, limit: Optional[int] = None) -> None:
+    # Open North currently emits empty `url` for NL reps as well. Pattern is
+    # ready for when member pages start appearing under assembly.nl.ca.
+    await _enrich_legislature(
+        db, province="NL", label="Newfoundland & Labrador MHA",
+        host_match="%assembly.nl.ca%",
+        website_re=NL_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_yukon_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    # yukonassembly.ca /member/<slug> exists but responds 403 to unauth bots.
+    # Enrichment will be zero-yield until we add a browser-UA / anti-bot
+    # workaround. Keeping the scaffold in place for symmetry.
+    await _enrich_legislature(
+        db, province="YT", label="Yukon MLA",
+        host_match="%yukonassembly.ca%",
+        website_re=YT_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_nwt_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    # ntlegislativeassembly.ca member pages exist but contain only biographical
+    # text — no personal URL link patterns detected as of 2026-04-13.
+    await _enrich_legislature(
+        db, province="NT", label="NWT MLA",
+        host_match="%ntlegislativeassembly.ca%",
+        website_re=NT_WEBSITE_RE, limit=limit,
+    )
+
+
+async def enrich_nunavut_mlas(db: Database, *, limit: Optional[int] = None) -> None:
+    """TODO: Nunavut has no Open North representative set, so no politicians
+    are currently ingested for NU. Once the upstream feed (or a custom
+    assembly.nu.ca scraper) exists, implement this enricher by mirroring
+    `enrich_alberta_mlas`. For now this is a stub that reports 0 and returns.
+    """
+    console.print(
+        "[yellow]Nunavut enrichment skipped — no ingested Nunavut MLAs "
+        "(upstream Open North set is empty; see opennorth.py TODO).[/yellow]"
+    )
+
+
+# Registry for the coordinating `enrich_all_legislatures` helper + CLI runner.
+# Keyed by province code → async enricher function.
+PROVINCIAL_ENRICHERS: dict[str, Callable[..., Awaitable[None]]] = {
+    "AB": enrich_alberta_mlas,
+    "BC": enrich_bc_mlas,
+    "ON": enrich_ontario_mpps,
+    "QC": enrich_quebec_mnas,
+    "MB": enrich_manitoba_mlas,
+    "SK": enrich_saskatchewan_mlas,
+    "NS": enrich_nova_scotia_mlas,
+    "NB": enrich_new_brunswick_mlas,
+    "PE": enrich_pei_mlas,
+    "NL": enrich_nl_mhas,
+    "YT": enrich_yukon_mlas,
+    "NT": enrich_nwt_mlas,
+    "NU": enrich_nunavut_mlas,
+}
+
+
+async def enrich_all_legislatures(db: Database, *, limit: Optional[int] = None) -> None:
+    """Run every provincial/territorial enricher in sequence.
+
+    Each enricher is independent; failures are logged but do not abort the run.
+    """
+    for prov, fn in PROVINCIAL_ENRICHERS.items():
+        console.print(f"[cyan bold]━━ enrich {prov} ━━[/cyan bold]")
+        try:
+            await fn(db, limit=limit)
+        except Exception as exc:
+            log.exception("enrich %s failed: %s", prov, exc)
+            console.print(f"[red]  {prov}: {exc}[/red]")

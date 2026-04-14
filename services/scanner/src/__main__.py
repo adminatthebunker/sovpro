@@ -22,8 +22,42 @@ from rich.console import Console
 from rich.table import Table
 
 from .db import Database, get_dsn
-from .enrich import enrich_alberta_mlas, enrich_federal_mps
-from .opennorth import ingest_alberta_extras, ingest_councils, ingest_mlas, ingest_mps
+from .enrich import (
+    enrich_alberta_mlas,
+    enrich_all_legislatures,
+    enrich_bc_mlas,
+    enrich_federal_mps,
+    enrich_manitoba_mlas,
+    enrich_new_brunswick_mlas,
+    enrich_nl_mhas,
+    enrich_nova_scotia_mlas,
+    enrich_nunavut_mlas,
+    enrich_nwt_mlas,
+    enrich_ontario_mpps,
+    enrich_pei_mlas,
+    enrich_quebec_mnas,
+    enrich_saskatchewan_mlas,
+    enrich_yukon_mlas,
+)
+from .opennorth import (
+    ingest_alberta_extras,
+    ingest_all_legislatures,
+    ingest_bc_mlas,
+    ingest_councils,
+    ingest_manitoba_mlas,
+    ingest_mlas,
+    ingest_mps,
+    ingest_new_brunswick_mlas,
+    ingest_nl_mhas,
+    ingest_nova_scotia_mlas,
+    ingest_nunavut_mlas,
+    ingest_nwt_mlas,
+    ingest_ontario_mpps,
+    ingest_pei_mlas,
+    ingest_quebec_mnas,
+    ingest_saskatchewan_mlas,
+    ingest_yukon_mlas,
+)
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
 from .stats import print_stats
@@ -70,6 +104,116 @@ def cmd_ingest_ab_extras(ctx: click.Context) -> None:
     asyncio.run(_run(ingest_alberta_extras, ctx.obj["dsn"]))
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Provincial / territorial legislature ingestion (Phase 2)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("ingest-legislatures")
+@click.option("--limit", type=int, default=200,
+              help="Max reps to fetch per legislature (default 200 — larger than any province).")
+@click.pass_context
+def cmd_ingest_legislatures(ctx: click.Context, limit: int) -> None:
+    """Fetch MLAs/MPPs/MNAs/MHAs for every province + territory."""
+    asyncio.run(_run(ingest_all_legislatures, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-bc-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_bc_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch British Columbia MLAs from Open North."""
+    asyncio.run(_run(ingest_bc_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-ontario-mpps")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_ontario_mpps(ctx: click.Context, limit: int) -> None:
+    """Fetch Ontario MPPs from Open North."""
+    asyncio.run(_run(ingest_ontario_mpps, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-quebec-mnas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_quebec_mnas(ctx: click.Context, limit: int) -> None:
+    """Fetch Québec MNAs (Assemblée nationale) from Open North."""
+    asyncio.run(_run(ingest_quebec_mnas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-manitoba-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_manitoba_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Manitoba MLAs from Open North."""
+    asyncio.run(_run(ingest_manitoba_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-saskatchewan-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_saskatchewan_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Saskatchewan MLAs from Open North."""
+    asyncio.run(_run(ingest_saskatchewan_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-nova-scotia-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_nova_scotia_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Nova Scotia MLAs from Open North."""
+    asyncio.run(_run(ingest_nova_scotia_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-new-brunswick-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_new_brunswick_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch New Brunswick MLAs from Open North."""
+    asyncio.run(_run(ingest_new_brunswick_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-pei-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_pei_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Prince Edward Island MLAs from Open North."""
+    asyncio.run(_run(ingest_pei_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-nl-mhas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_nl_mhas(ctx: click.Context, limit: int) -> None:
+    """Fetch Newfoundland & Labrador MHAs from Open North."""
+    asyncio.run(_run(ingest_nl_mhas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-yukon-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_yukon_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Yukon MLAs from Open North."""
+    asyncio.run(_run(ingest_yukon_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-nwt-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_nwt_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Northwest Territories MLAs from Open North."""
+    asyncio.run(_run(ingest_nwt_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("ingest-nunavut-mlas")
+@click.option("--limit", type=int, default=200)
+@click.pass_context
+def cmd_ingest_nunavut_mlas(ctx: click.Context, limit: int) -> None:
+    """Fetch Nunavut MLAs (currently 0 rows — see opennorth.py TODO)."""
+    asyncio.run(_run(ingest_nunavut_mlas, ctx.obj["dsn"], limit=limit))
+
+
 @cli.command("seed-orgs")
 @click.pass_context
 def cmd_seed_orgs(ctx: click.Context) -> None:
@@ -92,6 +236,115 @@ def cmd_enrich_mps(ctx: click.Context, limit, force) -> None:
 def cmd_enrich_mlas(ctx: click.Context, limit) -> None:
     """Discover personal websites for Alberta MLAs (via assembly.ab.ca)."""
     asyncio.run(_run(enrich_alberta_mlas, ctx.obj["dsn"], limit=limit))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Per-legislature enrichment (Phase 3)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("enrich-legislatures")
+@click.option("--limit", type=int, default=None,
+              help="Max rows per province (default: all without personal_url).")
+@click.pass_context
+def cmd_enrich_legislatures(ctx: click.Context, limit) -> None:
+    """Run every provincial/territorial enricher in sequence."""
+    asyncio.run(_run(enrich_all_legislatures, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-bc-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_bc_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for BC MLAs (via leg.bc.ca)."""
+    asyncio.run(_run(enrich_bc_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-ontario-mpps")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_ontario_mpps(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Ontario MPPs (via ola.org)."""
+    asyncio.run(_run(enrich_ontario_mpps, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-quebec-mnas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_quebec_mnas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Québec MNAs (via assnat.qc.ca)."""
+    asyncio.run(_run(enrich_quebec_mnas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-manitoba-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_manitoba_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Manitoba MLAs (via gov.mb.ca/legislature)."""
+    asyncio.run(_run(enrich_manitoba_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-saskatchewan-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_saskatchewan_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Saskatchewan MLAs (via legassembly.sk.ca)."""
+    asyncio.run(_run(enrich_saskatchewan_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-nova-scotia-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_nova_scotia_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Nova Scotia MLAs (via nslegislature.ca)."""
+    asyncio.run(_run(enrich_nova_scotia_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-new-brunswick-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_new_brunswick_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for NB MLAs (via legnb.ca)."""
+    asyncio.run(_run(enrich_new_brunswick_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-pei-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_pei_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for PEI MLAs (via assembly.pe.ca)."""
+    asyncio.run(_run(enrich_pei_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-nl-mhas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_nl_mhas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for NL MHAs (via assembly.nl.ca)."""
+    asyncio.run(_run(enrich_nl_mhas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-yukon-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_yukon_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for Yukon MLAs (via yukonassembly.ca)."""
+    asyncio.run(_run(enrich_yukon_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-nwt-mlas")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_enrich_nwt_mlas(ctx: click.Context, limit) -> None:
+    """Discover personal sites for NWT MLAs (via ntlegislativeassembly.ca)."""
+    asyncio.run(_run(enrich_nwt_mlas, ctx.obj["dsn"], limit=limit))
+
+
+@cli.command("enrich-nunavut-mlas")
+@click.pass_context
+def cmd_enrich_nunavut_mlas(ctx: click.Context) -> None:
+    """Stub — Nunavut has no ingested politicians yet (see opennorth.py TODO)."""
+    asyncio.run(_run(enrich_nunavut_mlas, ctx.obj["dsn"]))
 
 
 @cli.command("scan")

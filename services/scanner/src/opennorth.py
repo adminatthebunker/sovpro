@@ -61,6 +61,100 @@ SETS = {
         boundary_set="alberta-electoral-districts",
         boundary_level="provincial",
     ),
+    # ── Other provincial + territorial legislatures ─────────────────
+    # Slugs below verified against https://represent.opennorth.ca/representative-sets/
+    # on 2026-04-13. boundary_set values come from the actual boundary_url emitted
+    # by each legislature's representatives (so constituency look-ups resolve).
+    "bc_mlas": OpenNorthSet(
+        path="/representatives/bc-legislature/",
+        level="provincial", province="BC", office="MLA",
+        boundary_set="british-columbia-electoral-districts-2015-redistribution",
+        boundary_level="provincial",
+    ),
+    "ontario_mpps": OpenNorthSet(
+        path="/representatives/ontario-legislature/",
+        level="provincial", province="ON", office="MPP",
+        boundary_set="ontario-electoral-districts-representation-act-2015",
+        boundary_level="provincial",
+    ),
+    "quebec_mnas": OpenNorthSet(
+        # Note: canonical slug is 'quebec-assemblee-nationale' on Open North,
+        # not 'quebec-assembly'. Verified 2026-04-13 (124 members).
+        path="/representatives/quebec-assemblee-nationale/",
+        level="provincial", province="QC", office="MNA",
+        boundary_set="quebec-electoral-districts-2017",
+        boundary_level="provincial",
+    ),
+    "manitoba_mlas": OpenNorthSet(
+        path="/representatives/manitoba-legislature/",
+        level="provincial", province="MB", office="MLA",
+        boundary_set="manitoba-electoral-districts-2018",
+        boundary_level="provincial",
+    ),
+    "saskatchewan_mlas": OpenNorthSet(
+        path="/representatives/saskatchewan-legislature/",
+        level="provincial", province="SK", office="MLA",
+        boundary_set="saskatchewan-electoral-districts-representation-act-2012",
+        boundary_level="provincial",
+    ),
+    "nova_scotia_mlas": OpenNorthSet(
+        path="/representatives/nova-scotia-legislature/",
+        level="provincial", province="NS", office="MLA",
+        boundary_set="nova-scotia-electoral-districts-2019",
+        boundary_level="provincial",
+    ),
+    "new_brunswick_mlas": OpenNorthSet(
+        # Open North doesn't currently populate boundary_url on NB reps; we still
+        # point at the latest NB boundary set so manual look-ups work.
+        path="/representatives/new-brunswick-legislature/",
+        level="provincial", province="NB", office="MLA",
+        boundary_set="new-brunswick-electoral-districts-2024",
+        boundary_level="provincial",
+    ),
+    "pei_mlas": OpenNorthSet(
+        # Canonical slug is 'pei-legislature' (26 members). The plan suggested
+        # 'pei-legislative-assembly' but that endpoint returns 0 results.
+        path="/representatives/pei-legislature/",
+        level="provincial", province="PE", office="MLA",
+        boundary_set="prince-edward-island-electoral-districts-2017",
+        boundary_level="provincial",
+    ),
+    "nl_mhas": OpenNorthSet(
+        # Canonical slug is 'newfoundland-labrador-legislature' (36 members).
+        path="/representatives/newfoundland-labrador-legislature/",
+        level="provincial", province="NL", office="MHA",
+        boundary_set="newfoundland-and-labrador-electoral-districts",
+        boundary_level="provincial",
+    ),
+    "yukon_mlas": OpenNorthSet(
+        # Canonical slug is 'yukon-legislature' (19 members). The plan suggested
+        # 'yukon-legislative-assembly' but that endpoint returns 0 results.
+        path="/representatives/yukon-legislature/",
+        level="provincial", province="YT", office="MLA",
+        boundary_set="yukon-electoral-districts-2015",
+        boundary_level="provincial",
+    ),
+    "nwt_mlas": OpenNorthSet(
+        # Canonical slug is 'northwest-territories-legislature' (19 members).
+        # The plan suggested 'northwest-territories-assembly' — returns 0 results.
+        path="/representatives/northwest-territories-legislature/",
+        level="provincial", province="NT", office="MLA",
+        boundary_set="northwest-territories-electoral-districts-2013",
+        boundary_level="provincial",
+    ),
+    # TODO: Nunavut — Open North has no representative-set for the Nunavut
+    # Legislative Assembly as of 2026-04-13. All candidate slugs
+    # (nunavut-legislature, nunavut-assembly, nunavut-legislative-assembly) return
+    # zero objects and there is no 'nunavut-electoral-districts' boundary set.
+    # Nunavut's 22 MLAs are non-partisan (consensus government) and the Assembly
+    # publishes member data only as static HTML on assembly.nu.ca. Re-check
+    # periodically and populate the path below once upstream data exists.
+    "nunavut_mlas": OpenNorthSet(
+        path="/representatives/nunavut-legislature/",  # placeholder — 0 results
+        level="provincial", province="NU", office="MLA",
+        boundary_set="nunavut-electoral-districts",  # does not exist upstream yet
+        boundary_level="provincial",
+    ),
     "edmonton_council": OpenNorthSet(
         path="/representatives/edmonton-city-council/",
         level="municipal",
@@ -223,6 +317,23 @@ SHARED_OFFICIAL_HOSTS: frozenset[str] = frozenset({
     # Federal / provincial parliament
     "www.ourcommons.ca",
     "www.assembly.ab.ca",
+    # Other provincial / territorial legislatures (verified 2026-04-13).
+    # These are shared infrastructure — every MLA/MPP/MNA/MHA on a province has
+    # a page under the same hostname — so sites with these hosts must not count
+    # as a "personal" political website in headline stats.
+    "www.leg.bc.ca",                 "leg.bc.ca",
+    "www.ola.org",                   "ola.org",
+    "www.assnat.qc.ca",              "assnat.qc.ca",
+    "www.gov.mb.ca",                 "gov.mb.ca",
+    "www.legassembly.sk.ca",         "legassembly.sk.ca",
+    "nslegislature.ca",              "www.nslegislature.ca",
+    "www.legnb.ca",                  "legnb.ca",
+    "www.assembly.pe.ca",            "assembly.pe.ca",
+    "www.assembly.nl.ca",            "assembly.nl.ca",
+    "yukonassembly.ca",              "www.yukonassembly.ca",
+    "www.ntassembly.ca",             "ntassembly.ca",
+    "www.ntlegislativeassembly.ca",  "ntlegislativeassembly.ca",
+    "assembly.nu.ca",                "www.assembly.nu.ca",
     # Major-metro councils
     "www.edmonton.ca", "edmonton.ca",
     "www.calgary.ca",  "calgary.ca",
@@ -365,3 +476,102 @@ async def ingest_alberta_extras(db: Database) -> None:
     for key in ("strathcona_county", "wood_buffalo", "lethbridge_council",
                 "grande_prairie_council", "county_grande_prairie"):
         await _ingest_set(db, SETS[key], 25)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Provincial / territorial legislature ingestion (Phase 2)
+# ─────────────────────────────────────────────────────────────────────
+# One thin wrapper per legislature so each can be invoked individually
+# from the CLI (e.g. `python -m src ingest-bc-mlas`). All of them call
+# `_ingest_set` with the corresponding SETS entry.
+
+
+# Ordered list of provincial/territorial SETS keys. The coordinating
+# `ingest_all_legislatures` helper walks this list. Federal MPs and
+# municipal councils are intentionally *not* included.
+PROVINCIAL_SET_KEYS: tuple[str, ...] = (
+    "alberta_mlas",
+    "bc_mlas",
+    "ontario_mpps",
+    "quebec_mnas",
+    "manitoba_mlas",
+    "saskatchewan_mlas",
+    "nova_scotia_mlas",
+    "new_brunswick_mlas",
+    "pei_mlas",
+    "nl_mhas",
+    "yukon_mlas",
+    "nwt_mlas",
+    "nunavut_mlas",  # currently 0 reps upstream; skipped with a warning
+)
+
+
+async def ingest_bc_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["bc_mlas"], limit)
+
+
+async def ingest_ontario_mpps(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["ontario_mpps"], limit)
+
+
+async def ingest_quebec_mnas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["quebec_mnas"], limit)
+
+
+async def ingest_manitoba_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["manitoba_mlas"], limit)
+
+
+async def ingest_saskatchewan_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["saskatchewan_mlas"], limit)
+
+
+async def ingest_nova_scotia_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["nova_scotia_mlas"], limit)
+
+
+async def ingest_new_brunswick_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["new_brunswick_mlas"], limit)
+
+
+async def ingest_pei_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["pei_mlas"], limit)
+
+
+async def ingest_nl_mhas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["nl_mhas"], limit)
+
+
+async def ingest_yukon_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["yukon_mlas"], limit)
+
+
+async def ingest_nwt_mlas(db: Database, *, limit: int = 200) -> None:
+    await _ingest_set(db, SETS["nwt_mlas"], limit)
+
+
+async def ingest_nunavut_mlas(db: Database, *, limit: int = 200) -> None:
+    # Open North has no usable set for Nunavut as of 2026-04-13; calling this
+    # is safe (will just print "got 0 representatives") but we log a hint.
+    console.print(
+        "[yellow]Nunavut: Open North currently returns 0 MLAs — "
+        "see TODO in SETS['nunavut_mlas'].[/yellow]"
+    )
+    await _ingest_set(db, SETS["nunavut_mlas"], limit)
+
+
+async def ingest_all_legislatures(db: Database, *, limit: int = 200) -> None:
+    """Ingest every provincial + territorial legislature from Open North.
+
+    Does NOT ingest federal MPs or municipal councils — use `ingest_mps` and
+    `ingest_councils` (and friends) for those. Intended to be run nightly /
+    weekly from cron to keep rep rosters fresh across all 13 legislatures.
+    """
+    for key in PROVINCIAL_SET_KEYS:
+        console.print(f"[cyan bold]━━ {key} ━━[/cyan bold]")
+        try:
+            await _ingest_set(db, SETS[key], limit)
+        except Exception as exc:
+            # Don't let a single legislature's hiccup abort the whole run.
+            log.exception("ingest %s failed: %s", key, exc)
+            console.print(f"[red]  {key}: {exc}[/red]")
