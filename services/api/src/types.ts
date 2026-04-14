@@ -62,6 +62,97 @@ export interface Scan {
   cms_detected: string | null;
 }
 
+export interface PoliticianTerm {
+  id: string;
+  politician_id: string;
+  office: string;
+  party: string | null;
+  level: string;
+  province_territory: string | null;
+  constituency_id: string | null;
+  started_at: string;
+  ended_at: string | null;
+  source: string | null;
+  created_at: string;
+}
+
+export type PoliticianChangeType =
+  | "party_switch"
+  | "office_change"
+  | "retired"
+  | "newly_elected"
+  | "social_added"
+  | "social_removed"
+  | "social_dead"
+  | "constituency_change"
+  | "name_change";
+
+export interface PoliticianChange {
+  id: string;
+  politician_id: string;
+  change_type: PoliticianChangeType;
+  old_value: unknown | null;
+  new_value: unknown | null;
+  severity: string;
+  detected_at: string;
+}
+
+export interface PoliticianOffice {
+  id: string;
+  politician_id: string;
+  kind: string | null;
+  address: string | null;
+  city: string | null;
+  province_territory: string | null;
+  postal_code: string | null;
+  phone: string | null;
+  fax: string | null;
+  email: string | null;
+  hours: string | null;
+  lat: number | null;
+  lon: number | null;
+  source: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type SocialPlatform =
+  | "twitter"
+  | "facebook"
+  | "instagram"
+  | "youtube"
+  | "tiktok"
+  | "linkedin"
+  | "mastodon"
+  | "bluesky"
+  | "threads"
+  | "other";
+
+export interface PoliticianSocial {
+  id: string;
+  politician_id: string;
+  platform: SocialPlatform;
+  handle: string | null;
+  url: string;
+  last_verified_at: string | null;
+  is_live: boolean | null;
+  follower_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PoliticianCommittee {
+  id: string;
+  politician_id: string;
+  committee_name: string;
+  role: string | null;
+  level: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  source: string | null;
+  created_at: string;
+}
+
 export interface MapRow {
   politician_id?: string;
   organization_id?: string;
