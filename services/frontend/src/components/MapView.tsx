@@ -51,7 +51,11 @@ L.Icon.Default.mergeOptions({
 });
 
 export function MapView({ filters }: Props) {
-  const path = useMemo(() => {
+  // Common query params shared by both fetches. Pins-first strategy: fetch
+  // pins+lines (tiny) in parallel with polygons (large). Map becomes
+  // interactive as soon as pins land; polygons stream in ~500ms later and
+  // just re-render in place.
+  const baseParams = useMemo(() => {
     const params = new URLSearchParams();
     if (filters.level) params.set("level", filters.level);
     if (filters.province) params.set("province", filters.province);
@@ -61,26 +65,43 @@ export function MapView({ filters }: Props) {
       params.set("politician_ids", filters.politicianIds.join(","));
     }
     params.set("group", filters.layer === "all" ? "all" : filters.layer);
-    return `/map/geojson?${params.toString()}`;
+    return params.toString();
   }, [filters]);
 
-  const { data, loading, error } = useFetch<GeoCollection>(path);
+  const pinsPath = `/map/geojson?${baseParams}&kinds=server,connection`;
+  const polysPath = `/map/geojson?${baseParams}&kinds=constituency,constituency_no_data`;
 
-  const { polygons, polygonsNoData, servers, lines } = useMemo(() => {
-    const polys: typeof data = { type: "FeatureCollection", features: [] };
-    const polysNo: typeof data = { type: "FeatureCollection", features: [] };
-    const srv:  typeof data = { type: "FeatureCollection", features: [] };
-    const lns:  typeof data = { type: "FeatureCollection", features: [] };
-    if (!data) return { polygons: polys, polygonsNoData: polysNo, servers: srv, lines: lns };
-    for (const f of data.features) {
+  const { data: pinsData, loading: pinsLoading, error: pinsError } = useFetch<GeoCollection>(pinsPath);
+  const { data: polysData, loading: polysLoading } = useFetch<GeoCollection>(polysPath);
+
+  // Loading indicator clears once pins land (map is interactive). Polygons
+  // stream in silently after.
+  const loading = pinsLoading;
+  const error = pinsError;
+
+  const { servers, lines } = useMemo(() => {
+    const srv: GeoCollection = { type: "FeatureCollection", features: [] };
+    const lns: GeoCollection = { type: "FeatureCollection", features: [] };
+    if (!pinsData) return { servers: srv, lines: lns };
+    for (const f of pinsData.features) {
+      const kind = f.properties.kind;
+      if (kind === "server") srv.features.push(f);
+      else if (kind === "connection") lns.features.push(f);
+    }
+    return { servers: srv, lines: lns };
+  }, [pinsData]);
+
+  const { polygons, polygonsNoData } = useMemo(() => {
+    const polys: GeoCollection = { type: "FeatureCollection", features: [] };
+    const polysNo: GeoCollection = { type: "FeatureCollection", features: [] };
+    if (!polysData) return { polygons: polys, polygonsNoData: polysNo };
+    for (const f of polysData.features) {
       const kind = f.properties.kind;
       if (kind === "constituency") polys.features.push(f);
       else if (kind === "constituency_no_data") polysNo.features.push(f);
-      else if (kind === "server") srv.features.push(f);
-      else if (kind === "connection") lns.features.push(f);
     }
-    return { polygons: polys, polygonsNoData: polysNo, servers: srv, lines: lns };
-  }, [data]);
+    return { polygons: polys, polygonsNoData: polysNo };
+  }, [polysData]);
 
   return (
     <div className="mapview">
@@ -88,6 +109,11 @@ export function MapView({ filters }: Props) {
         <div className="mapview__loading" role="status" aria-live="polite">
           <span className="mapview__leaf" aria-hidden>🍁</span>
           <span className="mapview__loading-text">Loading map…</span>
+        </div>
+      )}
+      {!loading && polysLoading && (
+        <div className="mapview__loading mapview__loading--subtle" role="status" aria-live="polite">
+          <span className="mapview__loading-text">Loading regions…</span>
         </div>
       )}
       {error && <div className="mapview__error">Failed to load: {error.message}</div>}

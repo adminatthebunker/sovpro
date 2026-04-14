@@ -10,7 +10,13 @@ const geoQuery = z.object({
   politician_ids: z.string().optional(),  // comma-separated UUIDs
   group: z.enum(["politicians","organizations","all"]).default("all"),
   include_no_data: z.coerce.boolean().default(false),
+  // Comma-separated feature kinds to include. Default = everything. When
+  // narrowed, expensive queries (e.g. no-data constituency join, polygon
+  // emission) are skipped entirely so the frontend can fetch pins-first.
+  kinds: z.string().optional(),
 });
+
+type FeatureKind = "constituency" | "constituency_no_data" | "server" | "connection";
 
 type GeoFeature = {
   type: "Feature";
@@ -29,6 +35,13 @@ export default async function mapRoutes(app: FastifyInstance) {
     const politicianIdsArr = politician_ids
       ? politician_ids.split(",").map(s => s.trim()).filter(Boolean)
       : null;
+
+    // Feature-kind filter. If unset, emit all kinds. Otherwise restrict both
+    // the shape of emitted features AND which DB queries run.
+    const kindSet: Set<FeatureKind> | null = q.data.kinds
+      ? new Set(q.data.kinds.split(",").map(s => s.trim()).filter(Boolean) as FeatureKind[])
+      : null;
+    const wants = (k: FeatureKind) => kindSet === null || kindSet.has(k);
 
     const features: GeoFeature[] = [];
 
@@ -97,7 +110,7 @@ export default async function mapRoutes(app: FastifyInstance) {
 
       // Emit one constituency feature per politician with bundled site list.
       const emittedConst = new Set<string>();
-      for (const [, g] of byPolitician) {
+      if (wants("constituency")) for (const [, g] of byPolitician) {
         const row = g.firstRow;
         if (row.boundary_geojson && row.constituency_id && !emittedConst.has(row.constituency_id)) {
           emittedConst.add(row.constituency_id);
@@ -129,9 +142,9 @@ export default async function mapRoutes(app: FastifyInstance) {
         }
       }
 
-      for (const row of rows) {
+      if (wants("server") || wants("connection")) for (const row of rows) {
         if (row.server_lat != null && row.server_lng != null) {
-          features.push({
+          if (wants("server")) features.push({
             type: "Feature",
             id: `srv-${row.website_id}`,
             properties: {
@@ -154,7 +167,7 @@ export default async function mapRoutes(app: FastifyInstance) {
             geometry: { type: "Point", coordinates: [row.server_lng, row.server_lat] },
           });
 
-          if (row.constituency_lat != null && row.constituency_lng != null) {
+          if (wants("connection") && row.constituency_lat != null && row.constituency_lng != null) {
             features.push({
               type: "Feature",
               id: `line-${row.website_id}`,
@@ -178,7 +191,7 @@ export default async function mapRoutes(app: FastifyInstance) {
       }
 
       // ── Constituencies with NO scanned website (no-data overlay) ─────
-      if (include_no_data) {
+      if (include_no_data && wants("constituency_no_data")) {
         const noDataWhere: string[] = ["p.is_active = true",
           `NOT EXISTS (SELECT 1 FROM map_politicians mp WHERE mp.politician_id = p.id)`];
         const ndParams: (string | number | string[])[] = [];
@@ -220,7 +233,7 @@ export default async function mapRoutes(app: FastifyInstance) {
     }
 
     // ── Organizations layer ──────────────────────────────────────
-    if (group === "organizations" || group === "all") {
+    if ((group === "organizations" || group === "all") && wants("server")) {
       const where: string[] = [];
       const params: (string | number)[] = [];
       if (province) { params.push(province); where.push(`province_territory = $${params.length}`); }

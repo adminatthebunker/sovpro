@@ -525,12 +525,21 @@ async def _upsert_boundary(db: Database, set_def: OpenNorthSet, constituency_id:
     geom_sql = """
       ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($4), 4326))
     """
+    # boundary_simple: ~0.005° tolerance (~555m) is sub-pixel at z4-z8. Wrap
+    # ST_Simplify in ST_MakeValid + polygon-only extract so self-intersections
+    # produced by the simplifier don't break the MultiPolygon column.
+    simple_sql = f"""
+      ST_Multi(
+        ST_CollectionExtract(
+          ST_MakeValid(ST_Simplify({geom_sql}, 0.005)),
+          3))
+    """
     await db.execute(
         f"""
         INSERT INTO constituency_boundaries
           (constituency_id, name, level, province_territory, source_set,
            boundary, boundary_simple, centroid, area_sqkm)
-        VALUES ($1, $2, $3, $5, $6, {geom_sql}, {geom_sql}, ST_Centroid({geom_sql}),
+        VALUES ($1, $2, $3, $5, $6, {geom_sql}, {simple_sql}, ST_Centroid({geom_sql}),
                 ST_Area({geom_sql}::geography)/1000000)
         ON CONFLICT (constituency_id) DO UPDATE SET
           name = EXCLUDED.name,

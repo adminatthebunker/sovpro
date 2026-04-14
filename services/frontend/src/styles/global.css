@@ -402,6 +402,16 @@ button.active { background: var(--accent); border-color: var(--accent); }
   padding: .35rem .75rem; border-radius: 999px;
   border: 1px solid var(--border);
 }
+/* Secondary indicator shown while polygons stream in after pins are already
+   visible. Doesn't block interaction — corner-docked, no backdrop. */
+.mapview__loading--subtle {
+  position: absolute; inset: auto auto 12px 12px; z-index: 499;
+  background: transparent; backdrop-filter: none;
+  display: block; padding: 0;
+}
+.mapview__loading--subtle .mapview__loading-text {
+  font-size: .75rem; opacity: .8;
+}
 @keyframes leaf-spin {
   0%   { transform: rotate(0deg)   scale(1); }
   50%  { transform: rotate(180deg) scale(1.15); }
