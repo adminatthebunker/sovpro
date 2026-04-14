@@ -283,6 +283,96 @@ async def upsert_social(
     return canon
 
 
+# ── Bulk import from agent findings ──────────────────────────────
+
+async def bulk_import_socials(db: Database, *, input_path: str) -> None:
+    """Import agent-discovered social URLs from a JSONL file.
+
+    Each line must be a JSON object of the form:
+        {"politician_id": "<uuid>", "urls": ["https://twitter.com/...", ...]}
+
+    Optional keys (ignored by the importer, carried for audit):
+        {"name": "...", "source": "agent_batch_NNN"}
+
+    Every URL flows through `upsert_social`, which enforces the canonical-
+    isation map and writes a `social_added` change row on first insert.
+    Unknown platforms (YouTube handle that 404s, random campaign domain)
+    silently no-op rather than polluting the table.
+    """
+    path = str(input_path)
+    processed = 0
+    pols_seen: set[str] = set()
+    added: Counter[str] = Counter()
+    duplicates = 0
+    rejected = 0
+    errors = 0
+
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            lines = [ln for ln in fh.readlines() if ln.strip()]
+    except FileNotFoundError:
+        console.print(f"[red]bulk-import: file not found: {path}[/red]")
+        return
+
+    console.print(f"[cyan]bulk-import: reading {len(lines)} lines from {path}[/cyan]")
+
+    for raw in lines:
+        try:
+            obj = orjson.loads(raw)
+        except Exception as exc:
+            errors += 1
+            log.warning("skip malformed line: %s", exc)
+            continue
+
+        pid = obj.get("politician_id")
+        urls = obj.get("urls") or []
+        if not pid or not isinstance(urls, list):
+            rejected += 1
+            continue
+        pols_seen.add(pid)
+
+        for url in urls:
+            if not isinstance(url, str):
+                continue
+            processed += 1
+            # Pre-check existence so we can distinguish net-new adds from
+            # duplicates in the summary. `upsert_social` is idempotent so
+            # this is safe/cheap.
+            canon = canonicalize(None, url)
+            if canon is None or canon.platform == "other" or not canon.handle:
+                rejected += 1
+                continue
+            pre = await db.fetchrow(
+                """
+                SELECT 1 FROM politician_socials
+                WHERE politician_id = $1 AND platform = $2 AND LOWER(handle) = LOWER($3)
+                """,
+                pid, canon.platform, canon.handle,
+            )
+            try:
+                result = await upsert_social(db, pid, None, url)
+            except Exception as exc:
+                errors += 1
+                log.warning("upsert failed for %s %s: %s", pid, url, exc)
+                continue
+            if result is None:
+                rejected += 1
+            elif pre is None:
+                added[result.platform] += 1
+            else:
+                duplicates += 1
+
+    console.print(
+        f"[green]✓ bulk-import done:[/green] {processed} urls, "
+        f"{len(pols_seen)} politicians touched, "
+        f"{sum(added.values())} new, {duplicates} dup, "
+        f"{rejected} rejected, {errors} errors"
+    )
+    if added:
+        for plat, n in added.most_common():
+            console.print(f"  {plat:<10} +{n}")
+
+
 # ── Step 1: normalizer ────────────────────────────────────────────
 
 async def normalize_socials(db: Database) -> None:

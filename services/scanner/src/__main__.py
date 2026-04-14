@@ -70,7 +70,7 @@ from .opennorth import (
 )
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
-from .socials import normalize_socials, verify_liveness
+from .socials import bulk_import_socials, normalize_socials, verify_liveness
 from .socials_enrichment import (
     enrich_all_socials,
     enrich_from_openparl,
@@ -414,6 +414,15 @@ def cmd_verify_socials(ctx: click.Context, limit: int, stale_hours: int) -> None
     """Issue liveness checks against each politician_socials URL."""
     asyncio.run(_run(verify_liveness, ctx.obj["dsn"],
                      limit=limit, stale_hours=stale_hours))
+
+
+@cli.command("bulk-import-socials")
+@click.option("--input", "input_path", required=True,
+              help="Path to JSONL (one {politician_id, urls:[...]} per line)")
+@click.pass_context
+def cmd_bulk_import_socials(ctx: click.Context, input_path: str) -> None:
+    """Import agent-discovered social URLs via the canonical upserter."""
+    asyncio.run(_run(bulk_import_socials, ctx.obj["dsn"], input_path=input_path))
 
 
 @cli.command("scan")
