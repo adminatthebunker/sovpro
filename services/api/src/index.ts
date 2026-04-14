@@ -16,6 +16,7 @@ import albertaRoutes from "./routes/alberta.js";
 import webhookRoutes from "./routes/webhooks.js";
 import ogRoutes from "./routes/og.js";
 import socialsRoutes from "./routes/socials.js";
+import committeesRoutes from "./routes/committees.js";
 
 const app = Fastify({
   logger: {
@@ -68,6 +69,7 @@ await app.register(albertaRoutes, { prefix: "/api/v1/alberta" });
 await app.register(webhookRoutes, { prefix: "/api/v1/webhooks" });
 await app.register(ogRoutes, { prefix: "/api/v1/og" });
 await app.register(socialsRoutes, { prefix: "/api/v1/socials" });
+await app.register(committeesRoutes, { prefix: "/api/v1/committees" });
 
 const stop = async (signal: string) => {
   app.log.info({ signal }, "shutting down");

@@ -24,6 +24,11 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from .committees import (
+    ingest_ab_committees,
+    ingest_all_committees,
+    ingest_federal_committees,
+)
 from .compare_politicians import backfill_initial_terms
 from .db import Database, get_dsn
 from .enrich import (
@@ -66,6 +71,12 @@ from .opennorth import (
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
 from .socials import normalize_socials, verify_liveness
+from .socials_enrichment import (
+    enrich_all_socials,
+    enrich_from_openparl,
+    enrich_from_wikidata,
+    enrich_mastodon_candidates,
+)
 from .stats import print_stats
 
 console = Console()
@@ -458,6 +469,165 @@ async def _stats(dsn: str) -> None:
         await print_stats(db, console)
     finally:
         await db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Committee ingestion (Team C)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("ingest-committees-federal")
+@click.pass_context
+def cmd_ingest_committees_federal(ctx: click.Context) -> None:
+    """Scrape parl.ca / ourcommons.ca committee members into politician_committees."""
+    asyncio.run(_run(ingest_federal_committees, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-committees-ab")
+@click.pass_context
+def cmd_ingest_committees_ab(ctx: click.Context) -> None:
+    """Scrape assembly.ab.ca committee membership into politician_committees."""
+    asyncio.run(_run(ingest_ab_committees, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-committees-all")
+@click.pass_context
+def cmd_ingest_committees_all(ctx: click.Context) -> None:
+    """Run every available committee ingester (federal + implemented provinces)."""
+    asyncio.run(_run(ingest_all_committees, ctx.obj["dsn"]))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Socials enrichment from external sources (Team B)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("enrich-socials-wikidata")
+@click.option("--level", type=click.Choice(["federal", "provincial"]),
+              default=None, help="Restrict to one level; default covers all.")
+@click.pass_context
+def cmd_enrich_socials_wikidata(ctx: click.Context, level) -> None:
+    """Pull handles for Canadian legislators via Wikidata SPARQL."""
+    async def _wrap(db: Database) -> None:
+        n = await enrich_from_wikidata(db, level=level)
+        console.print(f"[green]wikidata enrichment inserted {n} rows[/green]")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-socials-openparl")
+@click.pass_context
+def cmd_enrich_socials_openparl(ctx: click.Context) -> None:
+    """Backfill federal-MP handles from openparliament.ca detail pages."""
+    async def _wrap(db: Database) -> None:
+        n = await enrich_from_openparl(db)
+        console.print(f"[green]openparl enrichment inserted {n} rows[/green]")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-socials-mastodon")
+@click.pass_context
+def cmd_enrich_socials_mastodon(ctx: click.Context) -> None:
+    """Probe canada.masto.host for plausible politician handles."""
+    async def _wrap(db: Database) -> None:
+        n = await enrich_mastodon_candidates(db)
+        console.print(f"[green]mastodon enrichment inserted {n} rows[/green]")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-socials-all")
+@click.pass_context
+def cmd_enrich_socials_all(ctx: click.Context) -> None:
+    """Run wikidata → openparl → mastodon enrichers in order."""
+    asyncio.run(_run(enrich_all_socials, ctx.obj["dsn"]))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Municipal enrichment (Team D)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("enrich-municipal")
+@click.option("--limit", type=int, default=None,
+              help="Max councillors to enrich (default: all without personal_url).")
+@click.option("--concurrency", type=int, default=6,
+              help="Max parallel HTTP connections across hosts.")
+@click.pass_context
+def cmd_enrich_municipal(ctx: click.Context, limit, concurrency: int) -> None:
+    """Discover per-councillor personal/campaign sites across 108 councils.
+
+    Covers every municipal politician ingested via Open North (Phase 4).
+    Uses a handful of CMS-specific scrapers for the large platforms
+    (Drupal-Ottawa, WordPress-Mississauga) plus a name-aware generic scorer
+    that works against any municipal site. Respects robots.txt per host.
+    """
+    from .muni_enrich import enrich_municipal
+    asyncio.run(_run(enrich_municipal, ctx.obj["dsn"],
+                     limit=limit, concurrency=concurrency))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Gap fillers (Team A — web-research-driven)
+# ─────────────────────────────────────────────────────────────────────
+# Direct scrapers for legislatures Open North either doesn't cover
+# (Nunavut) or leaves with unusable data (NB/NL empty url field,
+# BC mostly-missing roster, Yukon Cloudflare-blocked). Each command is
+# a thin wrapper around the corresponding gap_fillers submodule.
+from .gap_fillers import bc as _gf_bc  # noqa: E402
+from .gap_fillers import nb as _gf_nb  # noqa: E402
+from .gap_fillers import nl as _gf_nl  # noqa: E402
+from .gap_fillers import nunavut as _gf_nunavut  # noqa: E402
+from .gap_fillers import ontario as _gf_ontario  # noqa: E402
+from .gap_fillers import yukon as _gf_yukon  # noqa: E402
+from .gap_fillers.runner import run_all as _gf_run_all  # noqa: E402
+
+
+@cli.command("fill-gaps")
+@click.pass_context
+def cmd_fill_gaps(ctx: click.Context) -> None:
+    """Run every gap-filler (NU/YT/NB/NL/BC/ON) in sequence."""
+    asyncio.run(_run(_gf_run_all, ctx.obj["dsn"]))
+
+
+@cli.command("fill-nunavut")
+@click.pass_context
+def cmd_fill_nunavut(ctx: click.Context) -> None:
+    """Scrape assembly.nu.ca for the 22 Nunavut MLAs (consensus government)."""
+    asyncio.run(_run(_gf_nunavut.run, ctx.obj["dsn"]))
+
+
+@cli.command("fill-yukon")
+@click.pass_context
+def cmd_fill_yukon(ctx: click.Context) -> None:
+    """Bootstrap Yukon (21 MLAs) from Wikipedia — yukonassembly.ca is Cloudflare-blocked."""
+    asyncio.run(_run(_gf_yukon.run, ctx.obj["dsn"]))
+
+
+@cli.command("fill-nb")
+@click.pass_context
+def cmd_fill_nb(ctx: click.Context) -> None:
+    """Scrape legnb.ca for the 49 NB MLA roster (Open North returns empty URLs)."""
+    asyncio.run(_run(_gf_nb.run, ctx.obj["dsn"]))
+
+
+@cli.command("fill-nl")
+@click.pass_context
+def cmd_fill_nl(ctx: click.Context) -> None:
+    """Scrape assembly.nl.ca for the 40 NL MHA roster (Open North returns empty URLs)."""
+    asyncio.run(_run(_gf_nl.run, ctx.obj["dsn"]))
+
+
+@cli.command("fill-bc")
+@click.pass_context
+def cmd_fill_bc(ctx: click.Context) -> None:
+    """Seed BC (93 MLAs) from Wikipedia + leg.bc.ca email table (Open North has only 5)."""
+    asyncio.run(_run(_gf_bc.run, ctx.obj["dsn"]))
+
+
+@cli.command("fill-ontario")
+@click.pass_context
+def cmd_fill_ontario(ctx: click.Context) -> None:
+    """Ontario is deferred — no programmatic source for personal URLs."""
+    asyncio.run(_run(_gf_ontario.run, ctx.obj["dsn"]))
 
 
 if __name__ == "__main__":
