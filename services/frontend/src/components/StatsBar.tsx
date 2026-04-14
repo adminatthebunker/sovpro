@@ -10,7 +10,11 @@ export function StatsBar() {
   const tier1 = data.politicians.sovereignty?.tier_1 ?? 0;
   const tier2 = data.politicians.sovereignty?.tier_2 ?? 0;
   const topForeign = data.top_foreign_locations?.[0];
-  const personalSitesScanned = data.dataset_depth?.personal_sites_scanned ?? 0;
+  // Use the same denominator the hero headline uses so the two numbers
+  // line up: politicians whose personal/campaign sites have been DNS/
+  // GeoIP/TLS-classified.
+  const politiciansClassified = Object.values(data.politicians.sovereignty ?? {})
+    .reduce((n, v) => n + (v as number), 0);
 
   const tierCounts = data.politicians.sovereignty ?? {};
   const totalSites =
@@ -31,9 +35,9 @@ export function StatsBar() {
       <Stat
         accent="info"
         icon="🔍"
-        value={personalSitesScanned.toLocaleString()}
-        label="personal & campaign sites scanned"
-        title="Politicians' own campaign/constituency websites we've DNS-probed, GeoIP'd, TLS-checked, and classified."
+        value={politiciansClassified.toLocaleString()}
+        label="politicians' personal sites classified by hosting location"
+        title="For each of these politicians we've DNS-probed, GeoIP-checked, and TLS-classified at least one of their personal or campaign websites. Matches the hero-headline denominator exactly."
       />
       <Stat
         accent="warn"
