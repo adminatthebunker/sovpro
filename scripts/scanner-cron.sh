@@ -5,6 +5,15 @@
 #   - Quick pass every 6 hours (stale > 6h)
 #   - Full sweep once a day at 06:00 UTC (stale > 0)
 #   - Weekly Open North re-ingest Sunday 02:00 UTC
+#     (federal MPs + all provincial/territorial legislatures + all Open
+#      North municipal councils + seed-orgs)
+#   - Weekly enrichment + socials normalization Sunday 04:00 UTC
+#   - Weekly socials liveness verification Monday 03:00 UTC
+#
+# NOTE: `backfill-terms` is a one-time manual operation (seeds the
+# politician_terms table from current holders). It is intentionally NOT
+# scheduled here — run it by hand once after the schema migration lands:
+#     docker compose run --rm scanner python -m src backfill-terms
 # ═══════════════════════════════════════════════════════════════════════════
 
 set -eu
@@ -32,21 +41,51 @@ bootstrap
 
 LAST_FULL=0
 LAST_WEEKLY=0
+LAST_WEEKLY_ENRICH=0
+LAST_WEEKLY_VERIFY=0
 
 while true; do
     NOW=$(date -u +%s)
+    DOW=$(date -u +%u)   # 1=Mon .. 7=Sun
+    HOUR=$(date -u +%H)
 
-    # Weekly: Sunday 02:00
-    if [ "$(date -u +%u)" = "7" ] && [ "$(date -u +%H)" = "02" ] && [ $((NOW - LAST_WEEKLY)) -gt 86400 ]; then
-        log "weekly: re-ingesting Open North"
-        python -m src ingest-mps || true
-        python -m src ingest-mlas || true
-        python -m src ingest-councils || true
+    # Weekly ingest: Sunday 02:00 UTC
+    # Full Open North re-ingest: federal MPs, Alberta MLAs (legacy), every
+    # provincial/territorial legislature, every indexed municipal council,
+    # plus org seeds. 86400s guard prevents re-running within the same day.
+    if [ "$DOW" = "7" ] && [ "$HOUR" = "02" ] && [ $((NOW - LAST_WEEKLY)) -gt 86400 ]; then
+        log "weekly (Sun 02:00): re-ingesting Open North nationwide"
+        python -m src ingest-mps || log "ingest-mps failed"
+        python -m src ingest-mlas || log "ingest-mlas failed"
+        python -m src ingest-councils || log "ingest-councils failed"
+        python -m src ingest-legislatures || log "ingest-legislatures failed"
+        python -m src ingest-all-councils || log "ingest-all-councils failed"
+        python -m src seed-orgs || log "seed-orgs failed"
         LAST_WEEKLY=$NOW
     fi
 
+    # Weekly enrichment + socials normalization: Sunday 04:00 UTC
+    # Runs 2h after the Sun 02:00 ingest so fresh social_urls JSONB is
+    # available to normalize, and personal_url enrichment sees fresh rosters.
+    if [ "$DOW" = "7" ] && [ "$HOUR" = "04" ] && [ $((NOW - LAST_WEEKLY_ENRICH)) -gt 86400 ]; then
+        log "weekly (Sun 04:00): normalize-socials + enrich-legislatures + enrich-mps"
+        python -m src normalize-socials || log "normalize-socials failed"
+        python -m src enrich-legislatures || log "enrich-legislatures failed"
+        python -m src enrich-mps || log "enrich-mps failed"
+        LAST_WEEKLY_ENRICH=$NOW
+    fi
+
+    # Weekly socials liveness verification: Monday 03:00 UTC
+    # Verifies up to 5000 socials that haven't been checked in the last week.
+    if [ "$DOW" = "1" ] && [ "$HOUR" = "03" ] && [ $((NOW - LAST_WEEKLY_VERIFY)) -gt 86400 ]; then
+        log "weekly (Mon 03:00): verify-socials (limit=5000, stale-hours=168)"
+        python -m src verify-socials --limit 5000 --stale-hours 168 \
+            || log "verify-socials failed"
+        LAST_WEEKLY_VERIFY=$NOW
+    fi
+
     # Daily: 06:00 UTC full sweep
-    if [ "$(date -u +%H)" = "06" ] && [ $((NOW - LAST_FULL)) -gt 43200 ]; then
+    if [ "$HOUR" = "06" ] && [ $((NOW - LAST_FULL)) -gt 43200 ]; then
         log "daily: full scan (stale-hours=0)"
         python -m src scan --stale-hours 0 || log "full scan failed"
         python -m src refresh-views || true
