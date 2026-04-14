@@ -683,6 +683,26 @@ def cmd_ingest_senators(ctx: click.Context) -> None:
     asyncio.run(_run(_gf_senate.run, ctx.obj["dsn"]))
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Personal-site social harvest (nationwide)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("harvest-personal-socials")
+@click.option("--limit", type=int, default=None,
+              help="Max politicians to process per run (default: all).")
+@click.pass_context
+def cmd_harvest_personal_socials(ctx: click.Context, limit) -> None:
+    """Fetch every politician's personal site and harvest social handles
+    from header/footer. Covers politicians whose personal_url came from
+    gap fillers, Wikipedia-based scraping, etc. (not just Phase 5)."""
+    from .harvest_personal_socials import harvest_all_personal_socials
+    async def _wrap(db: Database) -> None:
+        stats = await harvest_all_personal_socials(db, limit=limit)
+        console.print(f"[green]{stats}[/green]")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})
