@@ -15,6 +15,7 @@ import partyRoutes from "./routes/parties.js";
 import albertaRoutes from "./routes/alberta.js";
 import webhookRoutes from "./routes/webhooks.js";
 import ogRoutes from "./routes/og.js";
+import socialsRoutes from "./routes/socials.js";
 
 const app = Fastify({
   logger: {
@@ -66,6 +67,7 @@ await app.register(partyRoutes, { prefix: "/api/v1/parties" });
 await app.register(albertaRoutes, { prefix: "/api/v1/alberta" });
 await app.register(webhookRoutes, { prefix: "/api/v1/webhooks" });
 await app.register(ogRoutes, { prefix: "/api/v1/og" });
+await app.register(socialsRoutes, { prefix: "/api/v1/socials" });
 
 const stop = async (signal: string) => {
   app.log.info({ signal }, "shutting down");

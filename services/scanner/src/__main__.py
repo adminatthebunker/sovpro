@@ -9,6 +9,8 @@ Usage:
     python -m src scan [--limit N] [--stale-hours N]
     python -m src refresh-views
     python -m src stats
+    python -m src normalize-socials
+    python -m src verify-socials [--limit N] [--stale-hours N]
 """
 from __future__ import annotations
 
@@ -61,6 +63,7 @@ from .opennorth import (
 )
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
+from .socials import normalize_socials, verify_liveness
 from .stats import print_stats
 
 console = Console()
@@ -361,6 +364,29 @@ def cmd_enrich_nwt_mlas(ctx: click.Context, limit) -> None:
 def cmd_enrich_nunavut_mlas(ctx: click.Context) -> None:
     """Stub — Nunavut has no ingested politicians yet (see opennorth.py TODO)."""
     asyncio.run(_run(enrich_nunavut_mlas, ctx.obj["dsn"]))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Socials (Phase 5)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("normalize-socials")
+@click.pass_context
+def cmd_normalize_socials(ctx: click.Context) -> None:
+    """Explode politicians.social_urls JSONB into politician_socials rows."""
+    asyncio.run(_run(normalize_socials, ctx.obj["dsn"]))
+
+
+@cli.command("verify-socials")
+@click.option("--limit", type=int, default=500, help="Max rows to verify per run")
+@click.option("--stale-hours", type=int, default=168,
+              help="Re-verify rows whose last_verified_at is older than this")
+@click.pass_context
+def cmd_verify_socials(ctx: click.Context, limit: int, stale_hours: int) -> None:
+    """Issue liveness checks against each politician_socials URL."""
+    asyncio.run(_run(verify_liveness, ctx.obj["dsn"],
+                     limit=limit, stale_hours=stale_hours))
 
 
 @cli.command("scan")

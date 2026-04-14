@@ -23,9 +23,133 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from .db import Database
+from .socials import upsert_social
 
 log = logging.getLogger(__name__)
 console = Console()
+
+
+# ── Social handle discovery ──────────────────────────────────────
+#
+# Bio pages on ourcommons.ca / assembly.ab.ca often link to the member's
+# Twitter/Facebook/etc. These regexes pull any recognisable social URL out
+# of the HTML; the actual canonicalisation is delegated to socials.py.
+_SOCIAL_URL_RE = re.compile(
+    r"""https?://
+        (?:www\.|m\.)?
+        (?:
+            twitter\.com/[A-Za-z0-9_]{1,30}
+          | x\.com/[A-Za-z0-9_]{1,30}
+          | (?:facebook|fb)\.com/(?:profile\.php\?id=\d+|[A-Za-z0-9.\-_]+)
+          | instagram\.com/[A-Za-z0-9_.]+
+          | youtube\.com/(?:@[A-Za-z0-9_.\-]+|channel/[A-Za-z0-9_\-]+|user/[A-Za-z0-9_.\-]+|c/[A-Za-z0-9_.\-]+)
+          | youtu\.be/[A-Za-z0-9_\-]+
+          | tiktok\.com/@[A-Za-z0-9_.\-]+
+          | linkedin\.com/(?:in|company|pub)/[A-Za-z0-9_.\-%]+
+          | bsky\.app/profile/[A-Za-z0-9_.\-]+
+          | threads\.net/@[A-Za-z0-9_.\-]+
+          | [A-Za-z0-9.\-]+/@[A-Za-z0-9_.\-]+   # mastodon: <instance>/@user
+        )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Hosts we explicitly drop from the mastodon catch-all (it would otherwise
+# match any `<host>/@<user>` path, e.g. threads.net which is already covered).
+_MASTODON_BLOCKLIST: frozenset[str] = frozenset({
+    "twitter.com", "x.com", "facebook.com", "fb.com", "instagram.com",
+    "youtube.com", "youtu.be", "tiktok.com", "linkedin.com",
+    "bsky.app", "threads.net",
+})
+
+# Institutional handles that appear in shared footers — every MP's
+# ourcommons.ca page links to @ourcommonsca on Instagram/Twitter, every
+# MLA's assembly.ab.ca page links to @yourAlberta, etc. Discovering these
+# against individual politicians is wrong, so filter them out.
+_INSTITUTIONAL_HANDLES: frozenset[str] = frozenset({
+    "ourcommonsca",
+    "housecommonsca",
+    "oc_hoc",
+    "hocchamber",
+    "yourabsurl",
+    "yourabsurlnl",
+    "your_alberta",
+    "youralberta",
+    "ab_legislature",
+    "albertaleg",
+    "ableg",
+    "assemblyab",
+    "abassembly",
+    "cityofedmonton",
+    "yegcc",
+    "cityofcalgary",
+    "calgary",
+})
+
+
+def _extract_socials_from_html(html: str) -> dict[str, str]:
+    """Return {platform_hint: url} for every social link found in the HTML.
+
+    Picks the first URL per platform. platform_hint is the domain-ish key we
+    pass to socials.canonicalize() (it only needs enough info to disambiguate
+    twitter-vs-x, and mastodon fall-through).
+
+    Institutional handles (e.g. `ourcommonsca`) are filtered out — those
+    appear in shared footers and would be wrongly attributed to every MP.
+    """
+    if not html:
+        return {}
+    seen: dict[str, str] = {}
+    for match in _SOCIAL_URL_RE.finditer(html):
+        url = match.group(0).rstrip(".,)\"'>")
+        lower = url.lower()
+        if "twitter.com/" in lower:
+            key = "twitter"
+        elif "x.com/" in lower:
+            key = "x.com"
+        elif "facebook.com/" in lower or "fb.com/" in lower:
+            key = "facebook"
+        elif "instagram.com/" in lower:
+            key = "instagram"
+        elif "youtube.com/" in lower or "youtu.be/" in lower:
+            key = "youtube"
+        elif "tiktok.com/" in lower:
+            key = "tiktok"
+        elif "linkedin.com/" in lower:
+            key = "linkedin"
+        elif "bsky.app/" in lower:
+            key = "bluesky"
+        elif "threads.net/" in lower:
+            key = "threads"
+        else:
+            # Possibly mastodon (<host>/@<user>). Block obviously-not-mastodon
+            # hosts we already cover above.
+            try:
+                from urllib.parse import urlparse
+                host = (urlparse(url).hostname or "").lower()
+                if host.startswith("www."):
+                    host = host[4:]
+                if host in _MASTODON_BLOCKLIST:
+                    continue
+            except Exception:
+                continue
+            key = "mastodon"
+        if _is_institutional(url):
+            continue
+        seen.setdefault(key, url)
+    return seen
+
+
+def _is_institutional(url: str) -> bool:
+    """Does this URL point at a known institutional/shared account?"""
+    lower = url.lower()
+    for h in _INSTITUTIONAL_HANDLES:
+        # Match /handle or /@handle path segment endings, avoiding substring
+        # collisions with longer names.
+        for sep in (f"/{h}", f"/@{h}"):
+            if lower.endswith(sep) or f"{sep}/" in lower or f"{sep}?" in lower:
+                return True
+    return False
 
 
 OPENPARL_BASE = "https://api.openparliament.ca"
@@ -76,32 +200,58 @@ async def _fetch_openparl_detail(client: httpx.AsyncClient, slug_url: str) -> Op
         return None
 
 
-async def _scrape_ourcommons(client: httpx.AsyncClient, url: str) -> Optional[str]:
-    """Return the personal Website URL discovered on an ourcommons MP page."""
+async def _scrape_ourcommons(client: httpx.AsyncClient, url: str) -> tuple[Optional[str], dict[str, str]]:
+    """Return (personal_url, {platform_hint: social_url}) from an ourcommons MP page."""
     try:
         r = await client.get(url)
         if r.status_code != 200:
-            return None
-        m = WEBSITE_RE.search(r.text)
-        if m:
-            return m.group(1).strip()
+            return None, {}
+        html = r.text
+        m = WEBSITE_RE.search(html)
+        personal = m.group(1).strip() if m else None
+        socials = _extract_socials_from_html(html)
+        return personal, socials
     except Exception as exc:
         log.debug("ourcommons fetch failed for %s: %s", url, exc)
-    return None
+    return None, {}
 
 
-async def _scrape_assembly(client: httpx.AsyncClient, url: str) -> Optional[str]:
-    """Best-effort scrape of an assembly.ab.ca MLA page."""
+async def _scrape_assembly(client: httpx.AsyncClient, url: str) -> tuple[Optional[str], dict[str, str]]:
+    """Best-effort scrape of an assembly.ab.ca MLA page.
+
+    Returns (personal_url, {platform_hint: social_url}).
+    """
     try:
         r = await client.get(url)
         if r.status_code != 200:
-            return None
-        m = ASSEMBLY_WEBSITE_RE.search(r.text)
-        if m:
-            return m.group(1).strip()
+            return None, {}
+        html = r.text
+        m = ASSEMBLY_WEBSITE_RE.search(html)
+        personal = m.group(1).strip() if m else None
+        socials = _extract_socials_from_html(html)
+        return personal, socials
     except Exception:
-        return None
-    return None
+        return None, {}
+
+
+async def _scrape_personal_site(
+    client: httpx.AsyncClient, url: str
+) -> dict[str, str]:
+    """Fetch a politician's personal site and harvest social links from it.
+
+    Personal campaign sites almost always link to the politician's own socials
+    in the header/footer — this is a much higher-yield source than
+    ourcommons.ca (where links are JS-rendered) or Open North (where
+    `extra.urls` is empty for most Canadian datasets).
+    """
+    try:
+        r = await client.get(url)
+        if r.status_code != 200:
+            return {}
+        return _extract_socials_from_html(r.text)
+    except Exception as exc:
+        log.debug("personal-site scrape failed for %s: %s", url, exc)
+    return {}
 
 
 async def _attach(db: Database, politician_id: str, url: str, label: str = "personal") -> bool:
@@ -120,6 +270,21 @@ async def _attach(db: Database, politician_id: str, url: str, label: str = "pers
         politician_id, url,
     )
     return row is not None
+
+
+async def _attach_socials(db: Database, politician_id: str, socials: dict[str, str]) -> int:
+    """Upsert each discovered social into politician_socials. Returns count saved."""
+    if not socials:
+        return 0
+    saved = 0
+    for platform_hint, url in socials.items():
+        try:
+            canon = await upsert_social(db, politician_id, platform_hint, url)
+            if canon is not None:
+                saved += 1
+        except Exception as exc:
+            log.debug("upsert_social failed for %s %s: %s", politician_id, url, exc)
+    return saved
 
 
 async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
@@ -149,6 +314,7 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
 
         sem = asyncio.Semaphore(3)
         found = 0
+        socials_found = 0
         miss_no_match = 0
         miss_no_link = 0
         miss_detail = 0
@@ -161,7 +327,7 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
             task = progress.add_task("Discovering", total=len(targets))
 
             async def handle(row) -> None:
-                nonlocal found, miss_no_match, miss_no_link, miss_detail, miss_no_oc
+                nonlocal found, socials_found, miss_no_match, miss_no_link, miss_detail, miss_no_oc
                 async with sem:
                     try:
                         slug_url = name_to_url.get(_norm(row["name"]))
@@ -181,7 +347,8 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
                         if not oc_url:
                             miss_no_oc += 1
                             return
-                        personal = await _scrape_ourcommons(client, oc_url)
+                        personal, socials = await _scrape_ourcommons(client, oc_url)
+                        socials_found += await _attach_socials(db, str(row["id"]), socials)
                         if not personal:
                             miss_no_link += 1
                             return
@@ -190,6 +357,12 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
                         is_new = await _attach(db, str(row["id"]), personal, "personal")
                         if is_new:
                             found += 1
+                        # Personal sites advertise the MP's own socials in
+                        # the header/footer far more reliably than the
+                        # institutional ourcommons.ca HTML does.
+                        personal_socials = await _scrape_personal_site(client, personal)
+                        socials_found += await _attach_socials(
+                            db, str(row["id"]), personal_socials)
                     except Exception as exc:
                         log.warning("enrich exception for %s: %s", row["name"], exc)
                     finally:
@@ -199,6 +372,7 @@ async def enrich_federal_mps(db: Database, *, limit: Optional[int] = None,
 
     console.print(
         f"[green]✓ discovered {found} personal sites · "
+        f"{socials_found} socials · "
         f"{miss_no_match} unmatched names · "
         f"{miss_detail} openparl detail failed · "
         f"{miss_no_oc} no ourcommons link · "
@@ -265,18 +439,22 @@ NT_WEBSITE_RE          = _legislature_website_re(
 
 async def _scrape_legislature_page(
     client: httpx.AsyncClient, url: str, pattern: re.Pattern[str],
-) -> Optional[str]:
-    """Best-effort scrape of an arbitrary provincial-legislature member page."""
+) -> tuple[Optional[str], dict[str, str]]:
+    """Best-effort scrape of an arbitrary provincial-legislature member page.
+
+    Returns (personal_url_or_none, {platform_hint: social_url}).
+    """
     try:
         r = await client.get(url)
         if r.status_code != 200:
-            return None
-        m = pattern.search(r.text)
-        if m:
-            return m.group(1).strip()
+            return None, {}
+        html = r.text
+        m = pattern.search(html)
+        personal = m.group(1).strip() if m else None
+        socials = _extract_socials_from_html(html)
+        return personal, socials
     except Exception:
-        return None
-    return None
+        return None, {}
 
 
 async def _enrich_legislature(
@@ -314,7 +492,7 @@ async def _enrich_legislature(
     ) as client:
         sem = asyncio.Semaphore(4)
         found = 0
-
+        socials_found = 0
         with Progress(
             SpinnerColumn(), TextColumn("{task.description}"), BarColumn(),
             TextColumn("{task.completed}/{task.total}"), TimeElapsedColumn(),
@@ -322,21 +500,31 @@ async def _enrich_legislature(
             task = progress.add_task("Discovering", total=len(rows))
 
             async def handle(r) -> None:
-                nonlocal found
+                nonlocal found, socials_found
                 async with sem:
                     try:
-                        url = await _scrape_legislature_page(client, r["url"], website_re)
+                        url, socials = await _scrape_legislature_page(
+                            client, r["url"], website_re)
+                        socials_found += await _attach_socials(db, str(r["id"]), socials)
                         if url:
                             if not url.startswith("http"):
                                 url = "http://" + url
                             if await _attach(db, str(r["id"]), url, "personal"):
                                 found += 1
+                            # Follow the personal site too — MLA campaign
+                            # sites generally list all their socials there.
+                            personal_socials = await _scrape_personal_site(client, url)
+                            socials_found += await _attach_socials(
+                                db, str(r["id"]), personal_socials)
                     finally:
                         progress.update(task, advance=1)
 
             await asyncio.gather(*(handle(r) for r in rows))
 
-    console.print(f"[green]✓ discovered {found} {label} personal sites[/green]")
+    console.print(
+        f"[green]✓ discovered {found} {label} personal sites · "
+        f"{socials_found} socials[/green]"
+    )
     return found
 
 
