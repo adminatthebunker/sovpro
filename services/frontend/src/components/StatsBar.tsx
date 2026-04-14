@@ -9,8 +9,8 @@ export function StatsBar() {
 
   const tier1 = data.politicians.sovereignty?.tier_1 ?? 0;
   const tier2 = data.politicians.sovereignty?.tier_2 ?? 0;
-  const canadianSoil = tier1 + tier2;
   const topForeign = data.top_foreign_locations?.[0];
+  const personalSitesScanned = data.dataset_depth?.personal_sites_scanned ?? 0;
 
   const tierCounts = data.politicians.sovereignty ?? {};
   const totalSites =
@@ -29,19 +29,41 @@ export function StatsBar() {
   return (
     <div className="statsbar">
       <Stat
+        accent="info"
+        icon="🔍"
+        value={personalSitesScanned.toLocaleString()}
+        label="personal & campaign sites scanned"
+        title="Politicians' own campaign/constituency websites we've DNS-probed, GeoIP'd, TLS-checked, and classified."
+      />
+      <Stat
         accent="warn"
         icon="🏢"
         value={String(top3.length)}
         label={`hosting companies hold ${top3Pct}% of Canadian political web data`}
         title={top3Names ? `${top3Names} together host ${top3Sum} of ${totalSites} unique sites` : undefined}
       />
-      <SplitStat
+      {topForeign && (
+        <Stat
+          accent="bad"
+          icon={COUNTRY_FLAGS[topForeign.country] ?? "🌐"}
+          value={topForeign.city}
+          sub={topForeign.country}
+          label={`top destination outside Canada (${topForeign.n} sites)`}
+        />
+      )}
+      <Stat
+        accent="warn"
+        icon="🇨🇦"
+        value={String(tier2)}
+        label="on Canadian soil, but via foreign-owned providers (AWS, Azure, Shopify…)"
+        title="Data physically stored in Canada, but the hosting company itself is American or otherwise foreign-owned."
+      />
+      <Stat
         accent="good"
         icon="🍁"
-        left={{ value: tier1, label: "truly sovereign" }}
-        right={{ value: tier2, label: "Canadian soil" }}
-        label={`host in Canada (${canadianSoil} total)`}
-        title="Truly sovereign = Canadian-owned hosting company. Canadian soil = data stored in Canada but via a foreign provider (AWS / Azure / Shopify etc.)."
+        value={String(tier1)}
+        label="truly sovereign — Canadian-owned hosting company"
+        title="Both the data centre and the hosting company are Canadian — the only fully-sovereign outcome."
       />
       {socialsAll > 0 && (
         <Stat
@@ -50,15 +72,6 @@ export function StatsBar() {
           value={`${socialsPct}%`}
           label="have a public social-media presence"
           title={`${socialsTotal} of ${socialsAll} politicians linked to ≥1 handle`}
-        />
-      )}
-      {topForeign && (
-        <Stat
-          accent="bad"
-          icon={COUNTRY_FLAGS[topForeign.country] ?? "🌐"}
-          value={topForeign.city}
-          sub={topForeign.country}
-          label={`top destination outside Canada (${topForeign.n} sites)`}
         />
       )}
     </div>
@@ -90,38 +103,3 @@ function Stat({ value, sub, label, title, icon, accent = "info" }: StatProps) {
   );
 }
 
-interface SplitStatProps {
-  left:  { value: number; label: string };
-  right: { value: number; label: string };
-  label: string;
-  title?: string;
-  icon?: string;
-  accent?: "good" | "bad" | "warn" | "info";
-}
-
-/** Stat card showing two side-by-side numbers with their own sub-labels,
- *  plus a single overall label underneath. Used for breakdowns where
- *  showing both components tells a clearer story than hiding the split
- *  in a tooltip. */
-function SplitStat({ left, right, label, title, icon, accent = "info" }: SplitStatProps) {
-  return (
-    <div className={`statcard statcard--split statcard--${accent}`} title={title}>
-      <div className="statcard__rail" aria-hidden />
-      {icon && <div className="statcard__icon" aria-hidden>{icon}</div>}
-      <div className="statcard__body">
-        <div className="statcard__split">
-          <div className="statcard__split-half">
-            <div className="statcard__value statcard__value--sm">{left.value.toLocaleString()}</div>
-            <div className="statcard__split-label">{left.label}</div>
-          </div>
-          <div className="statcard__split-divider" aria-hidden>·</div>
-          <div className="statcard__split-half">
-            <div className="statcard__value statcard__value--sm">{right.value.toLocaleString()}</div>
-            <div className="statcard__split-label">{right.label}</div>
-          </div>
-        </div>
-        <div className="statcard__label">{label}</div>
-      </div>
-    </div>
-  );
-}

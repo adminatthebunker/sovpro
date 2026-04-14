@@ -29,6 +29,7 @@ export interface StatsResponse {
     offices_mapped: number;
     committees_tracked: number;
     social_handles_total: number;
+    personal_sites_scanned: number;
   };
   organizations: {
     total: number;

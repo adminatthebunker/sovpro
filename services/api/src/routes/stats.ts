@@ -186,6 +186,12 @@ export default async function statsRoutes(app: FastifyInstance) {
       `SELECT COUNT(*)::int AS n FROM politician_committees`))[0]?.n ?? 0;
     const socialHandlesTotal = (await query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM politician_socials`))[0]?.n ?? 0;
+    const personalSitesScanned = (await query<{ n: number }>(
+      `SELECT COUNT(DISTINCT w.id)::int AS n
+         FROM websites w
+         JOIN infrastructure_scans s ON s.website_id = w.id
+        WHERE w.owner_type = 'politician'
+          AND w.label = 'personal'`))[0]?.n ?? 0;
 
     // ── Organizations totals + referendum breakdown ─────────
     const orgTotal = (await query<{ n: number }>(
@@ -231,6 +237,7 @@ export default async function statsRoutes(app: FastifyInstance) {
         offices_mapped: officesCount,
         committees_tracked: committeesCount,
         social_handles_total: socialHandlesTotal,
+        personal_sites_scanned: personalSitesScanned,
       },
     };
   });
