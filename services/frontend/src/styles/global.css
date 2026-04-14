@@ -344,6 +344,20 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .statcard__sub { font-size: .85rem; color: var(--ink-muted); margin-left: .25rem; font-weight: 700; -webkit-text-fill-color: var(--ink-muted); }
 .statcard__label { font-size: .72rem; color: var(--ink-muted); margin-top: .25rem; line-height: 1.3; }
 
+/* Split stat card: two numbers side-by-side with a divider and shared label. */
+.statcard__value--sm { font-size: 1.4rem; line-height: 1.05; }
+.statcard__split { display: flex; align-items: center; gap: .45rem; }
+.statcard__split-half { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.statcard__split-label {
+  font-size: .6rem; color: var(--ink-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em; margin-top: .1rem;
+  white-space: nowrap;
+}
+.statcard__split-divider {
+  color: var(--ink-muted); font-size: 1.2rem; opacity: .5; line-height: 1;
+  margin: 0 .05rem;
+}
+
 .statcard--good { --sc-rail: #22c55e; --sc-glow: rgba(34,197,94,.12);  --sc-grad: #86efac; --sc-glow-text: rgba(34,197,94,.18); }
 .statcard--bad  { --sc-rail: #ef4444; --sc-glow: rgba(239,68,68,.12);  --sc-grad: #fca5a5; --sc-glow-text: rgba(239,68,68,.18); }
 .statcard--warn { --sc-rail: #f59e0b; --sc-glow: rgba(245,158,11,.12); --sc-grad: #fcd34d; --sc-glow-text: rgba(245,158,11,.18); }
