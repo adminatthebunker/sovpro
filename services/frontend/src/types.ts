@@ -25,6 +25,11 @@ export interface StatsResponse {
   };
   dead_socials_pct?: number;
   recent_changes_24h?: number;
+  dataset_depth?: {
+    offices_mapped: number;
+    committees_tracked: number;
+    social_handles_total: number;
+  };
   organizations: {
     total: number;
     referendum: {

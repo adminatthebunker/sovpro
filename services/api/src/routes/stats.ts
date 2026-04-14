@@ -179,6 +179,14 @@ export default async function statsRoutes(app: FastifyInstance) {
     const politiciansByLevel: Record<string, number> = {};
     for (const r of polsByLevel) politiciansByLevel[r.level] = r.n;
 
+    // ── Dataset depth counts (Phase 7a tail) ───────────────
+    const officesCount = (await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM politician_offices`))[0]?.n ?? 0;
+    const committeesCount = (await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM politician_committees`))[0]?.n ?? 0;
+    const socialHandlesTotal = (await query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM politician_socials`))[0]?.n ?? 0;
+
     // ── Organizations totals + referendum breakdown ─────────
     const orgTotal = (await query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM organizations WHERE is_active=true`))[0];
@@ -219,6 +227,11 @@ export default async function statsRoutes(app: FastifyInstance) {
       dead_socials_pct: Math.round((socialsTotals?.dead_pct ?? 0) * 10) / 10,
       recent_changes_24h: recentChanges24h?.n ?? 0,
       top_parties_by_seat_count: topPartiesBySeatCount,
+      dataset_depth: {
+        offices_mapped: officesCount,
+        committees_tracked: committeesCount,
+        social_handles_total: socialHandlesTotal,
+      },
     };
   });
 

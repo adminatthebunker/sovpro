@@ -10,8 +10,9 @@ export function StatsBar() {
   const tier1 = data.politicians.sovereignty?.tier_1 ?? 0;
   const tier2 = data.politicians.sovereignty?.tier_2 ?? 0;
   const canadianSoil = tier1 + tier2;
-  const totalPoliticians = data.politicians.total;
   const topForeign = data.top_foreign_locations?.[0];
+  const offices = data.dataset_depth?.offices_mapped ?? 0;
+  const committees = data.dataset_depth?.committees_tracked ?? 0;
 
   const tierCounts = data.politicians.sovereignty ?? {};
   const totalSites =
@@ -38,10 +39,10 @@ export function StatsBar() {
       />
       <Stat
         accent="info"
-        icon="🧑‍💼"
-        value={totalPoliticians.toLocaleString()}
-        label="politicians tracked nationwide"
-        sub="13 P/Ts · 3 levels of gov"
+        icon="📍"
+        value={offices.toLocaleString()}
+        label="constituency & legislature offices mapped"
+        title={committees > 0 ? `Plus ${committees.toLocaleString()} committee memberships tracked` : undefined}
       />
       <Stat
         accent="good"
