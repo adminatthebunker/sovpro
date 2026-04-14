@@ -1,0 +1,420 @@
+/* ── Politician detail page (Phase 7b) ───────────────────────
+   Scoped stylesheet: only loaded when `/politician/:id` renders.
+   Kept out of global.css to avoid colliding with user WIP. Uses the
+   existing design tokens (--bg, --panel, --ink, etc.) defined there.
+*/
+
+.pol-detail {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 3rem;
+  color: var(--ink);
+}
+.pol-detail--loading, .pol-detail--empty {
+  padding: 2rem 1.5rem;
+  color: var(--ink-muted);
+}
+.pol-detail--empty h1 { color: var(--ink); margin-top: 1rem; }
+.pol-detail--empty code {
+  background: var(--panel-2);
+  padding: 0 .3rem;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+.pol-detail__back {
+  display: inline-block;
+  color: #93c5fd;
+  font-size: .85rem;
+  margin-bottom: 1rem;
+}
+.pol-detail__back:hover { text-decoration: underline; }
+
+.pol-detail__header {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+.pol-detail__head-body {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+.pol-detail__photo {
+  width: 120px;
+  height: 120px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+.pol-detail__head-text { flex: 1; min-width: 0; }
+.pol-detail__name {
+  margin: 0 0 .25rem;
+  font-size: clamp(1.4rem, 2.4vw, 2rem);
+  letter-spacing: -.02em;
+}
+.pol-detail__office {
+  color: var(--ink);
+  font-size: 1rem;
+  margin-bottom: .5rem;
+}
+.pol-detail__party { color: #93c5fd; font-weight: 600; }
+.pol-detail__meta { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .65rem; }
+.pol-detail__chip {
+  display: inline-block;
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  font-size: .75rem;
+  font-weight: 500;
+}
+.pol-detail__chip--muted { color: var(--ink-muted); }
+.pol-detail__links {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: .85rem;
+}
+.pol-detail__links a { color: #93c5fd; }
+
+/* ── Tab bar ────────────────────────────────────────── */
+.pol-detail__tabbar {
+  display: flex;
+  gap: .25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+  overflow-x: auto;
+}
+.pol-detail__tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: .65rem 1rem;
+  color: var(--ink-muted);
+  font-weight: 500;
+  font-size: .9rem;
+  cursor: pointer;
+  border-radius: 0;
+  white-space: nowrap;
+}
+.pol-detail__tab:hover {
+  background: transparent;
+  color: var(--ink);
+}
+.pol-detail__tab--active {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+}
+
+.pol-detail__panel {
+  min-height: 200px;
+}
+
+/* ── Shared tab states ──────────────────────────────── */
+.pol-tab { padding: .25rem 0; }
+.pol-tab__loading, .pol-tab__error, .pol-tab__empty {
+  padding: 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--ink-muted);
+}
+.pol-tab__error { color: #fca5a5; }
+.pol-tab__empty strong {
+  display: block;
+  color: var(--ink);
+  margin-bottom: .35rem;
+}
+.pol-tab__empty p { margin: 0; font-size: .9rem; }
+.pol-tab__note {
+  font-size: .8rem;
+  color: var(--ink-muted);
+  background: var(--panel-2);
+  padding: .55rem .75rem;
+  border-radius: 6px;
+  margin: 0 0 .85rem;
+}
+
+/* ── Socials tab ────────────────────────────────────── */
+.pol-socials__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: .75rem;
+}
+.pol-social-card {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem .9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: transform .12s, background .15s, border-color .15s;
+}
+.pol-social-card:hover {
+  background: var(--panel-2);
+  border-color: #475569;
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.pol-social-card__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.pol-social-card__body { flex: 1; min-width: 0; }
+.pol-social-card__platform {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--ink-muted);
+}
+.pol-social-card__handle {
+  font-weight: 600;
+  font-size: .95rem;
+  margin-top: .1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pol-social-card__url {
+  font-size: .72rem;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: .1rem;
+}
+.pol-social-card__badge {
+  flex-shrink: 0;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: .2rem .5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.pol-social-card__badge--live {
+  background: rgba(34, 197, 94, .15);
+  color: #86efac;
+  border-color: rgba(34, 197, 94, .35);
+}
+.pol-social-card__badge--dead {
+  background: rgba(239, 68, 68, .15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, .35);
+}
+.pol-social-card__badge--unverified {
+  background: var(--panel-2);
+  color: var(--ink-muted);
+}
+.pol-social-card--dead .pol-social-card__handle { text-decoration: line-through; opacity: .7; }
+
+/* ── Offices tab ────────────────────────────────────── */
+.pol-offices__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: .85rem;
+}
+.pol-office {
+  padding: 1rem 1.1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.pol-office__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+.pol-office__label {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--ink);
+}
+.pol-office__type {
+  font-size: .68rem;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  color: var(--ink-muted);
+}
+.pol-office__addr {
+  font-size: .9rem;
+  color: var(--ink);
+  margin-bottom: .65rem;
+  white-space: pre-line;
+}
+.pol-office__fields {
+  margin: 0 0 .55rem;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  font-size: .85rem;
+}
+.pol-office__fields > div { display: flex; gap: .5rem; }
+.pol-office__fields dt {
+  color: var(--ink-muted);
+  min-width: 4rem;
+  font-weight: 500;
+}
+.pol-office__fields dd { margin: 0; color: var(--ink); }
+.pol-office__fields a { color: #93c5fd; }
+.pol-office__map {
+  padding-top: .55rem;
+  border-top: 1px solid var(--border);
+  font-size: .8rem;
+}
+.pol-office__map a { color: #93c5fd; }
+
+/* ── Terms tab ──────────────────────────────────────── */
+.pol-terms {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+  position: relative;
+}
+.pol-term {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  position: relative;
+}
+.pol-term--current {
+  border-left: 4px solid var(--accent);
+  background: linear-gradient(90deg, rgba(225, 29, 72, .08), var(--panel) 25%);
+}
+.pol-term__years {
+  display: flex;
+  align-items: baseline;
+  gap: .3rem;
+  font-family: ui-monospace, monospace;
+  font-size: .95rem;
+}
+.pol-term__year-start { color: var(--ink); font-weight: 700; }
+.pol-term__year-sep { color: var(--ink-muted); }
+.pol-term__year-end { color: var(--ink); font-weight: 600; }
+.pol-term__body { min-width: 0; }
+.pol-term__title {
+  font-weight: 600;
+  font-size: .95rem;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+.pol-term__badge {
+  background: var(--accent);
+  color: #fff;
+  font-size: .6rem;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  padding: .15rem .45rem;
+  border-radius: 4px;
+  font-weight: 700;
+}
+.pol-term__meta { margin-top: .25rem; font-size: .82rem; color: var(--ink-muted); }
+.pol-term__party { color: var(--ink); font-weight: 600; }
+.pol-term__dates { margin-top: .25rem; font-size: .75rem; color: var(--ink-muted); }
+.pol-term__source { opacity: .7; }
+
+@media (max-width: 540px) {
+  .pol-term { grid-template-columns: 1fr; gap: .35rem; }
+  .pol-term__years { font-size: .85rem; }
+}
+
+/* ── Changes tab ────────────────────────────────────── */
+.pol-changes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .55rem;
+}
+.pol-change {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: .75rem;
+  padding: .75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.pol-change__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--panel-2);
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+.pol-change--party_switch  .pol-change__icon { background: rgba(147, 197, 253, .15); color: #93c5fd; }
+.pol-change--retired       .pol-change__icon { background: rgba(239, 68, 68, .15);   color: #fca5a5; }
+.pol-change--newly_elected .pol-change__icon { background: rgba(34, 197, 94, .15);   color: #86efac; }
+.pol-change--social_dead   .pol-change__icon { background: rgba(239, 68, 68, .15);   color: #fca5a5; }
+.pol-change--social_added  .pol-change__icon { background: rgba(34, 197, 94, .15);   color: #86efac; }
+
+.pol-change__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.pol-change__type {
+  font-weight: 600;
+  color: var(--ink);
+}
+.pol-change__time {
+  font-size: .75rem;
+  color: var(--ink-muted);
+}
+.pol-change__summary {
+  margin: .35rem 0 0;
+  font-size: .88rem;
+  color: var(--ink);
+}
+.pol-change__diff {
+  margin-top: .35rem;
+  font-family: ui-monospace, monospace;
+  font-size: .82rem;
+}
+.pol-change__diff del { color: #fca5a5; text-decoration: line-through; }
+.pol-change__diff ins { color: #86efac; text-decoration: none; }
+
+/* ── Mobile ─────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .pol-detail { padding: .75rem .85rem 2rem; }
+  .pol-detail__head-body { flex-direction: column; align-items: flex-start; }
+  .pol-detail__photo { width: 88px; height: 88px; }
+  .pol-detail__name { font-size: 1.3rem; }
+}
