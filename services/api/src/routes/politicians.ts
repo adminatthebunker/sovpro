@@ -102,6 +102,29 @@ export default async function politicianRoutes(app: FastifyInstance) {
     return { items, limit };
   });
 
+  // Change history for a single politician.
+  app.get("/:id/changes", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const pol = await queryOne(
+      `SELECT id, name FROM politicians WHERE id = $1`,
+      [id],
+    );
+    if (!pol) return reply.notFound();
+
+    const changes = await query(
+      `
+      SELECT id, politician_id, change_type, old_value, new_value,
+             severity, detected_at
+        FROM politician_changes
+       WHERE politician_id = $1
+       ORDER BY detected_at DESC
+       LIMIT 200
+      `,
+      [id],
+    );
+    return { politician: pol, items: changes };
+  });
+
   // Term history for a single politician.
   app.get("/:id/terms", async (req, reply) => {
     const { id } = req.params as { id: string };
