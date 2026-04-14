@@ -12,6 +12,7 @@ import { PostalResultsDrawer } from "./components/PostalResultsDrawer";
 import { PartyReportCard } from "./components/PartyReportCard";
 import { Faq } from "./components/Faq";
 import { WhoWeTrack } from "./components/WhoWeTrack";
+import { ShareMenu } from "./components/ShareMenu";
 
 export default function App() {
   const [filters, setFilters] = useState<FilterState>({
@@ -38,9 +39,10 @@ export default function App() {
         </div>
         <nav className="shell__tabs">
           <button className={activeTab === "map" ? "active" : ""} onClick={() => setActiveTab("map")}>Map</button>
-          <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>Alberta Referendum</button>
           <button className={activeTab === "changes" ? "active" : ""} onClick={() => setActiveTab("changes")}>Changes</button>
           <button className={activeTab === "faq" ? "active" : ""} onClick={() => setActiveTab("faq")}>FAQ</button>
+          <button className={activeTab === "referendum" ? "active" : ""} onClick={() => setActiveTab("referendum")}>AB Referendum</button>
+          <ShareMenu />
           <a
             className="shell__contact"
             href="mailto:admin@thebunkerops.ca?subject=CanadianPoliticalData%20feedback"
@@ -83,6 +85,9 @@ export default function App() {
             />
             <Filters value={filters} onChange={setFilters} />
           </div>
+          <p className="map-hint" role="note">
+            💡 Click any riding to see the politician&apos;s full hosting profile, socials, and offices.
+          </p>
           <div className={`map-with-drawer ${(reportParty || postalResult) ? "is-open" : ""}`}>
             <div className="map-with-drawer__map">
               <MapView filters={filters} />

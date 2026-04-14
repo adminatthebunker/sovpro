@@ -17,6 +17,14 @@ export interface StatsResponse {
     sovereignty: Record<string, number>;
     pct_not_canadian: number;
   };
+  politicians_by_province?: Record<string, number>;
+  socials_adoption?: {
+    by_platform: Record<string, number>;
+    total_with_any: number;
+    total_without: number;
+  };
+  dead_socials_pct?: number;
+  recent_changes_24h?: number;
   organizations: {
     total: number;
     referendum: {

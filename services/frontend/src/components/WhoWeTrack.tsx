@@ -5,83 +5,89 @@ interface StatsRollup {
     total: number;
     by_level: Record<string, number>;
   };
+  politicians_by_province?: Record<string, number>;
+  socials_adoption?: {
+    total_with_any: number;
+    total_without: number;
+  };
   organizations: { total: number };
 }
 
-interface AlbertaCoverageRow {
-  level: string;
-  set_name: string | null;
-  politicians: number;
-}
-
-interface AlbertaOverview {
-  coverage: AlbertaCoverageRow[];
-}
+const PROVINCE_ORDER: [string, string][] = [
+  ["ON", "Ontario"], ["QC", "Québec"], ["BC", "B.C."], ["AB", "Alberta"],
+  ["MB", "Manitoba"], ["SK", "Sask."], ["NS", "N.S."], ["NB", "N.B."],
+  ["NL", "N.L."], ["PE", "P.E.I."], ["YT", "Yukon"], ["NT", "N.W.T."],
+  ["NU", "Nunavut"],
+];
 
 /**
- * Compact panel that itemizes every group Canadian Political Data is tracking.
- * Sits beside the hero so visitors immediately see "of whom" the headline
- * percentage applies to.
+ * Compact panel that itemizes every group we track, nationwide.
+ * Shows level breakdown + per-province chip row so visitors immediately see
+ * the scope of the dataset (13 provinces/territories, all 3 levels of gov).
  */
 export function WhoWeTrack() {
   const { data: stats } = useFetch<StatsRollup>("/stats");
-  const { data: ab } = useFetch<AlbertaOverview>("/alberta/overview");
 
   const fed = stats?.politicians.by_level.federal ?? 0;
   const prov = stats?.politicians.by_level.provincial ?? 0;
   const muni = stats?.politicians.by_level.municipal ?? 0;
   const orgs = stats?.organizations.total ?? 0;
+  const total = fed + prov + muni + orgs;
+  const byProv = stats?.politicians_by_province ?? {};
 
-  // City-by-city breakdown for AB municipal
-  const muniRows = (ab?.coverage ?? []).filter(c => c.level === "municipal");
-  const cities = muniRows
-    .map(c => ({
-      label: (c.set_name ?? "")
-        .replace(" City Council", "")
-        .replace(" Municipal Council", "")
-        .replace(" Council", "")
-        .trim(),
-      n: c.politicians,
-    }))
-    .filter(c => c.label)
+  const provChips = PROVINCE_ORDER
+    .map(([code, label]) => ({ code, label, n: byProv[code] ?? 0 }))
+    .filter(p => p.n > 0)
     .sort((a, b) => b.n - a.n);
+
+  const provincesCovered = provChips.length;
+
+  const groups = [
+    { icon: "🏛️", n: fed,  label: "Federal (MPs + Senate)", accent: "fed"  },
+    { icon: "🌾", n: prov, label: `Provincial · ${provincesCovered} P/Ts`, accent: "prov" },
+    { icon: "🏙️", n: muni, label: "Municipal councillors", accent: "muni" },
+    { icon: "🗳️", n: orgs, label: "Parties & orgs",         accent: "orgs" },
+  ];
 
   return (
     <aside className="who-we-track" aria-label="Who we track">
-      <header>
-        <span className="who-we-track__eyebrow">Who we track</span>
-        <h3>{fed + prov + muni + orgs} entities scanned</h3>
+      <header className="who-we-track__head">
+        <span className="who-we-track__eyebrow">Who we track · nationwide</span>
+        <h3>
+          <span className="who-we-track__total">{total.toLocaleString()}</span>
+          <span className="who-we-track__total-label">politicians &amp; orgs scanned</span>
+        </h3>
       </header>
-      <ul className="who-we-track__list">
-        <li>
-          <span className="who-we-track__n">{fed}</span>
-          <span>Federal Members of Parliament</span>
-        </li>
-        <li>
-          <span className="who-we-track__n">{prov}</span>
-          <span>Alberta MLAs</span>
-        </li>
-        <li>
-          <span className="who-we-track__n">{muni}</span>
-          <span>Alberta councillors &amp; mayors</span>
-          {cities.length > 0 && (
-            <ul className="who-we-track__sub">
-              {cities.map(c => (
-                <li key={c.label}>
-                  {c.label} <span>({c.n})</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </li>
-        <li>
-          <span className="who-we-track__n">{orgs}</span>
-          <span>Political parties &amp; referendum organizations</span>
-        </li>
-      </ul>
+
+      <div className="who-we-track__grid">
+        {groups.map(g => (
+          <div key={g.label} className={`wwt-card wwt-card--${g.accent}`}>
+            <div className="wwt-card__icon" aria-hidden>{g.icon}</div>
+            <div className="wwt-card__body">
+              <div className="wwt-card__n">{g.n.toLocaleString()}</div>
+              <div className="wwt-card__label">{g.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {provChips.length > 0 && (
+        <div className="who-we-track__chips">
+          <span className="who-we-track__chips-label">Provincial breakdown</span>
+          <div className="wwt-chip-row">
+            {provChips.map(p => (
+              <span key={p.code} className="wwt-chip" title={`${p.n} politicians in ${p.label}`}>
+                {p.label} <span className="wwt-chip__n">{p.n}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       <footer className="who-we-track__foot">
-        Data from <a href="https://represent.opennorth.ca" target="_blank" rel="noopener noreferrer">Open North</a>.
-        Personal/campaign sites discovered via web search.
+        Data from <a href="https://represent.opennorth.ca" target="_blank" rel="noopener noreferrer">Open North</a>,
+        Wikidata, parl.ca, provincial legislature sites, and council rosters.
+        Personal / campaign sites discovered via web scraping.
       </footer>
     </aside>
   );

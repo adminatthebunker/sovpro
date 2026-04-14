@@ -84,7 +84,12 @@ export function MapView({ filters }: Props) {
 
   return (
     <div className="mapview">
-      {loading && <div className="mapview__loading">Loading map…</div>}
+      {loading && (
+        <div className="mapview__loading" role="status" aria-live="polite">
+          <span className="mapview__leaf" aria-hidden>🍁</span>
+          <span className="mapview__loading-text">Loading map…</span>
+        </div>
+      )}
       {error && <div className="mapview__error">Failed to load: {error.message}</div>}
 
       <MapContainer
@@ -308,6 +313,7 @@ function buildConstituencyTooltip(p: Record<string, unknown>): string {
 /** Rich click popup — full politician card with all sites listed */
 function buildConstituencyPopup(p: Record<string, unknown>): string {
   const name = String(p.politician_name ?? "");
+  const politicianId = p.politician_id ? String(p.politician_id) : null;
   const constituency = String(p.name ?? "");
   const office = String(p.elected_office ?? "");
   const party = String(p.party ?? "");
@@ -349,5 +355,6 @@ function buildConstituencyPopup(p: Record<string, unknown>): string {
         <span class="map-popup__total">${totalSites} total</span>
       </div>
       ${totalSites > 0 ? `<ul class="map-popup__sites">${siteHtml}</ul>` : `<p class="map-popup__nosites">No personal/campaign website tracked.</p>`}
+      ${politicianId ? `<a class="map-popup__profile" href="/politician/${escapeHtml(politicianId)}">View full profile →</a>` : ""}
     </div>`;
 }

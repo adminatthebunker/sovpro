@@ -27,9 +27,20 @@
   display: inline-block;
   color: #93c5fd;
   font-size: .85rem;
+  font-weight: 500;
   margin-bottom: 1rem;
+  padding: .35rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  transition: background .15s, border-color .15s, color .15s;
 }
-.pol-detail__back:hover { text-decoration: underline; }
+.pol-detail__back:hover {
+  background: var(--panel-2);
+  border-color: rgba(148,163,184,.35);
+  color: #bfdbfe;
+  text-decoration: none;
+}
 
 .pol-detail__header {
   padding-bottom: 1rem;
@@ -93,11 +104,14 @@
 .pol-detail__tab {
   background: transparent;
   border: 0;
-  border-bottom: 2px solid transparent;
-  padding: .65rem 1rem;
+  border-bottom: 3px solid transparent;
+  padding: .75rem .85rem;
+  min-height: 44px;
+  flex: 1 1 auto;
+  text-align: center;
   color: var(--ink-muted);
   font-weight: 500;
-  font-size: .9rem;
+  font-size: .88rem;
   cursor: pointer;
   border-radius: 0;
   white-space: nowrap;
@@ -109,6 +123,13 @@
 .pol-detail__tab--active {
   color: var(--ink);
   border-bottom-color: var(--accent);
+}
+
+@media (max-width: 640px) {
+  .pol-detail__tab {
+    padding: .8rem .5rem;
+    font-size: .82rem;
+  }
 }
 
 .pol-detail__panel {

@@ -11,9 +11,6 @@ export function StatsBar() {
   const totalPoliticians = data.politicians.total;
   const topForeign = data.top_foreign_locations?.[0];
 
-  // Concentration: top 3 hosting providers' combined share of all unique sites.
-  // sovereignty totals are already dedup'd-by-hostname and exclude shared_official —
-  // same denominator as top_providers, so the math is consistent.
   const tierCounts = data.politicians.sovereignty ?? {};
   const totalSites =
     (tierCounts.tier_1 ?? 0) + (tierCounts.tier_2 ?? 0) +
@@ -24,19 +21,42 @@ export function StatsBar() {
   const top3Pct = totalSites > 0 ? Math.round(100 * top3Sum / totalSites) : 0;
   const top3Names = top3.map(p => p.provider).join(" + ");
 
+  const socialsTotal = data.socials_adoption?.total_with_any ?? 0;
+  const socialsAll   = socialsTotal + (data.socials_adoption?.total_without ?? 0);
+  const socialsPct   = socialsAll > 0 ? Math.round(100 * socialsTotal / socialsAll) : 0;
+
   return (
     <div className="statsbar">
       <Stat
+        accent="warn"
+        icon="🏢"
         value={String(top3.length)}
         label={`hosting companies hold ${top3Pct}% of Canadian political web data`}
         title={top3Names ? `${top3Names} together host ${top3Sum} of ${totalSites} unique sites` : undefined}
       />
-      <Stat value={String(totalPoliticians)} label="politicians tracked" />
-      <Stat value={String(tier1)} label="use Canadian-owned hosting" />
+      <Stat
+        accent="info"
+        icon="🧑‍💼"
+        value={totalPoliticians.toLocaleString()}
+        label="politicians tracked nationwide"
+        sub="13 P/Ts · 3 levels of gov"
+      />
+      <Stat accent="good" icon="🍁" value={String(tier1)} label="use Canadian-owned hosting" />
+      {socialsAll > 0 && (
+        <Stat
+          accent="info"
+          icon="📱"
+          value={`${socialsPct}%`}
+          label="have a public social-media presence"
+          title={`${socialsTotal} of ${socialsAll} politicians linked to ≥1 handle`}
+        />
+      )}
       {topForeign && (
         <Stat
+          accent="bad"
+          icon={COUNTRY_FLAGS[topForeign.country] ?? "🌐"}
           value={topForeign.city}
-          sub={`${COUNTRY_FLAGS[topForeign.country] ?? ""} ${topForeign.country}`}
+          sub={topForeign.country}
           label={`top destination outside Canada (${topForeign.n} sites)`}
         />
       )}
@@ -44,11 +64,27 @@ export function StatsBar() {
   );
 }
 
-function Stat({ value, sub, label, title }: { value: string; sub?: string; label: string; title?: string }) {
+interface StatProps {
+  value: string;
+  sub?: string;
+  label: string;
+  title?: string;
+  icon?: string;
+  accent?: "good" | "bad" | "warn" | "info";
+}
+
+function Stat({ value, sub, label, title, icon, accent = "info" }: StatProps) {
   return (
-    <div className="statcard" title={title}>
-      <div className="statcard__value">{value}{sub ? <span className="statcard__sub"> {sub}</span> : null}</div>
-      <div className="statcard__label">{label}</div>
+    <div className={`statcard statcard--${accent}`} title={title}>
+      <div className="statcard__rail" aria-hidden />
+      {icon && <div className="statcard__icon" aria-hidden>{icon}</div>}
+      <div className="statcard__body">
+        <div className="statcard__value">
+          {value}
+          {sub ? <span className="statcard__sub"> {sub}</span> : null}
+        </div>
+        <div className="statcard__label">{label}</div>
+      </div>
     </div>
   );
 }
