@@ -82,6 +82,11 @@ services:
     volumes:
       - ./data:/data:ro
       - ./db:/app/db:ro
+      # Phase 4 helper scripts (e.g. scripts/generate_muni_sets.py).
+      # The generator also needs write access to the scanner's src directory
+      # so the refreshed _muni_sets_generated.py persists to the host repo.
+      - ./scripts:/app/scripts:ro
+      - ./services/scanner/src:/app/src
     profiles: ["tools"]
     networks: [sw]
 

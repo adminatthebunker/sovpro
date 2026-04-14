@@ -41,6 +41,7 @@ from .enrich import (
 )
 from .opennorth import (
     ingest_alberta_extras,
+    ingest_all_councils,
     ingest_all_legislatures,
     ingest_bc_mlas,
     ingest_councils,
@@ -212,6 +213,21 @@ def cmd_ingest_nwt_mlas(ctx: click.Context, limit: int) -> None:
 def cmd_ingest_nunavut_mlas(ctx: click.Context, limit: int) -> None:
     """Fetch Nunavut MLAs (currently 0 rows — see opennorth.py TODO)."""
     asyncio.run(_run(ingest_nunavut_mlas, ctx.obj["dsn"], limit=limit))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Municipal ingestion (Phase 4)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("ingest-all-councils")
+@click.option("--limit", "limit_per_set", type=int, default=200,
+              help="Max councillors to ingest per municipal set")
+@click.pass_context
+def cmd_ingest_all_councils(ctx: click.Context, limit_per_set: int) -> None:
+    """Fetch every municipal council Open North indexes (Phase 4)."""
+    asyncio.run(_run(ingest_all_councils, ctx.obj["dsn"],
+                     limit_per_set=limit_per_set))
 
 
 @cli.command("seed-orgs")

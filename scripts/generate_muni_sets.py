@@ -1,0 +1,217 @@
+#!/usr/bin/env python3
+"""Generate OpenNorthSet entries for every municipal council that Open North indexes.
+
+Fetches https://represent.opennorth.ca/representative-sets/?limit=1000, filters
+to municipal councils (excludes federal + provincial/territorial legislatures),
+and derives province / boundary-set / office / path for each.
+
+Usage:
+    python scripts/generate_muni_sets.py
+
+Writes:
+    services/scanner/src/_muni_sets_generated.py   (import target)
+    Also prints the generated dict literal to stdout.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import urllib.request
+from pathlib import Path
+
+BASE = os.environ.get("OPENNORTH_BASE", "https://represent.opennorth.ca")
+INDEX_URL = f"{BASE}/representative-sets/?limit=1000"
+
+# Names we explicitly drop — these are federal or provincial/territorial
+# legislatures, handled in opennorth.py / provincial phase.
+NON_MUNICIPAL_SUBSTRINGS = (
+    "house of commons",
+    "legislative assembly",
+    "national assembly",
+    "legislature",
+    "parliament",
+    "assemblée nationale",
+    "assemblée législative",
+)
+
+# Map OCD-style province codes (embedded in data_url, e.g. ca_on_toronto) to
+# our canonical 2-letter province codes.
+PROVINCE_MAP = {
+    "ab": "AB", "bc": "BC", "mb": "MB", "nb": "NB", "nl": "NL",
+    "ns": "NS", "nt": "NT", "nu": "NU", "on": "ON", "pe": "PE",
+    "qc": "QC", "sk": "SK", "yt": "YT",
+}
+
+
+def fetch_index() -> list[dict]:
+    req = urllib.request.Request(
+        INDEX_URL, headers={"User-Agent": "CanadianPoliticalDataBot/1.0"}
+    )
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = json.load(r)
+    return data.get("objects", [])
+
+
+def is_municipal(obj: dict) -> bool:
+    name = (obj.get("name") or "").lower()
+    if any(s in name for s in NON_MUNICIPAL_SUBSTRINGS):
+        return False
+    # Accept if the name clearly indicates a local council.
+    if "council" in name or "conseil" in name:
+        return True
+    return False
+
+
+def province_from_data_url(data_url: str) -> str | None:
+    # data_url example: https://scrapers.herokuapp.com/represent/ca_on_toronto/
+    m = re.search(r"/ca_([a-z]{2})(?:_|/)", data_url or "")
+    if not m:
+        return None
+    return PROVINCE_MAP.get(m.group(1))
+
+
+def slug_from_url(url: str) -> str:
+    # url example: /representative-sets/toronto-city-council/
+    return url.strip("/").split("/")[-1]
+
+
+def boundary_set_from_related(related: dict, slug: str) -> str:
+    b = related.get("boundaries_url") or ""
+    # b like '/boundaries/toronto-wards-2018/' -> 'toronto-wards-2018'
+    if b:
+        parts = [p for p in b.strip("/").split("/") if p]
+        if len(parts) >= 2 and parts[0] == "boundaries":
+            return parts[1]
+    # Best-effort fallback.
+    base = slug.replace("-city-council", "").replace("-town-council", "") \
+        .replace("-municipal-council", "").replace("-regional-council", "") \
+        .replace("-township-council", "").replace("-county-council", "") \
+        .replace("-district-council", "").replace("-council", "")
+    return f"{base}-wards"
+
+
+def office_from_name(name: str) -> str:
+    n = name.lower()
+    if "city council" in n:
+        return "City Councillor"
+    if "town council" in n:
+        return "Town Councillor"
+    if "regional council" in n:
+        return "Regional Councillor"
+    if "county council" in n:
+        return "County Councillor"
+    if "township council" in n:
+        return "Township Councillor"
+    if "district council" in n:
+        return "District Councillor"
+    if "municipal council" in n or "conseil municipal" in n:
+        return "Councillor"
+    return "Councillor"
+
+
+def key_from_slug(slug: str) -> str:
+    # Python identifier: replace hyphens with underscores; ensure unique per slug.
+    return re.sub(r"[^a-z0-9_]", "", slug.replace("-", "_"))
+
+
+def build_entries(objs: list[dict]) -> dict[str, dict]:
+    entries: dict[str, dict] = {}
+    seen_keys: set[str] = set()
+    for o in objs:
+        if not is_municipal(o):
+            continue
+        url = o.get("url") or ""
+        slug = slug_from_url(url)
+        if not slug:
+            continue
+        province = province_from_data_url(o.get("data_url") or "")
+        related = o.get("related") or {}
+        bset = boundary_set_from_related(related, slug)
+        office = office_from_name(o.get("name") or "")
+        key = key_from_slug(slug)
+        # Uniqueness safety.
+        base_key = key
+        n = 2
+        while key in seen_keys:
+            key = f"{base_key}_{n}"
+            n += 1
+        seen_keys.add(key)
+        entries[key] = {
+            "path": f"/representatives/{slug}/",
+            "level": "municipal",
+            "province": province,
+            "office": office,
+            "boundary_set": bset,
+            "boundary_level": "municipal",
+            "name": o.get("name") or slug,
+        }
+    return entries
+
+
+HEADER = '''"""AUTO-GENERATED by scripts/generate_muni_sets.py. Do not edit by hand.
+
+Re-run the generator to refresh from Open North's representative-sets index.
+"""
+from __future__ import annotations
+
+from .opennorth import OpenNorthSet
+
+MUNICIPAL_SETS: dict[str, OpenNorthSet] = {
+'''
+
+FOOTER = "}\n"
+
+
+def render(entries: dict[str, dict]) -> str:
+    lines = [HEADER]
+    for key, e in sorted(entries.items()):
+        prov = f'"{e["province"]}"' if e["province"] else "None"
+        lines.append(
+            f'    "{key}": OpenNorthSet(  # {e["name"]}\n'
+            f'        path="{e["path"]}",\n'
+            f'        level="municipal",\n'
+            f'        province={prov},\n'
+            f'        office="{e["office"]}",\n'
+            f'        boundary_set="{e["boundary_set"]}",\n'
+            f'        boundary_level="municipal",\n'
+            f'    ),\n'
+        )
+    lines.append(FOOTER)
+    return "".join(lines)
+
+
+def main() -> int:
+    objs = fetch_index()
+    entries = build_entries(objs)
+    rendered = render(entries)
+
+    # Locate the scanner src dir. On the host repo this is
+    # ./services/scanner/src/ relative to the repo root; inside the
+    # container image it is /app/src/.
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here.parent / "services" / "scanner" / "src",   # host checkout
+        here.parent / "src",                            # in-container layout
+    ]
+    out_dir = None
+    for c in candidates:
+        if c.is_dir():
+            out_dir = c
+            break
+    if out_dir is None:
+        out_dir = candidates[0]
+        out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "_muni_sets_generated.py"
+    out_path.write_text(rendered)
+
+    sys.stdout.write(rendered)
+    sys.stdout.write(
+        f"\n# ── wrote {len(entries)} municipal sets → {out_path} ──\n"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -199,6 +199,14 @@ SETS = {
     ),
 }
 
+# Merge in the full dynamic catalogue of municipal councils harvested from
+# Open North's /representative-sets index by scripts/generate_muni_sets.py.
+# The static AB keys above (edmonton_council, calgary_council, etc.) remain
+# since their key names differ from the generator's derived keys.
+from ._muni_sets_generated import MUNICIPAL_SETS  # noqa: E402
+
+SETS.update(MUNICIPAL_SETS)
+
 
 async def _fetch_json(client: httpx.AsyncClient, url: str) -> dict:
     r = await client.get(url)
@@ -343,6 +351,60 @@ SHARED_OFFICIAL_HOSTS: frozenset[str] = frozenset({
     "www.strathcona.ca", "strathcona.ca",
     "cityofgp.com",      "www.cityofgp.com",
     "countygp.ab.ca",    "www.countygp.ab.ca",
+    # ── Phase 4 municipal expansion (snapshot 2026-04-13) ──
+    # Produced by extend_shared_hosts_from_db() after a full
+    # ingest-all-councils run. Regenerate periodically.
+    "abbotsford.ca",                 "www.abbotsford.ca",
+    "brampton.ca",                   "www.brampton.ca",
+    "burlington.ca",                 "www.burlington.ca",
+    "burnaby.ca",                    "www.burnaby.ca",
+    "caledon.ca",                    "www.caledon.ca",
+    "cbrm.ns.ca",                    "www.cbrm.ns.ca",
+    "chatham-kent.ca",               "www.chatham-kent.ca",
+    "cityofkingston.ca",             "www.cityofkingston.ca",
+    "citywindsor.ca",                "www.citywindsor.ca",
+    "coquitlam.ca",                  "www.coquitlam.ca",
+    "forterie.ca",                   "www.forterie.ca",
+    "fredericton.ca",                "www.fredericton.ca",
+    "gatineau.ca",                   "www.gatineau.ca",
+    "georgina.ca",                   "www.georgina.ca",
+    "greatersudbury.ca",             "www.greatersudbury.ca",
+    "halifax.ca",                    "www.halifax.ca",
+    "hamilton.ca",                   "www.hamilton.ca",
+    "king.ca",                       "www.king.ca",
+    "kitchener.ca",                  "www.kitchener.ca",
+    "lincoln.ca",                    "www.lincoln.ca",
+    "longueuil.quebec",              "www.longueuil.quebec",
+    "markham.ca",                    "www.markham.ca",
+    "milton.ca",                     "www.milton.ca",
+    "mississauga.ca",                "www.mississauga.ca",
+    "montreal.ca",                   "www.montreal.ca",
+    "newmarket.ca",                  "www.newmarket.ca",
+    "niagararegion.ca",              "www.niagararegion.ca",
+    "oakville.ca",                   "www.oakville.ca",
+    "ottawa.ca",                     "www.ottawa.ca",
+    "peelregion.ca",                 "www.peelregion.ca",
+    "pickering.ca",                  "www.pickering.ca",
+    "regina.ca",                     "www.regina.ca",
+    "regionofwaterloo.ca",           "www.regionofwaterloo.ca",
+    "richmond.ca",                   "www.richmond.ca",
+    "richmondhill.ca",               "www.richmondhill.ca",
+    "saintjohn.ca",                  "www.saintjohn.ca",
+    "saultstemarie.ca",              "www.saultstemarie.ca",
+    "sherbrooke.ca",                 "www.sherbrooke.ca",
+    "sjsr.ca",                       "www.sjsr.ca",
+    "stjohns.ca",                    "www.stjohns.ca",
+    "surrey.ca",                     "www.surrey.ca",
+    "thunderbay.ca",                 "www.thunderbay.ca",
+    "tol.ca",                        "www.tol.ca",
+    "toronto.ca",                    "www.toronto.ca",
+    "townofws.ca",                   "www.townofws.ca",
+    "v3r.net",                       "www.v3r.net",
+    "vaughan.ca",                    "www.vaughan.ca",
+    "victoria.ca",                   "www.victoria.ca",
+    "waterloo.ca",                   "www.waterloo.ca",
+    "welland.ca",                    "www.welland.ca",
+    "winnipeg.ca",                   "www.winnipeg.ca",
 })
 
 
@@ -575,3 +637,89 @@ async def ingest_all_legislatures(db: Database, *, limit: int = 200) -> None:
             # Don't let a single legislature's hiccup abort the whole run.
             log.exception("ingest %s failed: %s", key, exc)
             console.print(f"[red]  {key}: {exc}[/red]")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Municipal ingestion (Phase 4)
+# ─────────────────────────────────────────────────────────────────────
+
+
+async def ingest_all_councils(db: Database, limit_per_set: int = 200) -> None:
+    """Iterate every generated municipal set and ingest up to ``limit_per_set``
+    councillors per set.
+
+    Per-council failures (404, timeout, schema drift, etc.) are logged and the
+    batch continues; we never abort the nationwide run because one city's
+    scraper is down.
+    """
+    total = len(MUNICIPAL_SETS)
+    console.print(f"[cyan]ingest_all_councils: {total} municipal sets "
+                  f"(limit_per_set={limit_per_set})[/cyan]")
+    succeeded: list[str] = []
+    failed: list[tuple[str, str]] = []
+    for i, (key, set_def) in enumerate(sorted(MUNICIPAL_SETS.items()), start=1):
+        console.print(f"[cyan][{i}/{total}] {key} — {set_def.path}[/cyan]")
+        try:
+            await _ingest_set(db, set_def, limit_per_set)
+            succeeded.append(key)
+        except httpx.HTTPStatusError as exc:
+            msg = f"HTTP {exc.response.status_code} {exc.request.url}"
+            log.warning("council ingest failed: %s: %s", key, msg)
+            console.print(f"[yellow]  skipped {key}: {msg}[/yellow]")
+            failed.append((key, msg))
+        except Exception as exc:  # pragma: no cover — defensive
+            log.exception("council ingest failed: %s", key)
+            console.print(f"[yellow]  skipped {key}: {exc}[/yellow]")
+            failed.append((key, str(exc)))
+    console.print(
+        f"[green]ingest_all_councils complete — "
+        f"ok={len(succeeded)} failed={len(failed)} total={total}[/green]"
+    )
+    if failed:
+        console.print("[yellow]failed sets:[/yellow]")
+        for key, msg in failed:
+            console.print(f"  - {key}: {msg}")
+
+
+async def extend_shared_hosts_from_db(db: Database) -> frozenset[str]:
+    """Return a frozenset of hostnames that appear on multiple municipal
+    politicians' official sites (i.e. shared institutional infrastructure).
+
+    A host qualifies if at least 3 distinct politicians at the ``municipal``
+    level share the same hostname on a website labelled ``shared_official``,
+    ``official``, ``personal`` or ``party``. We also include any host matching
+    the canonical ``www.<slug>.ca`` pattern derived from municipal slugs.
+
+    The result is the **union** of the compile-time ``SHARED_OFFICIAL_HOSTS``
+    and the DB-derived set, so callers can adopt it without losing existing
+    entries. Intended to be called periodically and dumped back into the
+    static list.
+    """
+    rows = await db.fetch(
+        """
+        SELECT LOWER(split_part(regexp_replace(w.url, '^https?://', ''), '/', 1))
+               AS host,
+               COUNT(DISTINCT w.owner_id) AS n
+        FROM websites w
+        JOIN politicians p ON p.id = w.owner_id
+        WHERE w.owner_type = 'politician'
+          AND p.level = 'municipal'
+          AND w.url IS NOT NULL
+        GROUP BY 1
+        HAVING COUNT(DISTINCT w.owner_id) >= 3
+        """
+    )
+    hosts: set[str] = set()
+    for r in rows or []:
+        host = (r["host"] or "").strip().lstrip(".")
+        if not host:
+            continue
+        # Strip port if present.
+        host = host.split(":", 1)[0]
+        hosts.add(host)
+        # Also add the www.<host> / bare variants to match both forms.
+        if host.startswith("www."):
+            hosts.add(host[4:])
+        else:
+            hosts.add(f"www.{host}")
+    return frozenset(SHARED_OFFICIAL_HOSTS | hosts)
