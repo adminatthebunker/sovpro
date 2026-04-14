@@ -386,6 +386,10 @@ SHARED_OFFICIAL_HOSTS: frozenset[str] = frozenset({
     # Federal / provincial parliament
     "www.ourcommons.ca",
     "www.assembly.ab.ca",
+    # Canadian Senate — every senator's institutional page is hosted at
+    # sencanada.ca, so the host is shared infrastructure (not a personal
+    # political choice).
+    "sencanada.ca",                  "www.sencanada.ca",
     # Other provincial / territorial legislatures (verified 2026-04-13).
     # These are shared infrastructure — every MLA/MPP/MNA/MHA on a province has
     # a page under the same hostname — so sites with these hosts must not count

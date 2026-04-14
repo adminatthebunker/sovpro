@@ -655,6 +655,26 @@ def cmd_backfill_offices(ctx: click.Context) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Senate ingestion (final gap fill)
+# ─────────────────────────────────────────────────────────────────────
+from .gap_fillers import senate as _gf_senate  # noqa: E402
+
+
+@cli.command("ingest-senators")
+@click.pass_context
+def cmd_ingest_senators(ctx: click.Context) -> None:
+    """Scrape sencanada.ca for the 105 Canadian senators (provincial seats).
+
+    Open North has no representative-set for the Canadian Senate, so we go
+    directly to the Senate's own Umbraco AJAX endpoints. Rows are upserted
+    with level='federal', elected_office='Senator', and province_territory
+    set to the constitutionally-apportioned province for each seat. Safe
+    to re-run; source_id 'direct:sencanada-ca:<slug>' is idempotent.
+    """
+    asyncio.run(_run(_gf_senate.run, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})
