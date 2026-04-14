@@ -8,6 +8,8 @@ export function StatsBar() {
   if (!data) return <div className="statsbar statsbar--loading">Loading stats…</div>;
 
   const tier1 = data.politicians.sovereignty?.tier_1 ?? 0;
+  const tier2 = data.politicians.sovereignty?.tier_2 ?? 0;
+  const canadianSoil = tier1 + tier2;
   const totalPoliticians = data.politicians.total;
   const topForeign = data.top_foreign_locations?.[0];
 
@@ -41,7 +43,13 @@ export function StatsBar() {
         label="politicians tracked nationwide"
         sub="13 P/Ts · 3 levels of gov"
       />
-      <Stat accent="good" icon="🍁" value={String(tier1)} label="use Canadian-owned hosting" />
+      <Stat
+        accent="good"
+        icon="🍁"
+        value={String(canadianSoil)}
+        label="host on Canadian soil"
+        title={`${tier1} truly sovereign (Canadian-owned) · ${tier2} Canadian soil via foreign providers (AWS / Azure / Shopify etc.)`}
+      />
       {socialsAll > 0 && (
         <Stat
           accent="info"
