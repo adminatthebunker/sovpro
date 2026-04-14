@@ -142,6 +142,9 @@ export function MapView({ filters }: Props) {
                 const p = f.properties || {};
                 layer.bindTooltip(buildConstituencyTooltip(p), { sticky: true });
                 layer.bindPopup(buildConstituencyPopup(p), { maxWidth: 340, minWidth: 280 });
+                // Hide the hover tooltip while the popup is open so we don't
+                // render both info boxes at once.
+                layer.on("popupopen", () => layer.closeTooltip());
               }}
             />
           </LayersControl.Overlay>
