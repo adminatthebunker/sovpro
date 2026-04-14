@@ -626,8 +626,16 @@ def cmd_fill_bc(ctx: click.Context) -> None:
 @cli.command("fill-ontario")
 @click.pass_context
 def cmd_fill_ontario(ctx: click.Context) -> None:
-    """Ontario is deferred — no programmatic source for personal URLs."""
-    asyncio.run(_run(_gf_ontario.run, ctx.obj["dsn"]))
+    """Fill Ontario MPP personal URLs + socials via OLP caucus / Wikipedia / Wikidata / DNS-probe."""
+    async def _wrap(db: Database) -> None:
+        stats = await _gf_ontario.fill_ontario(db)
+        console.print(
+            f"[green]fill-ontario summary[/green]: "
+            f"personal_urls={stats['personal_urls']} "
+            f"socials={stats['socials']} "
+            f"unmatched={stats['unmatched']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
 # ─────────────────────────────────────────────────────────────────────
