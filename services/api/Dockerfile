@@ -15,8 +15,9 @@ COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist
 
-# healthcheck
-RUN apk add --no-cache curl
+# healthcheck + fonts (resvg needs system fonts to render OG card text)
+RUN apk add --no-cache curl ttf-dejavu font-noto font-noto-emoji fontconfig \
+  && fc-cache -f
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD curl -fsS http://localhost:${API_PORT:-3000}/health || exit 1
 
