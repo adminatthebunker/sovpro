@@ -2,7 +2,7 @@
 
 > A civic transparency tool that answers one question: **where do Canadian politicians and political organizations actually store their website data?**
 
-Canadian Political Data scans the websites of every federal MP, every Alberta MLA, Edmonton and Calgary city councillors, and the organizations driving Alberta's October 19, 2026 independence referendum — and plots the result on an interactive map. Constituency polygons are drawn, then connected by lines to server pins, overwhelmingly clustered in the United States.
+Canadian Political Data scans the websites of ~1,800 elected officials across every level of Canadian government — federal MPs, senators, every provincial and territorial legislature, and municipal councils from coast to coast — plus the organizations driving Alberta's October 19, 2026 independence referendum. Constituency polygons are drawn, then connected by lines to server pins, overwhelmingly clustered in the United States.
 
 Enter a postal code and see your own MP, MLA, and councillors — with their hosting, their social handles, and their parliamentary record (for federal MPs, mirrored from [openparliament.ca](https://openparliament.ca)).
 
@@ -10,11 +10,17 @@ Change detection monitors all tracked sites and emits alerts when hosting moves.
 
 ---
 
-## The Three Target Groups
+## Coverage
 
-1. **All federal MPs** (~338 politicians, ~500+ websites)
-2. **All Alberta politicians** — MLAs (~87), Edmonton council (~13), Calgary council (~15)
-3. **Alberta referendum organizations** — both sides of the independence question plus the UCP's nine referendum questions
+| Level | Count | Source |
+|---|---:|---|
+| **Federal** | 440 | Every MP in the House of Commons + every senator |
+| **Provincial / territorial** | 808 | Every MLA / MPP / MNA / MHA across all 10 provinces and 3 territories |
+| **Municipal** | 571 | Council members across major cities — ON, QC, BC, AB, and the Atlantic provinces |
+| **Referendum organizations** | 20 | Both sides of Alberta's Oct 19, 2026 independence question plus the UCP's nine referendum questions |
+| **Websites tracked** | ~2,350 | Personal sites, campaign sites, official handles |
+
+Coverage is built province-by-province via dedicated ingesters (Open North where available, then per-legislature scrapers for gaps like Yukon / Nunavut / NB / NL / BC / ON). See `sovpro --help` for the full list.
 
 ---
 
@@ -74,13 +80,20 @@ cp .env.example .env
 # 3. Build and start
 make up
 
-# 4. Seed politicians + organizations (first time only)
+# 4. Seed referendum organizations (first time only)
 make seed
 
-# 5. Run a scan
+# 5. Ingest politicians — pick your coverage
+docker compose run --rm scanner ingest-mps            # Federal MPs
+docker compose run --rm scanner ingest-senators       # Senators
+docker compose run --rm scanner ingest-legislatures   # All provincial + territorial
+docker compose run --rm scanner ingest-all-councils   # Municipal councils
+docker compose run --rm scanner fill-gaps             # Legislatures Open North doesn't cover
+
+# 6. Run a scan
 make scan
 
-# 6. Open the map
+# 7. Open the map
 open http://localhost
 ```
 
@@ -91,15 +104,26 @@ See [`docs/`](./docs) for deeper guides.
 ## CLI
 
 ```bash
-sovpro ingest mps                     # Fetch federal MPs from Open North
-sovpro ingest mlas                    # Fetch Alberta MLAs
-sovpro ingest councils                # Fetch Edmonton + Calgary councils
-sovpro seed orgs                      # Seed referendum organizations
-sovpro scan [--limit N]               # Scan websites
+# Ingest (roster)
+sovpro ingest-mps                     # Federal MPs from Open North
+sovpro ingest-senators                # 105 senators (sencanada.ca)
+sovpro ingest-legislatures            # Every provincial / territorial legislature
+sovpro ingest-all-councils            # Every municipal council Open North exposes
+sovpro fill-gaps                      # Gap-fillers for legislatures Open North doesn't cover
+sovpro seed-orgs                      # Seed referendum organizations
+
+# Enrichment (personal sites + socials)
+sovpro harvest-personal-socials       # Mine campaign sites for social handles
+sovpro enrich-socials-all             # Wikidata → openparliament → Mastodon pipeline
+sovpro resolve-openparliament-slugs   # Match federal MPs to openparliament.ca slugs
+
+# Scan + maintenance
+sovpro scan [--limit N]               # Scan websites (DNS, GeoIP, TLS, HTTP)
 sovpro stats                          # Print sovereignty summary
 sovpro refresh-views                  # Refresh PostGIS materialized views
-sovpro resolve-openparliament-slugs   # Match federal MPs to openparliament.ca slugs
 ```
+
+Run `sovpro --help` for the complete list — there are ~40 subcommands including per-province ingesters and per-legislature gap-fillers.
 
 ---
 
