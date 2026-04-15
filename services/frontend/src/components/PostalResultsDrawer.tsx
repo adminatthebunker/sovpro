@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { Link } from "react-router-dom";
 import type { PostalLookupResponse, PostalRep } from "./PostalLookupBar";
 import { TIER_META, type SovereigntyTier } from "../types";
 
@@ -76,7 +77,15 @@ function DrawerRepRow({ rep }: { rep: PostalRep }) {
       <div className="postal-drawer__row-head">
         {rep.photo_url && <img src={rep.photo_url} alt="" className="postal-drawer__photo" />}
         <div className="postal-drawer__row-body">
-          <div className="postal-drawer__row-name">{rep.name}</div>
+          <div className="postal-drawer__row-name">
+            {rep.politician_id ? (
+              <Link to={`/politicians/${rep.politician_id}`} className="postal-drawer__row-name-link">
+                {rep.name}
+              </Link>
+            ) : (
+              rep.name
+            )}
+          </div>
           <div className="postal-drawer__row-office">
             {rep.elected_office}
             {rep.party && <> · {rep.party}</>}
@@ -107,6 +116,14 @@ function DrawerRepRow({ rep }: { rep: PostalRep }) {
         </ul>
       ) : (
         <div className="postal-drawer__nowebsite">No personal/campaign website tracked</div>
+      )}
+
+      {rep.politician_id && (
+        <div className="postal-drawer__row-actions">
+          <Link to={`/politicians/${rep.politician_id}`} className="postal-drawer__row-profile-link">
+            View profile →
+          </Link>
+        </div>
       )}
     </li>
   );

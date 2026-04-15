@@ -38,6 +38,24 @@ function prettyType(t: string): string {
   return CHANGE_LABEL[t] ?? t.replace(/_/g, " ");
 }
 
+/** Render a change value (could be a string, null, or a structured object
+ *  like {url, handle, platform} for social changes) as a readable string. */
+function renderValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "object") {
+    const obj = v as Record<string, unknown>;
+    // Social change payload: prefer platform + handle, then fall back to URL.
+    if (obj.platform && obj.handle) return `@${obj.handle} on ${obj.platform}`;
+    if (obj.url && typeof obj.url === "string") return obj.url;
+    if (obj.handle) return String(obj.handle);
+    // Last resort — dump as compact JSON.
+    try { return JSON.stringify(obj); } catch { return String(v); }
+  }
+  return String(v);
+}
+
 export function PoliticianChangesTab({ politicianId }: Props) {
   const { data, loading, error, notFound } = usePoliticianChanges(politicianId);
 
@@ -96,11 +114,11 @@ function ChangeEntry({ change: c }: { change: PoliticianChange }) {
           </time>
         </div>
         {c.summary && <p className="pol-change__summary">{c.summary}</p>}
-        {(c.old_value || c.new_value) && (
+        {(c.old_value != null || c.new_value != null) && (
           <div className="pol-change__diff">
-            <del>{c.old_value ?? "—"}</del>
+            <del>{renderValue(c.old_value)}</del>
             <span> → </span>
-            <ins>{c.new_value ?? "—"}</ins>
+            <ins>{renderValue(c.new_value)}</ins>
           </div>
         )}
       </div>

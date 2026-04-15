@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { PoliticianCore } from "../hooks/usePolitician";
 
 interface Props {
@@ -16,7 +17,7 @@ export function PoliticianDetailHeader({ politician: p }: Props) {
 
   return (
     <header className="pol-detail__header">
-      <a className="pol-detail__back" href="/">← Back to map</a>
+      <Link className="pol-detail__back" to="/politicians">← Back to politicians</Link>
 
       <div className="pol-detail__head-body">
         {p.photo_url && (

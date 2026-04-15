@@ -432,10 +432,116 @@
 .pol-change__diff del { color: #fca5a5; text-decoration: line-through; }
 .pol-change__diff ins { color: #86efac; text-decoration: none; }
 
+/* ── Parliament tab (openparliament.ca enrichment) ── */
+.pol-parl { display: flex; flex-direction: column; gap: 1rem; }
+.pol-parl__warning {
+  padding: .55rem .75rem; border: 1px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.08); color: #fbbf24;
+  border-radius: 6px; font-size: .85rem;
+}
+.pol-parl__header {
+  display: flex; gap: 1rem; align-items: center;
+  padding: 1rem; background: var(--panel-2); border-radius: 8px;
+}
+.pol-parl__photo {
+  width: 72px; height: 72px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+}
+.pol-parl__name { margin: 0 0 .25rem; font-size: 1.1rem; }
+.pol-parl__meta { margin: 0; color: var(--ink-muted); font-size: .9rem; }
+.pol-parl__links {
+  display: flex; flex-wrap: wrap; gap: .5rem;
+}
+.pol-parl__links a {
+  padding: .5rem .85rem; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--ink); font-size: .85rem;
+  text-decoration: none; transition: background .15s, border-color .15s;
+}
+.pol-parl__links a:hover {
+  background: var(--panel-2); border-color: var(--accent);
+  text-decoration: none;
+}
+.pol-parl__links a.pol-parl__link--primary {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.pol-parl__links a.pol-parl__link--primary:hover {
+  background: #e11d48; border-color: #e11d48;
+}
+.pol-parl__attribution {
+  font-size: .75rem; color: var(--ink-muted); padding-top: .5rem;
+  border-top: 1px solid var(--border);
+}
+.pol-detail__panel-loading { color: var(--ink-muted); padding: 1rem; font-size: .9rem; }
+
+/* ── Parliament timeline (speeches + bills) ── */
+.pol-parl-timeline { display: flex; flex-direction: column; gap: 1.25rem; }
+.pol-parl-timeline__loading,
+.pol-parl-timeline__empty {
+  padding: .85rem 1rem; color: var(--ink-muted); font-size: .85rem;
+  background: var(--panel-2); border-radius: 8px;
+}
+.pol-parl-timeline__warning {
+  padding: .55rem .75rem; border: 1px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.08); color: #fbbf24;
+  border-radius: 6px; font-size: .85rem;
+}
+.pol-parl-timeline__bucket { display: flex; flex-direction: column; gap: .5rem; }
+.pol-parl-timeline__bucket-label {
+  margin: 0; font-size: .8rem; font-weight: 600;
+  color: var(--ink-muted); letter-spacing: .04em;
+  text-transform: uppercase;
+  padding-bottom: .35rem; border-bottom: 1px solid var(--border);
+}
+.pol-parl-timeline__list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: .65rem;
+}
+.pol-parl-timeline__item {
+  display: grid; grid-template-columns: 110px 1fr; gap: .85rem;
+  padding: .65rem .85rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+}
+.pol-parl-timeline__kind {
+  display: flex; flex-direction: column; gap: .25rem;
+  color: var(--ink-muted); font-size: .72rem;
+}
+.pol-parl-timeline__badge {
+  display: inline-block; padding: .15rem .5rem; border-radius: 999px;
+  font-size: .7rem; font-weight: 600; letter-spacing: .03em;
+  text-transform: uppercase; line-height: 1.4;
+  width: fit-content;
+}
+.pol-parl-timeline__badge--speech {
+  background: rgba(99, 102, 241, 0.18); color: #a5b4fc;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+}
+.pol-parl-timeline__badge--bill {
+  background: rgba(220, 38, 38, 0.16); color: #fca5a5;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+}
+.pol-parl-timeline__body { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.pol-parl-timeline__headline {
+  font-size: .92rem; font-weight: 500; line-height: 1.35;
+  color: var(--ink);
+}
+.pol-parl-timeline__headline a { color: #93c5fd; }
+.pol-parl-timeline__headline a:hover { color: #bfdbfe; }
+.pol-parl-timeline__context { color: var(--ink-muted); font-weight: 400; font-size: .85rem; }
+.pol-parl-timeline__preview {
+  margin: .15rem 0 0; color: var(--ink-muted);
+  font-size: .82rem; line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .pol-parl-timeline__item { grid-template-columns: 1fr; gap: .35rem; padding: .65rem .75rem; }
+  .pol-parl-timeline__kind { flex-direction: row; align-items: center; gap: .5rem; }
+}
+
 /* ── Mobile ─────────────────────────────────────────── */
 @media (max-width: 640px) {
   .pol-detail { padding: .75rem .85rem 2rem; }
   .pol-detail__head-body { flex-direction: column; align-items: flex-start; }
   .pol-detail__photo { width: 88px; height: 88px; }
   .pol-detail__name { font-size: 1.3rem; }
+  .pol-parl__header { flex-direction: column; align-items: flex-start; }
 }

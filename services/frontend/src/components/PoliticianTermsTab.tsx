@@ -69,7 +69,7 @@ export function PoliticianTermsTab({ politicianId }: Props) {
 
 function TermRow({ term: t }: { term: PoliticianTerm }) {
   const current = t.ended_at === null;
-  const locationBits = [t.constituency_name, t.province].filter(Boolean).join(" · ");
+  const locationBits = [t.province_territory].filter(Boolean).join(" · ");
   return (
     <li className={`pol-term ${current ? "pol-term--current" : ""}`}>
       <div className="pol-term__years">

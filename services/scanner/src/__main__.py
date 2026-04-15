@@ -71,6 +71,7 @@ from .opennorth import (
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
 from .socials import bulk_import_socials, normalize_socials, verify_liveness
+from .resolve_openparliament import resolve_slugs
 from .socials_enrichment import (
     enrich_all_socials,
     enrich_from_openparl,
@@ -530,6 +531,21 @@ def cmd_enrich_socials_openparl(ctx: click.Context) -> None:
     async def _wrap(db: Database) -> None:
         n = await enrich_from_openparl(db)
         console.print(f"[green]openparl enrichment inserted {n} rows[/green]")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-openparliament-slugs")
+@click.pass_context
+def cmd_resolve_openparliament_slugs(ctx: click.Context) -> None:
+    """Match our federal MPs to their openparliament.ca URL slugs.
+
+    Populates politicians.openparliament_slug via name-matching against
+    openparliament.ca's public list. Re-entrant: skips MPs that already
+    have a slug. Run after each federal ingest to pick up by-election
+    winners.
+    """
+    async def _wrap(db: Database) -> None:
+        await resolve_slugs(db)
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 

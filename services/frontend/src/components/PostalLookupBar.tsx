@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "../api";
 
 export interface PostalScanSummary {
@@ -36,6 +36,9 @@ const POSTAL_RE = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
 interface Props {
   /** Currently-displayed postal code so the form can show its Clear button without owning the result state. */
   activePostalCode?: string | null;
+  /** If provided (e.g. via ?postal= URL param from the lander), pre-fills
+   *  the input and auto-submits once on mount. */
+  autoSubmitCode?: string | null;
   /** Called whenever a lookup completes (or is cleared). The parent owns
    *  both the politician-ID filter for the map AND the drawer-rendered
    *  results panel — this bar is just the search field. */
@@ -50,14 +53,14 @@ interface Props {
  * the right-side drawer (PostalResultsDrawer), same slot as the party
  * report card.
  */
-export function PostalLookupBar({ activePostalCode, onResult }: Props) {
+export function PostalLookupBar({ activePostalCode, autoSubmitCode, onResult }: Props) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoSubmittedRef = useRef<string | null>(null);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = code.trim();
+  async function runLookup(raw: string) {
+    const trimmed = raw.trim();
     if (!POSTAL_RE.test(trimmed)) {
       setError("Enter a valid Canadian postal code (e.g. K1A 0A6)");
       return;
@@ -76,6 +79,23 @@ export function PostalLookupBar({ activePostalCode, onResult }: Props) {
       setLoading(false);
     }
   }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await runLookup(code);
+  }
+
+  // Pre-fill + auto-submit from a query-param driven entry (e.g. the lander's
+  // "Find your data" button). Guarded by a ref so a hash-change-only URL
+  // update doesn't retrigger the lookup.
+  useEffect(() => {
+    if (!autoSubmitCode) return;
+    if (autoSubmittedRef.current === autoSubmitCode) return;
+    autoSubmittedRef.current = autoSubmitCode;
+    setCode(autoSubmitCode);
+    void runLookup(autoSubmitCode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSubmitCode]);
 
   function clear() {
     setCode("");

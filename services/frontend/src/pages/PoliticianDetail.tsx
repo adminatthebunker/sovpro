@@ -1,36 +1,53 @@
-import { useEffect, useState } from "react";
-import { usePolitician } from "../hooks/usePolitician";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { usePolitician, usePoliticianOpenparliament } from "../hooks/usePolitician";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { PoliticianDetailHeader } from "../components/PoliticianDetailHeader";
 import { PoliticianSocialsTab } from "../components/PoliticianSocialsTab";
 import { PoliticianOfficesTab } from "../components/PoliticianOfficesTab";
 import { PoliticianTermsTab } from "../components/PoliticianTermsTab";
 import { PoliticianChangesTab } from "../components/PoliticianChangesTab";
+import { PoliticianOpenparliamentTab } from "../components/PoliticianOpenparliamentTab";
 import "../styles/politician-detail.css";
 
-type TabKey = "socials" | "offices" | "terms" | "changes";
+type TabKey = "socials" | "offices" | "terms" | "changes" | "parliament";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
+const BASE_TABS: Array<{ key: TabKey; label: string }> = [
   { key: "socials", label: "Socials" },
   { key: "offices", label: "Offices" },
   { key: "terms",   label: "Terms" },
   { key: "changes", label: "Changes" },
 ];
 
+const ALL_TAB_KEYS: TabKey[] = ["socials", "offices", "terms", "changes", "parliament"];
+
 function parseTabFromHash(): TabKey {
   if (typeof window === "undefined") return "socials";
   const h = window.location.hash.replace(/^#/, "");
-  const known: TabKey[] = ["socials", "offices", "terms", "changes"];
-  return (known as string[]).includes(h) ? (h as TabKey) : "socials";
+  return (ALL_TAB_KEYS as string[]).includes(h) ? (h as TabKey) : "socials";
 }
 
-interface Props {
-  /** Politician ID extracted from the URL by main.tsx. */
-  politicianId: string;
-}
-
-export default function PoliticianDetail({ politicianId }: Props) {
+export default function PoliticianDetail() {
+  const { id } = useParams<{ id: string }>();
+  const politicianId = id ?? "";
   const [tab, setTab] = useState<TabKey>(() => parseTabFromHash());
   const { data, loading, error, notFound } = usePolitician(politicianId);
+
+  // Kick off openparliament fetch in parallel, but only for federal MPs —
+  // non-federal would 400 and every click shouldn't produce a wasted round
+  // trip. The hook treats null id as "don't fetch".
+  const opTargetId = data?.politician?.level === "federal" ? politicianId : null;
+  const op = usePoliticianOpenparliament(opTargetId);
+  const showParliamentTab = !!op.data && !op.notFound;
+
+  // Use the politician's name as the document title once loaded.
+  useDocumentTitle(data?.politician?.name ?? null);
+
+  const tabs = useMemo(() => (
+    showParliamentTab
+      ? [...BASE_TABS, { key: "parliament" as TabKey, label: op.loading ? "Parliament…" : "Parliament" }]
+      : BASE_TABS
+  ), [showParliamentTab, op.loading]);
 
   // Two-way sync between active tab and URL hash so deep-links (and the
   // browser back button) keep working.
@@ -53,7 +70,7 @@ export default function PoliticianDetail({ politicianId }: Props) {
   if (notFound) {
     return (
       <div className="pol-detail pol-detail--empty">
-        <a className="pol-detail__back" href="/">← Back to map</a>
+        <Link className="pol-detail__back" to="/map">← Back to map</Link>
         <h1>Politician not found</h1>
         <p>There's no active politician record with ID <code>{politicianId}</code>.</p>
       </div>
@@ -62,7 +79,7 @@ export default function PoliticianDetail({ politicianId }: Props) {
   if (error) {
     return (
       <div className="pol-detail pol-detail--empty">
-        <a className="pol-detail__back" href="/">← Back to map</a>
+        <Link className="pol-detail__back" to="/map">← Back to map</Link>
         <h1>Couldn't load politician</h1>
         <p>{error.message}</p>
       </div>
@@ -77,7 +94,7 @@ export default function PoliticianDetail({ politicianId }: Props) {
       <PoliticianDetailHeader politician={politician} />
 
       <nav className="pol-detail__tabbar" role="tablist" aria-label="Politician sections">
-        {TABS.map(t => (
+        {tabs.map(t => (
           <button
             key={t.key}
             role="tab"
@@ -95,13 +112,16 @@ export default function PoliticianDetail({ politicianId }: Props) {
           <PoliticianSocialsTab politicianId={politicianId} politician={politician} />
         )}
         {tab === "offices" && (
-          <PoliticianOfficesTab politicianId={politicianId} />
+          <PoliticianOfficesTab politicianId={politicianId} level={politician.level} />
         )}
         {tab === "terms" && (
           <PoliticianTermsTab politicianId={politicianId} />
         )}
         {tab === "changes" && (
           <PoliticianChangesTab politicianId={politicianId} />
+        )}
+        {tab === "parliament" && showParliamentTab && (
+          <PoliticianOpenparliamentTab politicianId={politicianId} />
         )}
       </section>
     </div>

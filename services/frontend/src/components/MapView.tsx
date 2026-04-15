@@ -33,6 +33,13 @@ function FitToFeatures({ features }: { features: GeoJSON.Feature[] }) {
 
 interface Props {
   filters: FilterState;
+  /** Compact mode: pins-only, reduced height, no layers control or popups.
+   *  Used as a header summary on the /politicians page. */
+  compact?: boolean;
+  /** Override container height. Defaults to "260px" in compact mode, "70vh"
+   *  otherwise. Used by the lander to stretch the backdrop to fill the
+   *  viewport. */
+  height?: string;
 }
 
 const CANADA_CENTER: [number, number] = [56.1304, -106.3468];
@@ -50,7 +57,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export function MapView({ filters }: Props) {
+export function MapView({ filters, compact = false, height }: Props) {
+  const containerHeight = height ?? (compact ? "260px" : "70vh");
   // Common query params shared by both fetches. Pins-first strategy: fetch
   // pins+lines (tiny) in parallel with polygons (large). Map becomes
   // interactive as soon as pins land; polygons stream in ~500ms later and
@@ -68,8 +76,14 @@ export function MapView({ filters }: Props) {
     return params.toString();
   }, [filters]);
 
-  const pinsPath = `/map/geojson?${baseParams}&kinds=server,connection`;
-  const polysPath = `/map/geojson?${baseParams}&kinds=constituency,constituency_no_data`;
+  // Compact mode: pins only (no connection lines, no polygons) to minimize
+  // payload since the map is decorative on /politicians.
+  const pinsPath = compact
+    ? `/map/geojson?${baseParams}&kinds=server`
+    : `/map/geojson?${baseParams}&kinds=server,connection`;
+  const polysPath = compact
+    ? null
+    : `/map/geojson?${baseParams}&kinds=constituency,constituency_no_data`;
 
   const { data: pinsData, loading: pinsLoading, error: pinsError } = useFetch<GeoCollection>(pinsPath);
   const { data: polysData, loading: polysLoading } = useFetch<GeoCollection>(polysPath);
@@ -104,14 +118,14 @@ export function MapView({ filters }: Props) {
   }, [polysData]);
 
   return (
-    <div className="mapview">
+    <div className={`mapview ${compact ? "mapview--compact" : ""}`}>
       {loading && (
         <div className="mapview__loading" role="status" aria-live="polite">
           <span className="mapview__leaf" aria-hidden>🍁</span>
           <span className="mapview__loading-text">Loading map…</span>
         </div>
       )}
-      {!loading && polysLoading && (
+      {!compact && !loading && polysLoading && (
         <div className="mapview__loading mapview__loading--subtle" role="status" aria-live="polite">
           <span className="mapview__loading-text">Loading regions…</span>
         </div>
@@ -120,21 +134,51 @@ export function MapView({ filters }: Props) {
 
       <MapContainer
         center={CANADA_CENTER}
-        zoom={4}
+        zoom={compact ? 3 : 4}
         minZoom={2}
-        style={{ height: "70vh", width: "100%", background: "#0b1220" }}
+        style={{ height: containerHeight, width: "100%", background: "#0b1220" }}
         preferCanvas
         zoomAnimation={false}
         fadeAnimation={false}
         markerZoomAnimation={false}
         wheelDebounceTime={40}
         wheelPxPerZoomLevel={120}
+        scrollWheelZoom={!compact}
+        dragging={!compact}
       >
         <FitToFeatures features={[
           ...polygons.features as GeoJSON.Feature[],
           ...polygonsNoData.features as GeoJSON.Feature[],
         ]} />
-        <LayersControl position="topright">
+
+        {compact && (
+          <>
+            <TileLayer
+              attribution='&copy; OpenStreetMap, &copy; CARTO'
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              keepBuffer={4}
+              maxNativeZoom={18}
+            />
+            <GeoJSON
+              key={`srv-compact-${servers.features.length}`}
+              data={servers as GeoJSON.FeatureCollection}
+              pointToLayer={(feature, latlng) => {
+                const tier = (feature.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
+                const meta = TIER_META[tier];
+                return L.circleMarker(latlng, {
+                  radius: 3,
+                  color: "#0b1220",
+                  weight: 0.5,
+                  fillColor: meta.color,
+                  fillOpacity: 0.9,
+                  interactive: false,
+                });
+              }}
+            />
+          </>
+        )}
+
+        {!compact && <LayersControl position="topright">
           <LayersControl.BaseLayer checked name="Dark">
             <TileLayer
               attribution='&copy; OpenStreetMap, &copy; CARTO'
@@ -297,7 +341,7 @@ export function MapView({ filters }: Props) {
               }}
             />
           </LayersControl.Overlay>
-        </LayersControl>
+        </LayersControl>}
       </MapContainer>
     </div>
   );
@@ -384,6 +428,6 @@ function buildConstituencyPopup(p: Record<string, unknown>): string {
         <span class="map-popup__total">${totalSites} total</span>
       </div>
       ${totalSites > 0 ? `<ul class="map-popup__sites">${siteHtml}</ul>` : `<p class="map-popup__nosites">No personal/campaign website tracked.</p>`}
-      ${politicianId ? `<a class="map-popup__profile" href="/politician/${escapeHtml(politicianId)}">View full profile →</a>` : ""}
+      ${politicianId ? `<a class="map-popup__profile" href="/politicians/${escapeHtml(politicianId)}">View full profile →</a>` : ""}
     </div>`;
 }
