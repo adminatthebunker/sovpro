@@ -175,6 +175,53 @@ def health():
     }
 
 
+def _release_gpu_cache():
+    """Return PyTorch's CUDA caching allocator to the OS.
+
+    Runs at the end of each inference handler so `nvidia-smi` reports
+    real memory after a request completes. The allocator will grow
+    back on the next call; the cost is a handful of milliseconds of
+    cudaMalloc on the first batch after a quiet period. Worth it
+    because it stops the container holding ~5 GiB of idle VRAM that
+    blocks the user's other GPU workloads.
+    """
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+    except Exception:
+        pass
+
+
+@app.post("/flush-cache")
+def flush_cache():
+    """Manually release the CUDA caching allocator back to the OS.
+
+    The inference handlers already call this after every request, so in
+    normal operation you never need to hit this endpoint. It exists for
+    the "I want the GPU for something else RIGHT NOW without restarting
+    the container" case. Model weights stay resident — only activation
+    caches are released.
+    """
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            return {"ok": True, "device": "cpu", "note": "no cuda to flush"}
+        before = torch.cuda.memory_reserved(0)
+        _release_gpu_cache()
+        after = torch.cuda.memory_reserved(0)
+        return {
+            "ok": True,
+            "device": "cuda",
+            "reserved_before_bytes": before,
+            "reserved_after_bytes": after,
+            "freed_bytes": max(0, before - after),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/embed", response_model=EmbedResponse)
 def embed(req: EmbedRequest):
     if len(req.texts) > MAX_BATCH:
@@ -210,6 +257,7 @@ def embed(req: EmbedRequest):
         )
         for i, vec in enumerate(dense)
     ]
+    _release_gpu_cache()
     return EmbedResponse(
         model=EMBED_MODEL,
         dim=DIM,
@@ -235,6 +283,7 @@ def rerank(req: RerankRequest):
         scores = [float(scores)]
     else:
         scores = [float(s) for s in scores]
+    _release_gpu_cache()
     return RerankResponse(
         model=RERANK_MODEL,
         scores=scores,

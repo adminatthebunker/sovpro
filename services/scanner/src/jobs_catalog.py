@@ -133,6 +133,32 @@ COMMANDS: dict[str, dict[str, Any]] = {
             {"name": "session", "type": "int", "required": False, "help": "Session number."},
         ],
     },
+    "ingest-nl-bills": {
+        "description": "Newfoundland & Labrador bills via assembly.nl.ca (GA index).",
+        "cli": "ingest-nl-bills", "category": "bills",
+        "args": [
+            {"name": "ga", "type": "int", "required": False, "help": "General Assembly number (pair with --session)."},
+            {"name": "session", "type": "int", "required": False, "help": "Session number (requires --ga)."},
+            {"name": "all_sessions_in_ga", "type": "int", "required": False, "help": "Every session in GA G."},
+            {"name": "all_sessions", "type": "bool", "required": False, "help": "Every session in the index (GA 44+, ~40 sessions)."},
+        ],
+    },
+    "ingest-nt-bills": {
+        "description": "Northwest Territories bills via ntassembly.ca (consensus gov't, no sponsors).",
+        "cli": "ingest-nt-bills", "category": "bills",
+        "args": [
+            {"name": "delay", "type": "int", "required": False, "default": 2,
+             "help": "Seconds between per-bill detail-page fetches (be polite)."},
+        ],
+    },
+    "ingest-nu-bills": {
+        "description": "Nunavut bills via assembly.nu.ca (consensus gov't, no sponsors; multilingual).",
+        "cli": "ingest-nu-bills", "category": "bills",
+        "args": [
+            {"name": "assembly", "type": "int", "required": False, "help": "Assembly number (default: current)."},
+            {"name": "session", "type": "int", "required": False, "help": "Session number (default: current)."},
+        ],
+    },
 
     # ── Reps / rosters (Open North) ──────────────────────────────────
     "ingest-mps": {
@@ -170,6 +196,10 @@ COMMANDS: dict[str, dict[str, Any]] = {
     "seed-orgs": {
         "description": "Re-apply the referendum/advocacy organizations seed.",
         "cli": "seed-orgs", "category": "maintenance", "args": [],
+    },
+    "backfill-terms": {
+        "description": "One-time: open an initial politician_terms row for every active politician without an existing open term. Prereq for party-at-time queries.",
+        "cli": "backfill-terms", "category": "maintenance", "args": [],
     },
     "scan": {
         "description": "Infrastructure scan across every tracked website.",

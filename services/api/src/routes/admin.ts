@@ -79,6 +79,25 @@ const COMMAND_CATALOG = [
       { name: "session", type: "int", required: false, help: "Session number." },
     ],
   },
+  { key: "ingest-nl-bills", category: "bills", description: "Newfoundland & Labrador bills via assembly.nl.ca (GA index).",
+    args: [
+      { name: "ga", type: "int", required: false, help: "General Assembly number (pair with --session)." },
+      { name: "session", type: "int", required: false, help: "Session number (requires --ga)." },
+      { name: "all_sessions_in_ga", type: "int", required: false, help: "Every session in GA G." },
+      { name: "all_sessions", type: "bool", required: false, help: "Every session in the index (GA 44+, ~40 sessions)." },
+    ],
+  },
+  { key: "ingest-nt-bills", category: "bills", description: "Northwest Territories bills via ntassembly.ca (consensus gov't, no sponsors).",
+    args: [
+      { name: "delay", type: "int", required: false, default: 2, help: "Seconds between per-bill fetches (be polite)." },
+    ],
+  },
+  { key: "ingest-nu-bills", category: "bills", description: "Nunavut bills via assembly.nu.ca (consensus gov't, no sponsors; multilingual).",
+    args: [
+      { name: "assembly", type: "int", required: false, help: "Assembly number (default: current)." },
+      { name: "session", type: "int", required: false, help: "Session number (default: current)." },
+    ],
+  },
   // enrichment
   { key: "ingest-mps", category: "enrichment", description: "Federal MPs roster from Open North.", args: [] },
   { key: "ingest-senators", category: "enrichment", description: "Canadian Senate roster.", args: [] },
@@ -90,6 +109,9 @@ const COMMAND_CATALOG = [
   // maintenance
   { key: "refresh-views", category: "maintenance", description: "Refresh map materialized views.", args: [] },
   { key: "seed-orgs", category: "maintenance", description: "Re-apply referendum/advocacy orgs seed.", args: [] },
+  { key: "backfill-terms", category: "maintenance",
+    description: "One-time: open an initial politician_terms row for every active politician without an existing open term. Prereq for party-at-time queries.",
+    args: [] },
   { key: "scan", category: "maintenance", description: "Infrastructure scan across tracked websites.",
     args: [
       { name: "limit", type: "int", required: false, help: "Max sites this run." },
