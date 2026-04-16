@@ -81,6 +81,14 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
 - Bootstraps a fresh database (seeds + ingests) on first boot
 - Falls back gracefully if any sub-step fails
 
+### `scanner-jobs`
+- Long-running worker that drives the private `/admin` panel.
+- Polls the `scanner_jobs` table every `JOBS_POLL_INTERVAL` seconds; claims the next queued row with `SELECT FOR UPDATE SKIP LOCKED`, one job at a time.
+- Expands any due `scanner_schedules` rows into new queued jobs using `croniter`.
+- Runs each job as a subprocess of `python -m src <cli>` inside the same container image — no docker-socket mount, no cross-container dispatch.
+- Captures rolling 4 KB tails of stdout/stderr into the job row so failures are debuggable without log spelunking.
+- On boot recovers any `status='running'` row older than `JOBS_STUCK_MINUTES` (default 10) back to `queued`.
+
 ### `change-detection` (external `ghcr.io/thedurancode/change`)
 - Watches website content for changes
 - POSTs to `/api/v1/webhooks/change` with HMAC sig

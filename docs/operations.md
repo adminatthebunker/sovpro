@@ -67,6 +67,38 @@ The `embed` service hosts BGE-M3 + BGE-reranker-v2-m3 on the RTX 4050 GPU via `p
 - **Falling back to CPU.** If a host has no GPU: change `services/embed/Dockerfile`'s base to `python:3.11-slim`, flip `USE_FP16` guard to always-False, drop the `reservations.devices` block in compose. The CPU variant lived on disk before commit `ef26d03` — worth carrying forward in a branch if you want a reproducible CPU build.
 - **Monitoring.** `docker stats sw-embed --no-stream` for host-side CPU/RAM; `nvidia-smi` on the host for GPU utilisation + VRAM; `docker logs sw-embed -f` for model-load progress.
 
+## Admin panel
+
+`/admin` on the public frontend surfaces a private operator console: queue any whitelisted scanner command, set cron schedules, and watch dashboard counts (speeches, chunks, pending embeds, job throughput).
+
+- **Enable:** set `ADMIN_TOKEN` in `.env` (`openssl rand -hex 32`), then `docker compose up -d api scanner-jobs`.
+- **Login:** browse to `https://<host>/admin/login`, paste the token. Token persists in browser `localStorage` under `sw_admin_token`; it's sent as `Authorization: Bearer …` on every admin API call.
+- **Disabled state:** with `ADMIN_TOKEN` unset, admin routes return **503** rather than 401 so it's obvious the panel is off (not a bad password).
+- **Rotate the token:** edit `.env`, `docker compose up -d api`. Active sessions 401 on next call; re-login with the new token.
+
+### Scheduling commands
+
+- Use `/admin/schedules` → "New schedule". Cron is 5-field UTC (`m h dom mon dow`).
+- Schedules that fire too fast + job duration > interval: the worker is single-threaded, so overlapping fires just stack in the queue. Drop the cron frequency or split the work.
+- `next_run_at` updates after each fire; stale rows (worker was down) re-sync on next worker boot.
+- To disable temporarily, toggle the `enabled` checkbox — no deletion needed.
+
+### Operator-friendly commands
+
+All catalog entries live in `services/scanner/src/jobs_catalog.py`. Out of the box, the admin panel exposes:
+
+- Federal Hansard: `ingest-federal-hansard`, `chunk-speeches`, `embed-speech-chunks`
+- Provincial bills: one entry per live pipeline (AB/BC/NB/NL/NS/ON/QC + their RSS variants)
+- Rosters: `ingest-mps`, `ingest-senators`, `ingest-mlas`, `ingest-councils`, `ingest-legislatures`
+- Enrichment: `harvest-personal-socials`
+- Maintenance: `refresh-views`, `seed-orgs`, `scan`
+
+Adding a new command requires updates in **two** spots (see CLAUDE.md § Admin panel).
+
+### Worker restart + stuck jobs
+
+`sw-scanner-jobs` is a long-running container. On boot it requeues any `status='running'` row older than `JOBS_STUCK_MINUTES` (default 10 min) with an `error='recovered after worker restart'` note. That makes `docker compose restart scanner-jobs` safe even mid-job — the current run is abandoned, the DB row flips to queued, the next worker picks it up.
+
 ## Scheduled jobs
 
 `scanner-cron` runs an hourly loop:

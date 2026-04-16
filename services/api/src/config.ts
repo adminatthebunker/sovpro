@@ -9,6 +9,11 @@ const schema = z.object({
   DATABASE_URL: z.string().url().or(z.string().startsWith("postgres")),
   CHANGE_WEBHOOK_SECRET: z.string().min(16).optional(),
   WEBHOOK_SECRET: z.string().min(16).optional(),
+  // Shared bearer token for the /admin panel. 32+ chars of url-safe
+  // entropy is a reasonable floor; missing in dev is OK (admin routes
+  // will simply reject all callers with 503 until set), but NODE_ENV
+  // === "production" without ADMIN_TOKEN is a boot-time warning.
+  ADMIN_TOKEN: z.string().min(32).optional(),
 });
 
 export const config = (() => {
@@ -26,7 +31,14 @@ export const config = (() => {
     corsOrigin: env.API_CORS_ORIGIN,
     databaseUrl: env.DATABASE_URL,
     webhookSecret: env.CHANGE_WEBHOOK_SECRET ?? env.WEBHOOK_SECRET ?? "",
+    adminToken: env.ADMIN_TOKEN ?? "",
   };
 })();
+
+if (config.env === "production" && !config.adminToken) {
+  console.warn(
+    "[config] ADMIN_TOKEN is unset in production; /api/v1/admin/* routes will reject all callers."
+  );
+}
 
 export type Config = typeof config;

@@ -50,6 +50,7 @@ services:
       API_CORS_ORIGIN: ${API_CORS_ORIGIN:-*}
       DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
       CHANGE_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
     restart: unless-stopped
     networks: [sw]
 
@@ -141,6 +142,36 @@ services:
       - ./scripts:/app/scripts:ro
       - ./services/scanner/src:/app/src
     profiles: ["tools"]
+    networks: [sw]
+
+  # ── Admin-panel jobs worker ───────────────────────────────────────
+  # Consumes scanner_jobs (queued) and expands scanner_schedules (cron).
+  # Reuses the scanner image; single worker process; one job at a time.
+  # Separate from scanner-cron because that is a fixed-schedule bash
+  # loop — the DB-driven admin queue is its own concern.
+  scanner-jobs:
+    build:
+      context: ./services/scanner
+      dockerfile: Dockerfile
+    container_name: sw-scanner-jobs
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      EMBED_URL: ${EMBED_URL:-http://embed:8000}
+      EMBED_BATCH: ${EMBED_BATCH:-32}
+      SCANNER_CONCURRENCY: ${SCANNER_CONCURRENCY:-16}
+      GEOIP_CITY_PATH: /data/GeoLite2-City.mmdb
+      GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
+      JOBS_POLL_INTERVAL: ${JOBS_POLL_INTERVAL:-5}
+      JOBS_DEFAULT_TIMEOUT: ${JOBS_DEFAULT_TIMEOUT:-7200}
+    volumes:
+      - ./data:/data:ro
+      - ./db:/app/db:ro
+      - ./services/scanner/src:/app/src
+    entrypoint: ["python", "-m", "src", "jobs-worker"]
+    restart: unless-stopped
     networks: [sw]
 
   # ── Scheduled scanner (cron-ish sidecar) ──────────────────────────

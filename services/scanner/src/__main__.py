@@ -1287,6 +1287,18 @@ def cmd_ingest_federal_hansard(
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("jobs-worker")
+@click.pass_context
+def cmd_jobs_worker(ctx: click.Context) -> None:
+    """Run the admin-panel jobs daemon (consumes scanner_jobs, expands schedules).
+
+    Intended as the entrypoint of the `scanner-jobs` compose service.
+    Stays up indefinitely; polls every JOBS_POLL_INTERVAL seconds.
+    """
+    from . import jobs_worker as _jw
+    asyncio.run(_jw.main())
+
+
 @cli.command("chunk-speeches")
 @click.option("--limit", type=int, default=None,
               help="Max speeches to chunk this run (default: all pending).")

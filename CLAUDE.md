@@ -82,6 +82,53 @@ Log every upstream request by URL + etag. Re-runs should be free. NS WAF cost us
 
 Every ingest command in `services/scanner/src/__main__.py` is idempotent and restartable. New pipelines follow the same shape — `ingest-<source>`, `fetch-<source>-pages`, `parse-<source>-pages`, `resolve-<source>-sponsors` — split by stage so each can be retried independently.
 
+## Admin panel
+
+Private `/admin` surface that lets the operator queue scanner jobs, set cron schedules, and watch a stats dashboard. Read-only public site is unaffected.
+
+### Auth
+
+Shared bearer token via `ADMIN_TOKEN` in `.env` (min 32 chars, `openssl rand -hex 32`). Paste into `/admin/login`; the token is stored in browser `localStorage` as `sw_admin_token` and attached as `Authorization: Bearer <token>` on every admin-scoped request. Unset token → `/api/v1/admin/*` returns **503** (clearly disabled, not wrong password). Wrong token → **401** with timing-safe comparison. Rotate by editing `.env` + `docker compose up -d api`.
+
+### Execution pipeline
+
+1. UI `POST /api/v1/admin/jobs` → row in `scanner_jobs` (`status='queued'`).
+2. `sw-scanner-jobs` daemon polls every `JOBS_POLL_INTERVAL` seconds, claims the next row via `UPDATE … FOR UPDATE SKIP LOCKED`.
+3. Spawns `python -m src <cli> [flags]` as subprocess (same scanner image), captures last 4 KB of stdout/stderr into `stdout_tail` / `stderr_tail`.
+4. Flips status to `succeeded` / `failed` with `exit_code` and `finished_at`.
+
+Schedules table (`scanner_schedules`) is expanded by the same worker — enabled rows whose `next_run_at <= now()` enqueue a new job, then `next_run_at` is advanced via `croniter`. Bash `scripts/scanner-cron.sh` schedules coexist for v1; migrating them into the DB is a deferred task.
+
+### Curated command whitelist
+
+The admin UI exposes a subset of the ~70 scanner commands. Catalog lives in **two places that must stay in sync**:
+
+- `services/scanner/src/jobs_catalog.py` (authoritative for the worker, maps `key` → `{cli, args}`)
+- The `COMMAND_CATALOG` constant near the top of `services/api/src/routes/admin.ts` (served to the frontend form generator verbatim)
+
+If they diverge the worker refuses the command with `unknown command` — the UI will show the stale option, but nothing unsafe runs. When adding a command, update both.
+
+### Files involved
+
+| Concern | Path |
+|---|---|
+| Queue + schedule schema | `db/migrations/0022_scanner_jobs_and_schedules.sql` |
+| Worker daemon | `services/scanner/src/jobs_worker.py` + `jobs_catalog.py` |
+| API middleware | `services/api/src/middleware/admin-auth.ts` |
+| API routes | `services/api/src/routes/admin.ts` |
+| Frontend auth hook | `services/frontend/src/hooks/useAdminAuth.ts` |
+| Frontend admin shell | `services/frontend/src/components/AdminLayout.tsx` |
+| Frontend pages | `services/frontend/src/pages/admin/*.tsx` |
+| Command form generator | `services/frontend/src/components/CommandForm.tsx` |
+| Compose service | `scanner-jobs` in `docker-compose.yml` |
+
+### What not to do
+
+- **Do not link `/admin` from the public nav.** Access is by direct URL.
+- **Do not mount `/var/run/docker.sock` anywhere.** The worker executes via subprocess in the same container — socket mounting is root-equivalent.
+- **Do not allow arbitrary commands.** Every admin-submitted command goes through the whitelist. `jobs_catalog.build_cli_args` validates args against schema before any subprocess spawn.
+- **Do not log tokens.** Fastify's default logger doesn't log headers; if you enable request-body logging add a redact rule for `headers.authorization`.
+
 ## Blog (MDX-in-repo)
 
 Posts live as `.mdx` files under `services/frontend/src/content/blog/`. The frontend bundles them at build time via `@mdx-js/rollup`; there is no DB, no CMS, no auth. Git history is the editorial audit trail.

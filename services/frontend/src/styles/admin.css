@@ -1,0 +1,335 @@
+/* ── Admin panel ───────────────────────────────────────────────
+ * Tighter density than public pages — admins scan, not skim.
+ * Reuses the global dark theme variables from global.css.
+ */
+
+.admin {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+  font-size: .95rem;
+}
+
+.admin--login {
+  max-width: 440px;
+  padding-top: 3rem;
+}
+
+.admin__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+
+.admin__brand {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.admin__brand h2 {
+  margin: 0;
+  font-size: 1.4rem;
+  letter-spacing: -.02em;
+}
+
+.admin__subnav {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+.admin__subnav a,
+.admin__subnav button {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .35rem .8rem;
+  font-size: .85rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin__subnav a.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.admin__subnav a:hover,
+.admin__subnav button:hover { background: var(--panel-2); text-decoration: none; }
+.admin__logout { margin-left: auto; }
+
+.admin__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.admin__section h3 { margin: 0 0 .75rem; font-size: 1.05rem; }
+
+/* ── Dashboard stats ────────────────────────────────────────── */
+
+.admin__stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: .75rem;
+}
+.admin__stat {
+  padding: 1rem 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.admin__stat-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.admin__stat-label {
+  font-size: .78rem;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-top: .25rem;
+}
+.admin__stat-sub {
+  margin-top: .35rem;
+  font-size: .8rem;
+  color: var(--ink-muted);
+}
+
+.admin__failure-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
+.admin__failure-list li {
+  padding: .5rem .75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-size: .85rem;
+}
+
+/* ── Tables ─────────────────────────────────────────────────── */
+
+.admin__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.admin__toolbar select,
+.admin__toolbar input {
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .3rem .5rem;
+  font-size: .85rem;
+}
+
+.admin__panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+
+.admin__table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  background: var(--panel);
+}
+.admin__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .88rem;
+}
+.admin__table thead { background: var(--panel-2); }
+.admin__table th,
+.admin__table td {
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+.admin__table th {
+  color: var(--ink-muted);
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-weight: 600;
+}
+.admin__table tbody tr:hover { background: var(--panel-2); }
+
+.admin__muted { color: var(--ink-muted); }
+.admin__empty { padding: 1rem; color: var(--ink-muted); text-align: center; }
+
+/* ── Status pills ───────────────────────────────────────────── */
+
+.admin__pill {
+  display: inline-block;
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.admin__pill--queued  { background: var(--panel-2); color: var(--ink-muted); border: 1px solid var(--border); }
+.admin__pill--running { background: #422006; color: #fcd34d; border: 1px solid #92400e; }
+.admin__pill--ok      { background: #052e16; color: #86efac; border: 1px solid #166534; }
+.admin__pill--err     { background: #450a0a; color: #fca5a5; border: 1px solid #991b1b; }
+.admin__pill--mute    { background: var(--panel-2); color: var(--ink-muted); border: 1px dashed var(--border); }
+
+/* ── Errors / hints / dangerous actions ─────────────────────── */
+
+.admin__error {
+  padding: .75rem 1rem;
+  background: var(--panel);
+  color: #fca5a5;
+  border: 1px solid #991b1b;
+  border-radius: 8px;
+}
+.admin__error-inline { color: #fca5a5; }
+
+.admin__danger {
+  background: var(--panel);
+  color: #fca5a5;
+  border: 1px solid #991b1b;
+  border-radius: 6px;
+  padding: .3rem .7rem;
+  font-size: .85rem;
+  cursor: pointer;
+}
+.admin__danger--sm { padding: .15rem .45rem; font-size: .72rem; }
+
+/* ── Job detail ─────────────────────────────────────────────── */
+
+.admin__kv {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: .35rem .75rem;
+  margin: 1rem 0;
+  font-size: .9rem;
+}
+.admin__kv dt { color: var(--ink-muted); }
+.admin__kv dd { margin: 0; }
+
+.admin__pre {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .75rem 1rem;
+  overflow-x: auto;
+  font-size: .82rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.admin__pre--log {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Command form ───────────────────────────────────────────── */
+
+.admin__cmd-form {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+.admin__cmd-form label {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .85rem;
+}
+.admin__cmd-form label > span { color: var(--ink-muted); }
+.admin__cmd-form label > span small { color: var(--ink-muted); font-weight: 400; }
+.admin__cmd-form input,
+.admin__cmd-form select {
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .35rem .55rem;
+  font-size: .9rem;
+  font-family: inherit;
+}
+.admin__cmd-form input:focus,
+.admin__cmd-form select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.admin__cmd-arg--bool {
+  flex-direction: row !important;
+  align-items: center;
+  gap: .5rem !important;
+}
+.admin__cmd-arg--bool input { width: auto; }
+.admin__cmd-desc {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: .85rem;
+  font-style: italic;
+}
+.admin__cmd-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+.admin__cmd-actions button {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  padding: .4rem 1.1rem;
+  font-size: .9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin__cmd-actions button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Login ─────────────────────────────────────────────────── */
+
+.admin__login-form {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.25rem;
+}
+.admin__login-form button {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: .5rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.admin__hint {
+  margin: 0;
+  font-size: .8rem;
+  color: var(--ink-muted);
+}
+.admin__hint code {
+  background: var(--bg);
+  padding: .05rem .3rem;
+  border-radius: 4px;
+}
+
+@media (max-width: 640px) {
+  .admin { padding: 1rem 0 3rem; }
+  .admin__kv { grid-template-columns: 110px 1fr; }
+}

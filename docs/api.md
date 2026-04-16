@@ -116,6 +116,58 @@ chart. Intended for use in `<meta property="og:image">` tags.
 - `Cache-Control: public, max-age=300`
 - In-process cache refreshes every 5 minutes from live `/stats` data.
 
+## Admin
+
+All `/api/v1/admin/*` routes require `Authorization: Bearer <ADMIN_TOKEN>`. Without the header → **401**; with `ADMIN_TOKEN` unset on the server → **503**.
+
+### `POST /admin/login`
+Body: `{ token: string }`. Returns `{ ok: true }` on success. Callers should send the token in **both** the body and `Authorization: Bearer …` header; the header is what gets checked. Intended as a UX "verify before persisting" handshake.
+
+### `GET /admin/commands`
+Returns the whitelist catalog:
+```json
+{ "commands": [ { "key": "chunk-speeches", "category": "hansard",
+                  "description": "...", "args": [ ... ] }, ... ] }
+```
+Used by the frontend form generator.
+
+### `GET /admin/jobs`
+Query: `?status=queued|running|succeeded|failed|cancelled`, `?schedule_id=…`, `?limit=1..500` (default 100).
+Returns `{ jobs: [...] }` with a `stdout_snippet`/`stderr_snippet` (first 500 chars each) for list-view rendering.
+
+### `POST /admin/jobs`
+Body: `{ command: string, args: object, priority?: 0..100 }`. Command must be in the whitelist. Returns `{ id }` on 201.
+
+### `GET /admin/jobs/:id`
+Full row with `stdout_tail` / `stderr_tail` (last 4 KB each) and `error`.
+
+### `POST /admin/jobs/:id/cancel`
+Flips status to `cancelled` **only** if currently `queued`. Running jobs are not interrupted (returns 409).
+
+### `GET /admin/schedules`
+List all rows in `scanner_schedules`.
+
+### `POST /admin/schedules`
+Body: `{ name, command, args, cron, enabled? }`. `cron` is 5-field UTC.
+
+### `PATCH /admin/schedules/:id`
+Partial update. Changing `cron` clears `next_run_at` so the worker recomputes it.
+
+### `DELETE /admin/schedules/:id`
+Returns 204. `scanner_jobs.schedule_id` is set NULL via FK (jobs history is preserved).
+
+### `GET /admin/stats`
+Dashboard counters:
+```json
+{
+  "speeches": 20,
+  "chunks": { "total": 20, "embedded": 20, "pending": 0 },
+  "jobs":    { "queued": 0, "running": 0, "succeeded_24h": 3, "failed_24h": 0 },
+  "jurisdictions": { "live": 8, "total": 14 },
+  "recent_failures": [ { "id", "command", "finished_at", "error" }, ... ]
+}
+```
+
 ## Health
 
 ### `GET /health`
