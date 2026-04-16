@@ -1232,6 +1232,110 @@ def cmd_harvest_personal_socials(ctx: click.Context, limit) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+# ─────────────────────────────────────────────────────────────────────
+# Federal Hansard — speeches ingest (openparliament.ca)
+# ─────────────────────────────────────────────────────────────────────
+
+@cli.command("ingest-federal-hansard")
+@click.option("--parliament", type=int, required=True,
+              help="Parliament number (e.g. 44). Tags every speech ingested.")
+@click.option("--session", type=int, required=True,
+              help="Session number within the parliament (e.g. 1).")
+@click.option("--since", type=str, default=None,
+              help="Only fetch debates on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only fetch debates on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-debates", type=int, default=None,
+              help="Cap on sitting days fetched.")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.pass_context
+def cmd_ingest_federal_hansard(
+    ctx: click.Context, parliament, session, since, until,
+    limit_debates, limit_speeches,
+) -> None:
+    """Ingest federal House of Commons speeches from openparliament.ca.
+
+    Lands rows in `speeches` with attribution captured at-time-of-speech
+    (party / constituency parsed from openparliament's attribution line).
+    Idempotent via UNIQUE (source_system, source_url, sequence); re-runs
+    over the same date range are safe and update mutable columns.
+    """
+    from datetime import date as _date
+    from .legislative.federal_hansard import ingest as _ingest
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        stats = await _ingest(
+            db,
+            parliament=parliament,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_debates=limit_debates,
+            limit_speeches=limit_speeches,
+        )
+        console.print(
+            f"[green]ingest-federal-hansard[/green]: "
+            f"debates={stats.debates_scanned} seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} "
+            f"unresolved_slug={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("chunk-speeches")
+@click.option("--limit", type=int, default=None,
+              help="Max speeches to chunk this run (default: all pending).")
+@click.pass_context
+def cmd_chunk_speeches(ctx: click.Context, limit) -> None:
+    """Split speeches.text into retrievable speech_chunks rows.
+
+    Speaker-turn = one chunk by default. Long turns (> ~480 tokens)
+    split at paragraph boundary with 50-token overlap. Tiny procedural
+    turns (< 8 tokens) are skipped. Idempotent: re-runs only process
+    speeches that don't yet have chunks.
+    """
+    from .legislative.speech_chunker import chunk_pending as _chunk
+
+    async def _wrap(db: Database) -> None:
+        stats = await _chunk(db, limit_speeches=limit)
+        console.print(
+            f"[green]chunk-speeches[/green]: seen={stats.speeches_seen} "
+            f"chunked={stats.speeches_chunked} skipped={stats.speeches_skipped} "
+            f"chunks={stats.chunks_inserted}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("embed-speech-chunks")
+@click.option("--limit", type=int, default=None,
+              help="Max chunks to embed this run (default: all pending).")
+@click.option("--batch-size", type=int, default=32,
+              help="Texts per /embed call. Bounded by EMBED_MAX_BATCH on the embed service (default 64).")
+@click.pass_context
+def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
+    """Fill speech_chunks.embedding for every chunk currently NULL.
+
+    Calls the embed service at EMBED_URL (default http://embed:8000).
+    CPU-bound — expect ~1 text/sec at the default 4-core cap. Safe to
+    interrupt and resume; unembedded chunks stay NULL.
+    """
+    from .legislative.speech_embedder import embed_pending as _embed
+
+    async def _wrap(db: Database) -> None:
+        stats = await _embed(db, limit_chunks=limit, batch_size=batch_size)
+        console.print(
+            f"[green]embed-speech-chunks[/green]: seen={stats.chunks_seen} "
+            f"embedded={stats.chunks_embedded} batches={stats.batches} "
+            f"errors={stats.errors} server_ms={stats.total_elapsed_ms}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})

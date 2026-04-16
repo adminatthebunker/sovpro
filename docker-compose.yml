@@ -64,13 +64,21 @@ services:
     restart: unless-stopped
     networks: [sw]
 
-  # ── Embedding service (BGE-M3 + BGE-reranker, CPU) ────────────────
+  # ── Embedding service (BGE-M3 + BGE-reranker, GPU fp16) ───────────
   # Self-hosted so the semantic-search layer has no paid-API dependency.
-  # First /embed or /rerank call downloads ~2 GB of model weights into the
-  # `embedmodels` named volume; subsequent boots are fast.
+  # Runs BGE-M3 + BGE-reranker-v2-m3 on a CUDA device via the pytorch/
+  # pytorch:2.5.1-cuda12.4-cudnn9-runtime base image. Model weights
+  # cache in the `embedmodels` named volume — first /embed call pulls
+  # ~2 GB from HuggingFace; subsequent boots are seconds.
   #
-  # CPU cap is a courtesy so the host stays usable while ingestion runs.
-  # Override via EMBED_CPUS / EMBED_MEMORY / EMBED_THREADS in .env.
+  # VRAM usage at batch=32: ~2 GB weights + ~1 GB activations ≈ 3 GB.
+  # Safe on a 6 GiB card while the desktop compositor (gnome-shell,
+  # browsers) holds the remaining ~1 GiB. If you need the card for
+  # something else, `docker compose stop embed` releases it cleanly.
+  #
+  # To run on CPU-only hosts: replace pytorch/pytorch base with the
+  # python:3.11-slim variant (in git history at 2026-04-16) and remove
+  # the deploy.resources.reservations block.
   embed:
     build:
       context: ./services/embed
@@ -80,23 +88,29 @@ services:
     environment:
       EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}
       RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
-      MAX_BATCH: ${EMBED_MAX_BATCH:-64}
+      MAX_BATCH: ${EMBED_MAX_BATCH:-128}
       LOG_LEVEL: ${EMBED_LOG_LEVEL:-INFO}
-      # Keep torch/OpenMP thread pools bounded to the CPU quota — otherwise
-      # torch reads the HOST cpu count and context-switches against the cap.
-      OMP_NUM_THREADS: ${EMBED_THREADS:-4}
-      MKL_NUM_THREADS: ${EMBED_THREADS:-4}
-      TORCH_NUM_THREADS: ${EMBED_THREADS:-4}
       TOKENIZERS_PARALLELISM: "false"
+      # Pin CUDA to the one RTX card visible on the host. Overridable
+      # in .env if the host ever grows a second GPU and we want to
+      # dedicate one to embedding.
+      NVIDIA_VISIBLE_DEVICES: ${EMBED_CUDA_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - embedmodels:/models
     restart: unless-stopped
     networks: [sw]
     deploy:
       resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${EMBED_GPU_COUNT:-all}
+              capabilities: [gpu]
+        # Soft memory cap — host RAM, not VRAM. Keeps the tokeniser +
+        # HTTP layer from starving the rest of the stack on long runs.
         limits:
-          cpus: '${EMBED_CPUS:-4.0}'
-          memory: ${EMBED_MEMORY:-4g}
+          memory: ${EMBED_MEMORY:-6g}
 
   # ── Scanner (run-on-demand) ───────────────────────────────────────
   scanner:
@@ -116,6 +130,8 @@ services:
       GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
       SEED_SQL_PATH: /app/db/seed.sql
       OPENNORTH_BASE: ${OPENNORTH_BASE:-https://represent.opennorth.ca}
+      EMBED_URL: ${EMBED_URL:-http://embed:8000}
+      EMBED_BATCH: ${EMBED_BATCH:-32}
     volumes:
       - ./data:/data:ro
       - ./db:/app/db:ro

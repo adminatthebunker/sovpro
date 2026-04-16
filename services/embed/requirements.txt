@@ -1,7 +1,8 @@
-# CPU-only torch — huge size saving vs. CUDA build.
-torch==2.5.1+cpu
-# FlagEmbedding pins its own transformers / sentence-transformers versions;
-# let pip resolve the transitive stack rather than fighting it.
+# torch is inherited from the pytorch/pytorch base image (2.5.1 + CUDA 12.4).
+# Pinning here would force pip to reinstall it, losing the CUDA build.
+#
+# FlagEmbedding pins its own transformers / sentence-transformers / accelerate
+# versions; we let pip resolve the transitive stack.
 FlagEmbedding==1.3.2
 # HTTP layer
 fastapi==0.115.5

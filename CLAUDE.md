@@ -25,9 +25,11 @@ If you find yourself guessing at product direction, the goals doc is the authori
 - **API:** Node 20 + Fastify, zod validation, `services/api/`.
 - **Frontend:** React 18 + Vite + Leaflet + React Router 6, `services/frontend/`.
 - **Scanner:** Python 3.13 + asyncio + Click, `services/scanner/`.
-- **Embed service:** Python 3.11 + FastAPI + FlagEmbedding (BGE-M3 + BGE-reranker-v2-m3), CPU inference, `services/embed/`. Exposes `POST /embed` (1024-dim dense) and `POST /rerank` (cross-encoder scores). Model cache on `embedmodels` named volume. Service hostname on the `sw` network is `embed:8000`.
-  - **CPU / memory capped** via compose `deploy.resources.limits` — defaults to 4 CPUs + 4 GiB so the host stays responsive during ingest. Override via `EMBED_CPUS`, `EMBED_MEMORY`, `EMBED_THREADS` in `.env`. `OMP_NUM_THREADS` / `MKL_NUM_THREADS` / `TORCH_NUM_THREADS` are kept in sync inside the container so torch doesn't spawn more threads than the cgroup quota.
-  - Benchmark at 4-CPU cap (2026-04-16): ~1.0 text/sec at batch=32. 50k speeches ≈ 14 hours. Faster options (ONNX export, GPU, lighter model) deferred per bootstrapped-posture goals.
+- **Embed service:** Python + FastAPI + FlagEmbedding (BGE-M3 + BGE-reranker-v2-m3), **CUDA fp16 inference**, `services/embed/`. Exposes `POST /embed` (1024-dim dense) and `POST /rerank` (cross-encoder scores). Model cache on `embedmodels` named volume. Service hostname on the `sw` network is `embed:8000`.
+  - **Base image:** `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. GPU attached via `deploy.resources.reservations.devices` (driver `nvidia`, capabilities `[gpu]`). `/health` reports `device`, `device_name`, and `fp16` so the mode is introspectable.
+  - **Override to CPU mode** (for hosts without a GPU): swap the Dockerfile base back to `python:3.11-slim`, flip `use_fp16=False` at the top of `server.py`, remove the `reservations.devices` block in compose. The CPU variant lives in git history at commit `ef26d03` for reference.
+  - **Host memory cap** defaults to 6 GiB (`EMBED_MEMORY` in `.env`). VRAM usage is ~3 GiB at batch=64, well under the RTX 4050's 6 GiB. `docker compose stop embed` releases the card cleanly if you need it for something else.
+  - Benchmark on RTX 4050 Mobile (2026-04-16): ~68 texts/sec at batch=32, ~125 at batch=64, ~205 at batch=128. 50k speeches in ~4 min at peak. 1M speeches (all federal Hansard 1994+) ≈ 80 min of continuous compute. Cross-precision cosine similarity between CPU fp32 and GPU fp16 vectors measured at 0.999999 — existing vectors are compatible with future GPU-embedded queries.
 - **Orchestration:** Docker Compose, single host, Pangolin tunnel to public.
 - **Public edge:** nginx → api / frontend / uptime-kuma.
 

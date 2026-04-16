@@ -19,12 +19,15 @@ This doc translates `docs/plans/national-expansion-scoping.md` answers into a co
 - **Applied migrations:** 0014 (vector + unaccent) · 0015 (speeches) · 0016 (speech_references) · 0017 (speech_chunks + HNSW/GIN indexes) · 0019 (jurisdiction_sources + seed) · 0020 (correction_submissions) · 0021 (constituency_boundaries temporal).
 - **Held back:** 0018 (votes + vote_positions) — sits on disk, apply in phase 4 after NT/NU consensus-gov't data informs revisions.
 - **Bills coverage:** 9 of 13 sub-national legislatures live (NS, ON, BC, QC, AB, NB, NL, NT, NU). MB + SK (PDF-only) and PE + YT (WAF-blocked) remain.
-- **Embed service:** **deployed.** `services/embed/` container (`sovpro-embed:latest`) runs BGE-M3 + BGE-reranker-v2-m3 on CPU, exposes `POST /embed` and `POST /rerank` on `embed:8000` inside the compose network. Model weights cache in the `embedmodels` named volume. First call downloads ~2 GB; subsequent starts are fast.
-- **Bench (CPU, 12-core host, 8 torch threads):**
-  - Embed: ~0.7 texts/sec at batch=32 (~1.4 s/text). 50k speeches = ~20 hours.
-  - Rerank: 2 pairs in ~365 ms (post-load).
-  - Expected to improve materially on the user's beefier hardware or with ONNX export — deferred.
-- **Not yet:** Zero speeches ingested. First semantic-layer scanner module still to write.
+- **Embed service:** **deployed on GPU.** `services/embed/` container (`sovpro-embed:latest`) now runs BGE-M3 + BGE-reranker-v2-m3 on **NVIDIA RTX 4050 Mobile via CUDA 12.4 + fp16**. Base image is `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. Exposes `POST /embed` and `POST /rerank` on `embed:8000`. Model weights cache in the `embedmodels` named volume.
+- **Bench (RTX 4050 Mobile, fp16, 2026-04-16):**
+  - Cold start: ~5 s (was ~16 s on CPU)
+  - Embed steady-state: ~68 texts/sec @ batch=32, ~125 @ batch=64, **~205 @ batch=128** (was ~1.0 on 4-CPU cap)
+  - Rerank: 2 pairs in ~365 ms (post-load, similar to CPU — cross-encoders are small enough that PCIe transfer dominates at low batches)
+  - Net speedup: **~200× at peak batch size.** 50k speeches = ~4 min; 1M speeches ≈ 80 min.
+- **Precision:** cosine similarity between stored CPU-fp32 vectors and fresh GPU-fp16 vectors for the same text measured at 0.999999 — existing 20 embeddings do not require re-embedding.
+- **Federal Hansard pipeline shipped:** `ingest-federal-hansard` → `chunk-speeches` → `embed-speech-chunks` Click subcommands are live. 20 speeches ingested end-to-end as smoke test (1 sitting day, EN+FR mix, 100% politician FK resolution).
+- **Not yet:** historical backfill beyond the smoke test; hybrid retrieval API endpoint; corrections-inbox email ingest.
 
 ## Stack decisions
 
@@ -351,9 +354,10 @@ DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 G
 ### Phase 0 — foundation
 - [x] Custom `db/Dockerfile` with pgvector; compose wired to `build: ./db`.
 - [x] Migrations 0014 (pgvector + unaccent), 0015–0017 (speeches / refs / chunks + HNSW/GIN), 0019 (jurisdiction_sources + seed), 0020 (corrections), 0021 (constituency temporal).
-- [x] Embed service: BGE-M3 + BGE-reranker-v2-m3 on CPU, Dockerised, model-cache volume, `/embed` + `/rerank` endpoints live.
-- [x] CPU throughput benchmarked on a real speeches sample (~0.7 texts/sec at batch=32).
+- [x] Embed service: BGE-M3 + BGE-reranker-v2-m3 on RTX 4050 fp16, Dockerised, model-cache volume, `/embed` + `/rerank` endpoints live.
+- [x] GPU throughput benchmarked on a real speeches sample (~205 texts/sec at batch=128).
 - [x] Frontend coverage page reading `jurisdiction_sources`.
+- [x] Federal Hansard ingester + chunker + embedder scanner commands, smoke-tested end-to-end.
 - [ ] Extend `politician_terms` backfill to cover every politician currently in `politicians` (not just current term).
 
 ### Phase 1 — federal Hansard (2–4 weeks)

@@ -31,22 +31,36 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-# Bound torch's thread pools to the compose CPU cap. Without this, torch
-# reads the HOST cpu count (e.g. 12) and fans out threads that then
-# context-switch against the cgroup quota — worse throughput and worse
-# host-user experience.
+# On GPU builds, torch thread caps are irrelevant — inference happens
+# on device. On the CPU fallback build (python:3.11-slim base) we used
+# to bound OMP / torch threads to the cgroup quota so torch wouldn't
+# over-fan against the limit. Leaving that honoured for the CPU path
+# but skipping it when CUDA is visible.
 def _apply_thread_caps():
-    n = int(os.environ.get("TORCH_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", "4")))
     try:
         import torch
+        if torch.cuda.is_available():
+            # Keep CPU threads modest — tokeniser prep + data movement is
+            # all that runs on CPU in GPU mode.
+            torch.set_num_threads(2)
+            return
+        n = int(os.environ.get("TORCH_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", "4")))
         torch.set_num_threads(n)
-        # interop pool stays small — rarely helpful on CPU.
         torch.set_num_interop_threads(max(1, n // 2))
     except Exception:
         pass
 
 
 _apply_thread_caps()
+
+# fp16 halves VRAM use and roughly 2x's throughput on CUDA with no
+# measurable retrieval-quality loss for BGE-M3 / BGE-reranker. Falls
+# back to fp32 on CPU where fp16 is slow or unsupported.
+try:
+    import torch as _torch_probe
+    USE_FP16 = _torch_probe.cuda.is_available()
+except Exception:
+    USE_FP16 = False
 
 # FlagEmbedding imports are deferred into the lazy loaders below to keep
 # the process startup fast.
@@ -77,10 +91,10 @@ def _get_embed_model():
     if _embed_model is None:
         with _embed_lock:
             if _embed_model is None:
-                log.info("loading embed model %s", EMBED_MODEL)
+                log.info("loading embed model %s (fp16=%s)", EMBED_MODEL, USE_FP16)
                 t0 = time.monotonic()
                 from FlagEmbedding import BGEM3FlagModel
-                _embed_model = BGEM3FlagModel(EMBED_MODEL, use_fp16=False)
+                _embed_model = BGEM3FlagModel(EMBED_MODEL, use_fp16=USE_FP16)
                 log.info("embed model loaded in %.1fs", time.monotonic() - t0)
     return _embed_model
 
@@ -90,10 +104,10 @@ def _get_rerank_model():
     if _rerank_model is None:
         with _rerank_lock:
             if _rerank_model is None:
-                log.info("loading rerank model %s", RERANK_MODEL)
+                log.info("loading rerank model %s (fp16=%s)", RERANK_MODEL, USE_FP16)
                 t0 = time.monotonic()
                 from FlagEmbedding import FlagReranker
-                _rerank_model = FlagReranker(RERANK_MODEL, use_fp16=False)
+                _rerank_model = FlagReranker(RERANK_MODEL, use_fp16=USE_FP16)
                 log.info("rerank model loaded in %.1fs", time.monotonic() - t0)
     return _rerank_model
 
@@ -140,8 +154,20 @@ def health():
     # Models are NOT preloaded — the health check just confirms the
     # process is alive. Preloading in a healthcheck would block startup
     # for minutes on first boot.
+    device = "cpu"
+    device_name = None
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device = "cuda"
+            device_name = torch.cuda.get_device_name(0)
+    except Exception:
+        pass
     return {
         "ok": True,
+        "device": device,
+        "device_name": device_name,
+        "fp16": USE_FP16,
         "embed_model": EMBED_MODEL,
         "rerank_model": RERANK_MODEL,
         "embed_loaded": _embed_model is not None,

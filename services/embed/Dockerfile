@@ -1,12 +1,18 @@
 # ═══════════════════════════════════════════════════════════════════════════
-# SovereignWatch embedding service — BGE-M3 + BGE-reranker, CPU inference
+# SovereignWatch embedding service — BGE-M3 + BGE-reranker on GPU (CUDA 12.4)
 # ═══════════════════════════════════════════════════════════════════════════
-# HTTP service the scanner calls to get dense embeddings and rerank scores.
-# Self-hosted on CPU: no OpenAI / Cohere / Voyage in the critical path.
-# Model cache lives on a named volume so rebuilds don't re-download ~2 GB.
+# Uses the official pytorch/pytorch runtime image so torch + CUDA + cuDNN
+# are pre-installed and match versions. BGE-M3 runs in fp16 on the GPU,
+# which cuts VRAM roughly in half and 2x's throughput vs fp32 with no
+# measurable retrieval-quality loss.
+#
+# The container REQUIRES a GPU at runtime — compose requests it via
+# `deploy.resources.reservations.devices`. To run the service back on CPU
+# (no GPU host), swap this image for the python:3.11-slim variant kept in
+# VCS history and flip use_fp16 back to False.
 # ═══════════════════════════════════════════════════════════════════════════
 
-FROM python:3.11-slim
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -18,22 +24,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# libgomp is required by torch / ONNX kernels. curl is for the healthcheck.
+# libgomp1 is already included; we just need curl for the healthcheck.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
-        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# Install CPU-only PyTorch explicitly to avoid pulling the ~2 GB CUDA wheels.
-RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu \
-        -r requirements.txt
+# Torch comes from the base image (torch 2.5.1 + CUDA 12.4). We install
+# FlagEmbedding + the HTTP layer on top; pip's resolver won't touch torch
+# since requirements.txt doesn't pin it.
+RUN pip install -r requirements.txt
 
 COPY server.py ./
 
-# Models live on a bind-mounted volume; the first /embed or /rerank call
-# pulls them from HF and caches them in /models. Subsequent boots are fast.
 VOLUME ["/models"]
 
 EXPOSE 8000
