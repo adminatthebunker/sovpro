@@ -1,0 +1,216 @@
+"""SovereignWatch embedding service.
+
+Two HTTP endpoints the scanner calls:
+
+- POST /embed    → BGE-M3 dense embeddings (1024-dim, cosine-normalised)
+- POST /rerank   → BGE-reranker-v2-m3 cross-encoder scores
+
+Both models are lazy-loaded on first call so the container starts in
+seconds; first request pays the download + load cost (~2 GB, ~60 s on
+a fresh volume). Subsequent calls hit the in-process cache.
+
+Design notes:
+- Single worker. BGE-M3 keeps model weights + KV state in process; two
+  workers means ~4 GB RAM for no throughput gain on CPU.
+- Requests batch internally inside FlagEmbedding — caller batches by
+  sending an array per call (up to `MAX_BATCH` items).
+- Model cache lives under HF_HOME=/models which docker-compose mounts as
+  a named volume so rebuilds don't re-download.
+- Token-counting is exposed on /embed so the caller doesn't need to
+  duplicate BGE-M3's tokenizer.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+from threading import Lock
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+# Bound torch's thread pools to the compose CPU cap. Without this, torch
+# reads the HOST cpu count (e.g. 12) and fans out threads that then
+# context-switch against the cgroup quota — worse throughput and worse
+# host-user experience.
+def _apply_thread_caps():
+    n = int(os.environ.get("TORCH_NUM_THREADS", os.environ.get("OMP_NUM_THREADS", "4")))
+    try:
+        import torch
+        torch.set_num_threads(n)
+        # interop pool stays small — rarely helpful on CPU.
+        torch.set_num_interop_threads(max(1, n // 2))
+    except Exception:
+        pass
+
+
+_apply_thread_caps()
+
+# FlagEmbedding imports are deferred into the lazy loaders below to keep
+# the process startup fast.
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+log = logging.getLogger("embed")
+
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-m3")
+RERANK_MODEL = os.environ.get("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
+MAX_BATCH = int(os.environ.get("MAX_BATCH", "64"))
+MAX_INPUT_LEN = int(os.environ.get("MAX_INPUT_LEN", "8192"))
+DIM = 1024
+
+app = FastAPI(title="SovereignWatch embed", version="0.1.0")
+
+# ── Lazy model holders ─────────────────────────────────────────────
+_embed_model = None
+_embed_lock = Lock()
+_rerank_model = None
+_rerank_lock = Lock()
+
+
+def _get_embed_model():
+    global _embed_model
+    if _embed_model is None:
+        with _embed_lock:
+            if _embed_model is None:
+                log.info("loading embed model %s", EMBED_MODEL)
+                t0 = time.monotonic()
+                from FlagEmbedding import BGEM3FlagModel
+                _embed_model = BGEM3FlagModel(EMBED_MODEL, use_fp16=False)
+                log.info("embed model loaded in %.1fs", time.monotonic() - t0)
+    return _embed_model
+
+
+def _get_rerank_model():
+    global _rerank_model
+    if _rerank_model is None:
+        with _rerank_lock:
+            if _rerank_model is None:
+                log.info("loading rerank model %s", RERANK_MODEL)
+                t0 = time.monotonic()
+                from FlagEmbedding import FlagReranker
+                _rerank_model = FlagReranker(RERANK_MODEL, use_fp16=False)
+                log.info("rerank model loaded in %.1fs", time.monotonic() - t0)
+    return _rerank_model
+
+
+# ── Request / response shapes ─────────────────────────────────────
+
+class EmbedRequest(BaseModel):
+    texts: List[str] = Field(..., min_length=1)
+    # Optional: return token counts (useful for chunking decisions upstream)
+    return_tokens: bool = False
+
+
+class EmbedItem(BaseModel):
+    embedding: List[float]
+    token_count: Optional[int] = None
+
+
+class EmbedResponse(BaseModel):
+    model: str
+    dim: int
+    items: List[EmbedItem]
+    elapsed_ms: int
+
+
+class RerankPair(BaseModel):
+    query: str
+    document: str
+
+
+class RerankRequest(BaseModel):
+    pairs: List[RerankPair] = Field(..., min_length=1)
+
+
+class RerankResponse(BaseModel):
+    model: str
+    scores: List[float]
+    elapsed_ms: int
+
+
+# ── Endpoints ─────────────────────────────────────────────────────
+
+@app.get("/health")
+def health():
+    # Models are NOT preloaded — the health check just confirms the
+    # process is alive. Preloading in a healthcheck would block startup
+    # for minutes on first boot.
+    return {
+        "ok": True,
+        "embed_model": EMBED_MODEL,
+        "rerank_model": RERANK_MODEL,
+        "embed_loaded": _embed_model is not None,
+        "rerank_loaded": _rerank_model is not None,
+    }
+
+
+@app.post("/embed", response_model=EmbedResponse)
+def embed(req: EmbedRequest):
+    if len(req.texts) > MAX_BATCH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"batch size {len(req.texts)} exceeds MAX_BATCH={MAX_BATCH}",
+        )
+    # BGE-M3 crashes on empty strings; guard at the edge.
+    texts = [t if t.strip() else " " for t in req.texts]
+
+    model = _get_embed_model()
+    t0 = time.monotonic()
+    # `encode` returns {'dense_vecs': np.ndarray[B, 1024], ...}
+    out = model.encode(
+        texts,
+        max_length=MAX_INPUT_LEN,
+        return_dense=True,
+        return_sparse=False,
+        return_colbert_vecs=False,
+    )
+    dense = out["dense_vecs"]  # shape (B, 1024)
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+
+    token_counts: Optional[List[int]] = None
+    if req.return_tokens:
+        tok = model.tokenizer(texts, add_special_tokens=True)
+        token_counts = [len(ids) for ids in tok["input_ids"]]
+
+    items = [
+        EmbedItem(
+            embedding=list(map(float, vec)),
+            token_count=(token_counts[i] if token_counts else None),
+        )
+        for i, vec in enumerate(dense)
+    ]
+    return EmbedResponse(
+        model=EMBED_MODEL,
+        dim=DIM,
+        items=items,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+@app.post("/rerank", response_model=RerankResponse)
+def rerank(req: RerankRequest):
+    if len(req.pairs) > MAX_BATCH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"batch size {len(req.pairs)} exceeds MAX_BATCH={MAX_BATCH}",
+        )
+    pairs = [[p.query, p.document] for p in req.pairs]
+    model = _get_rerank_model()
+    t0 = time.monotonic()
+    scores = model.compute_score(pairs, max_length=MAX_INPUT_LEN, normalize=True)
+    elapsed_ms = int((time.monotonic() - t0) * 1000)
+    # FlagEmbedding returns a scalar when len==1, list otherwise.
+    if isinstance(scores, (int, float)):
+        scores = [float(scores)]
+    else:
+        scores = [float(s) for s in scores]
+    return RerankResponse(
+        model=RERANK_MODEL,
+        scores=scores,
+        elapsed_ms=elapsed_ms,
+    )

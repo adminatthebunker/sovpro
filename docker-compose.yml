@@ -64,6 +64,40 @@ services:
     restart: unless-stopped
     networks: [sw]
 
+  # ── Embedding service (BGE-M3 + BGE-reranker, CPU) ────────────────
+  # Self-hosted so the semantic-search layer has no paid-API dependency.
+  # First /embed or /rerank call downloads ~2 GB of model weights into the
+  # `embedmodels` named volume; subsequent boots are fast.
+  #
+  # CPU cap is a courtesy so the host stays usable while ingestion runs.
+  # Override via EMBED_CPUS / EMBED_MEMORY / EMBED_THREADS in .env.
+  embed:
+    build:
+      context: ./services/embed
+      dockerfile: Dockerfile
+    image: sovpro-embed:latest
+    container_name: sw-embed
+    environment:
+      EMBED_MODEL: ${EMBED_MODEL:-BAAI/bge-m3}
+      RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-v2-m3}
+      MAX_BATCH: ${EMBED_MAX_BATCH:-64}
+      LOG_LEVEL: ${EMBED_LOG_LEVEL:-INFO}
+      # Keep torch/OpenMP thread pools bounded to the CPU quota — otherwise
+      # torch reads the HOST cpu count and context-switches against the cap.
+      OMP_NUM_THREADS: ${EMBED_THREADS:-4}
+      MKL_NUM_THREADS: ${EMBED_THREADS:-4}
+      TORCH_NUM_THREADS: ${EMBED_THREADS:-4}
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - embedmodels:/models
+    restart: unless-stopped
+    networks: [sw]
+    deploy:
+      resources:
+        limits:
+          cpus: '${EMBED_CPUS:-4.0}'
+          memory: ${EMBED_MEMORY:-4g}
+
   # ── Scanner (run-on-demand) ───────────────────────────────────────
   scanner:
     build:
@@ -167,6 +201,7 @@ volumes:
   pgdata:
   changedata:
   kumadata:
+  embedmodels:
 
 networks:
   sw:

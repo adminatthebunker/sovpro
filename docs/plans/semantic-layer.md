@@ -19,7 +19,12 @@ This doc translates `docs/plans/national-expansion-scoping.md` answers into a co
 - **Applied migrations:** 0014 (vector + unaccent) · 0015 (speeches) · 0016 (speech_references) · 0017 (speech_chunks + HNSW/GIN indexes) · 0019 (jurisdiction_sources + seed) · 0020 (correction_submissions) · 0021 (constituency_boundaries temporal).
 - **Held back:** 0018 (votes + vote_positions) — sits on disk, apply in phase 4 after NT/NU consensus-gov't data informs revisions.
 - **Bills coverage:** 9 of 13 sub-national legislatures live (NS, ON, BC, QC, AB, NB, NL, NT, NU). MB + SK (PDF-only) and PE + YT (WAF-blocked) remain.
-- **Not yet:** BGE-M3 not deployed. Zero speeches ingested. No embeddings generated. First semantic-layer scanner module still to write.
+- **Embed service:** **deployed.** `services/embed/` container (`sovpro-embed:latest`) runs BGE-M3 + BGE-reranker-v2-m3 on CPU, exposes `POST /embed` and `POST /rerank` on `embed:8000` inside the compose network. Model weights cache in the `embedmodels` named volume. First call downloads ~2 GB; subsequent starts are fast.
+- **Bench (CPU, 12-core host, 8 torch threads):**
+  - Embed: ~0.7 texts/sec at batch=32 (~1.4 s/text). 50k speeches = ~20 hours.
+  - Rerank: 2 pairs in ~365 ms (post-load).
+  - Expected to improve materially on the user's beefier hardware or with ONNX export — deferred.
+- **Not yet:** Zero speeches ingested. First semantic-layer scanner module still to write.
 
 ## Stack decisions
 
@@ -346,10 +351,10 @@ DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 G
 ### Phase 0 — foundation
 - [x] Custom `db/Dockerfile` with pgvector; compose wired to `build: ./db`.
 - [x] Migrations 0014 (pgvector + unaccent), 0015–0017 (speeches / refs / chunks + HNSW/GIN), 0019 (jurisdiction_sources + seed), 0020 (corrections), 0021 (constituency temporal).
-- [ ] Stand up BGE-M3 on local hardware; benchmark CPU throughput on a real speeches sample.
-- [ ] Stand up BGE-reranker on local hardware.
+- [x] Embed service: BGE-M3 + BGE-reranker-v2-m3 on CPU, Dockerised, model-cache volume, `/embed` + `/rerank` endpoints live.
+- [x] CPU throughput benchmarked on a real speeches sample (~0.7 texts/sec at batch=32).
+- [x] Frontend coverage page reading `jurisdiction_sources`.
 - [ ] Extend `politician_terms` backfill to cover every politician currently in `politicians` (not just current term).
-- [ ] Frontend coverage page reading `jurisdiction_sources`.
 
 ### Phase 1 — federal Hansard (2–4 weeks)
 - Source: extend `politician_openparliament_cache` pattern into normalized `speeches` rows. Openparliament.ca provides structured JSON + speaker slugs.

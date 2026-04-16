@@ -25,6 +25,9 @@ If you find yourself guessing at product direction, the goals doc is the authori
 - **API:** Node 20 + Fastify, zod validation, `services/api/`.
 - **Frontend:** React 18 + Vite + Leaflet + React Router 6, `services/frontend/`.
 - **Scanner:** Python 3.13 + asyncio + Click, `services/scanner/`.
+- **Embed service:** Python 3.11 + FastAPI + FlagEmbedding (BGE-M3 + BGE-reranker-v2-m3), CPU inference, `services/embed/`. Exposes `POST /embed` (1024-dim dense) and `POST /rerank` (cross-encoder scores). Model cache on `embedmodels` named volume. Service hostname on the `sw` network is `embed:8000`.
+  - **CPU / memory capped** via compose `deploy.resources.limits` — defaults to 4 CPUs + 4 GiB so the host stays responsive during ingest. Override via `EMBED_CPUS`, `EMBED_MEMORY`, `EMBED_THREADS` in `.env`. `OMP_NUM_THREADS` / `MKL_NUM_THREADS` / `TORCH_NUM_THREADS` are kept in sync inside the container so torch doesn't spawn more threads than the cgroup quota.
+  - Benchmark at 4-CPU cap (2026-04-16): ~1.0 text/sec at batch=32. 50k speeches ≈ 14 hours. Faster options (ONNX export, GPU, lighter model) deferred per bootstrapped-posture goals.
 - **Orchestration:** Docker Compose, single host, Pangolin tunnel to public.
 - **Public edge:** nginx → api / frontend / uptime-kuma.
 
@@ -76,6 +79,47 @@ Log every upstream request by URL + etag. Re-runs should be free. NS WAF cost us
 ### 7. Idempotent Click subcommands for ingest
 
 Every ingest command in `services/scanner/src/__main__.py` is idempotent and restartable. New pipelines follow the same shape — `ingest-<source>`, `fetch-<source>-pages`, `parse-<source>-pages`, `resolve-<source>-sponsors` — split by stage so each can be retried independently.
+
+## Blog (MDX-in-repo)
+
+Posts live as `.mdx` files under `services/frontend/src/content/blog/`. The frontend bundles them at build time via `@mdx-js/rollup`; there is no DB, no CMS, no auth. Git history is the editorial audit trail.
+
+### Post shape
+
+```yaml
+---
+title: "Post headline"
+slug: "url-slug"          # becomes /blog/<slug>
+date: "2026-04-17"        # ISO-8601, drives sort order
+excerpt: "One-liner hook shown on the list page + as meta description."
+author: "adminatthebunker"
+tags: ["launch", "semantic-search"]
+draft: true               # true hides in production builds
+---
+
+MDX body…
+```
+
+Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `date`, not filename.
+
+### Draft workflow
+
+- `draft: true` → post is hidden in production; visible in dev (`npm run dev`) because `useBlogPosts` checks `import.meta.env.DEV`.
+- For a staging preview build that shows drafts, pass `--build-arg VITE_SHOW_DRAFTS=1` to `docker compose build frontend`. The resulting image exposes draft posts; revert with a plain rebuild.
+- To ship a draft: flip `draft: false` in the frontmatter, commit, rebuild the frontend image. That's the whole publish flow.
+
+### Publish checklist
+
+1. Edit `services/frontend/src/content/blog/<file>.mdx`; flip `draft: true` → `draft: false`.
+2. `docker compose build frontend && docker compose up -d frontend`.
+3. Verify at `/blog` and `/blog/<slug>`. Document title, meta description, and auto-linked headings come from MDX plugins (`remark-frontmatter`, `rehype-slug`, `rehype-autolink-headings`).
+4. Commit the change.
+
+### What not to put in the blog
+
+- Nothing that belongs in `docs/` (architecture, schema, operations — those are authoritative docs; blog is narrative).
+- No credentials, tokens, or private URLs.
+- No machine-generated status logs — the blog is for readers, not internal tracking.
 
 ## Database reference
 

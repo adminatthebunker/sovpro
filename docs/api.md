@@ -55,6 +55,41 @@ Top-level rollup: politicians by level/party, sovereignty distribution, top prov
 }
 ```
 
+## Coverage
+
+### `GET /coverage`
+Query params:
+- `status` — filter by `bills_status`: `live | partial | blocked | none`
+
+Returns the `jurisdiction_sources` table plus a rollup summary:
+
+```json
+{
+  "jurisdictions": [
+    {
+      "jurisdiction": "AB",
+      "legislature_name": "Legislative Assembly of Alberta",
+      "seats": 87,
+      "bills_status": "live",
+      "hansard_status": "none",
+      "votes_status": "none",
+      "committees_status": "live",
+      "bills_difficulty": 2,
+      "blockers": null,
+      "notes": "Legislature 31 S1+S2 live (114 bills); Hansard is PDF-only",
+      "bills_count": 0,
+      "speeches_count": 0,
+      "votes_count": 0,
+      "politicians_count": 0,
+      "last_verified_at": null
+    }
+  ],
+  "summary": { "total": 14, "live": 8, "partial": 2, "blocked": 2, "none": 2 }
+}
+```
+
+Seeded on migration 0019 and kept current by `jurisdiction_sources` updates from ingest pipelines.
+
 ## Changes
 
 ### `GET /changes`

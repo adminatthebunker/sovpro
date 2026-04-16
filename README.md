@@ -62,6 +62,9 @@ Coverage is built province-by-province via dedicated ingesters (Open North where
 | `/map` | Full map, polygons, flow lines, party report card, referendum view |
 | `/politicians` | Cards grid of every tracked politician, filterable by level/province/party/socials |
 | `/politicians/:id` | Per-politician detail — socials, offices, terms, changes, and (federal MPs) a Parliament timeline sourced from openparliament.ca |
+| `/coverage` | Honest coverage dashboard — every Canadian legislature with status of bills / Hansard / votes / committees layers, blockers flagged |
+| `/blog` | Work-as-we-go updates, authored as MDX in `services/frontend/src/content/blog/*.mdx` |
+| `/blog/:slug` | Individual post |
 
 Federal MPs additionally get a lazily-mirrored **Parliament** tab backed by a local JSONB cache of openparliament.ca — 30-day TTL for the profile blob, 1-day TTL for their speeches+bills feed, coalesced per-politician so concurrent requests share one outbound call.
 
