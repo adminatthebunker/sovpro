@@ -118,11 +118,14 @@ COMMANDS: dict[str, dict[str, Any]] = {
         "cli": "ingest-qc-bills-rss", "category": "bills", "args": [],
     },
     "ingest-ab-bills": {
-        "description": "Alberta bills via Assembly Dashboard.",
+        "description": "Alberta bills via Assembly Dashboard. Default current session; --all-sessions backfills Legislature 1+ (~137 sessions).",
         "cli": "ingest-ab-bills", "category": "bills",
         "args": [
-            {"name": "legislature", "type": "int", "required": False, "help": "Legislature number."},
-            {"name": "session", "type": "int", "required": False, "help": "Session number."},
+            {"name": "legislature", "type": "int", "required": False, "help": "One specific legislature (pair with --session)."},
+            {"name": "session", "type": "int", "required": False, "help": "One specific session (requires --legislature)."},
+            {"name": "all_sessions_in_legislature", "type": "int", "required": False, "help": "Every session within legislature L."},
+            {"name": "all_sessions", "type": "bool", "required": False, "help": "Full historical backfill (Legislature 1+, ~137 sessions × 1.5s delay ≈ 3.5 min)."},
+            {"name": "delay", "type": "int", "required": False, "default": 2, "help": "Seconds between session fetches (be polite)."},
         ],
     },
     "ingest-nb-bills": {
