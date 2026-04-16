@@ -40,7 +40,14 @@ interface Props {
    *  otherwise. Used by the lander to stretch the backdrop to fill the
    *  viewport. */
   height?: string;
+  /** Client-side sovereignty-tier visibility filter. Features whose tier
+   *  isn't in the set are hidden. When undefined, all tiers are visible
+   *  (used by compact mode and any other caller that doesn't expose the
+   *  legend checkboxes). */
+  visibleTiers?: Set<SovereigntyTier>;
 }
+
+const ALL_TIERS_VISIBLE: Set<SovereigntyTier> = new Set([1, 2, 3, 4, 5, 6]);
 
 const CANADA_CENTER: [number, number] = [56.1304, -106.3468];
 
@@ -57,8 +64,16 @@ L.Icon.Default.mergeOptions({
   shadowUrl:     "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-export function MapView({ filters, compact = false, height }: Props) {
+export function MapView({ filters, compact = false, height, visibleTiers }: Props) {
   const containerHeight = height ?? (compact ? "260px" : "70vh");
+  const tiersVisible = visibleTiers ?? ALL_TIERS_VISIBLE;
+  // Stable signature used in GeoJSON `key` props so Leaflet rebuilds the
+  // underlying layer whenever the checked tier set changes (GeoJSON doesn't
+  // re-style on prop changes — it has to remount).
+  const tierKey = useMemo(
+    () => [...tiersVisible].sort().join(","),
+    [tiersVisible]
+  );
   // Common query params shared by both fetches. Pins-first strategy: fetch
   // pins+lines (tiny) in parallel with polygons (large). Map becomes
   // interactive as soon as pins land; polygons stream in ~500ms later and
@@ -99,11 +114,13 @@ export function MapView({ filters, compact = false, height }: Props) {
     if (!pinsData) return { servers: srv, lines: lns };
     for (const f of pinsData.features) {
       const kind = f.properties.kind;
+      const tier = (f.properties.sovereignty_tier ?? 6) as SovereigntyTier;
+      if (!tiersVisible.has(tier)) continue;
       if (kind === "server") srv.features.push(f);
       else if (kind === "connection") lns.features.push(f);
     }
     return { servers: srv, lines: lns };
-  }, [pinsData]);
+  }, [pinsData, tiersVisible]);
 
   const { polygons, polygonsNoData } = useMemo(() => {
     const polys: GeoCollection = { type: "FeatureCollection", features: [] };
@@ -111,11 +128,19 @@ export function MapView({ filters, compact = false, height }: Props) {
     if (!polysData) return { polygons: polys, polygonsNoData: polysNo };
     for (const f of polysData.features) {
       const kind = f.properties.kind;
-      if (kind === "constituency") polys.features.push(f);
-      else if (kind === "constituency_no_data") polysNo.features.push(f);
+      if (kind === "constituency") {
+        const tier = (f.properties.worst_tier ?? 6) as SovereigntyTier;
+        if (!tiersVisible.has(tier)) continue;
+        polys.features.push(f);
+      } else if (kind === "constituency_no_data") {
+        // "No tracked website" ridings are orthogonal to sovereignty tiers
+        // (they have no site, so no tier). They stay controlled by the
+        // separate `includeNoData` filter rather than tier checkboxes.
+        polysNo.features.push(f);
+      }
     }
     return { polygons: polys, polygonsNoData: polysNo };
-  }, [polysData]);
+  }, [polysData, tiersVisible]);
 
   return (
     <div className={`mapview ${compact ? "mapview--compact" : ""}`}>
@@ -160,7 +185,7 @@ export function MapView({ filters, compact = false, height }: Props) {
               maxNativeZoom={18}
             />
             <GeoJSON
-              key={`srv-compact-${servers.features.length}`}
+              key={`srv-compact-${tierKey}-${servers.features.length}`}
               data={servers as GeoJSON.FeatureCollection}
               pointToLayer={(feature, latlng) => {
                 const tier = (feature.properties?.sovereignty_tier ?? 6) as SovereigntyTier;
@@ -197,7 +222,7 @@ export function MapView({ filters, compact = false, height }: Props) {
 
           <LayersControl.Overlay checked name="Constituencies">
             <GeoJSON
-              key={`const-${polygons.features.length}`}
+              key={`const-${tierKey}-${polygons.features.length}`}
               data={polygons as GeoJSON.FeatureCollection}
               style={(f) => {
                 const tier = (f?.properties?.worst_tier ?? 6) as SovereigntyTier;
@@ -222,7 +247,7 @@ export function MapView({ filters, compact = false, height }: Props) {
           {polygonsNoData.features.length > 0 && (
             <LayersControl.Overlay checked name={`Ridings without a website (${polygonsNoData.features.length})`}>
               <GeoJSON
-                key={`nodata-${polygonsNoData.features.length}`}
+                key={`nodata-${tierKey}-${polygonsNoData.features.length}`}
                 data={polygonsNoData as GeoJSON.FeatureCollection}
                 style={() => ({
                   color: "#475569",
@@ -245,7 +270,7 @@ export function MapView({ filters, compact = false, height }: Props) {
 
           <LayersControl.Overlay checked name="Connections (Canadian)">
             <GeoJSON
-              key={`lines-ca-${lines.features.length}`}
+              key={`lines-ca-${tierKey}-${lines.features.length}`}
               data={{
                 ...lines,
                 features: lines.features.filter(
@@ -269,7 +294,7 @@ export function MapView({ filters, compact = false, height }: Props) {
 
           <LayersControl.Overlay checked name="Data flow (animated, foreign)">
             <GeoJSON
-              key={`flow-${lines.features.length}`}
+              key={`flow-${tierKey}-${lines.features.length}`}
               data={{
                 ...lines,
                 features: lines.features.filter((f) => {
@@ -303,7 +328,7 @@ export function MapView({ filters, compact = false, height }: Props) {
 
           <LayersControl.Overlay checked name="Server locations">
             <GeoJSON
-              key={`srv-${servers.features.length}`}
+              key={`srv-${tierKey}-${servers.features.length}`}
               data={servers as GeoJSON.FeatureCollection}
               pointToLayer={(feature, latlng) => {
                 const tier = (feature.properties?.sovereignty_tier ?? 6) as SovereigntyTier;

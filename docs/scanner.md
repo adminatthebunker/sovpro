@@ -53,3 +53,32 @@ Each source is a row in `services/scanner/src/opennorth.py::SETS`. Add an `OpenN
     boundary_level="provincial",
 ),
 ```
+
+## Provincial bills pipelines
+
+In addition to scanning websites, the scanner ingests **bills and stage events** for every provincial / territorial legislature we cover. Each province is a bespoke pipeline because no two legislative websites share a backend; modules live under `services/scanner/src/legislative/`.
+
+| Jurisdiction | Source | Module | Sponsor FK |
+|---|---|---|---|
+| NS | Socrata API + RSS + HTML | `ns_bills.py`, `ns_rss.py`, `ns_bill_pages.py`, `ns_bill_parse.py` | text slug |
+| ON | Drupal `?_format=json` | `on_bills.py` | text slug |
+| BC | LIMS GraphQL + PDMS JSON | `bc_bills.py` | integer FK |
+| QC | donneesquebec CSV + RSS + HTML | `qc_bills.py`, `qc_mnas.py` | integer FK |
+| AB | Single-page Assembly Dashboard HTML | `ab_bills.py`, `ab_mlas.py` | zero-padded text FK |
+| NB | legnb.ca list + detail HTML | `nb_bills.py` | name-based |
+| NL | `/HouseBusiness/Bills/ga{GA}session{S}/` HTML table | `nl_bills.py` | (sponsor not exposed) |
+| NT | ntassembly.ca Drupal 9 list + detail | `nt_bills.py` | (consensus gov't) |
+| NU | assembly.nu.ca Drupal 9 single-view table | `nu_bills.py` | (consensus gov't) |
+
+Run any with `docker compose run --rm scanner ingest-<province>-bills`. See `sovpro --help` for the full list of flags (most support `--all-sessions` / `--all-sessions-in-legislature` for historical backfill). Full per-jurisdiction research + build notes live in [`docs/plans/provincial-legislature-research.md`](plans/provincial-legislature-research.md).
+
+### Schema
+
+Four tables under `db/migrations/0006_legislative_bills.sql` plus extensions 0007-0013:
+
+- `legislative_sessions (level, province_territory, parliament_number, session_number, …)`
+- `bills (session_id, bill_number, title, status, source_id, source_system, raw jsonb, …)`
+- `bill_events (bill_id, stage, stage_label, event_date, event_type, outcome, committee_name, …)` — `UNIQUE NULLS NOT DISTINCT` constraint `bill_events_uniq` for idempotent stage writes
+- `bill_sponsors (bill_id, politician_id, sponsor_slug, sponsor_name_raw, role, source_system)` — politician_id nullable; a generic `sponsor_resolver` fills slug/name-based rows after ingestion
+
+`politicians` gets one column per jurisdiction's upstream ID scheme (`nslegislature_slug`, `ola_slug`, `lims_member_id`, `qc_assnat_id`, `ab_assembly_mid`).

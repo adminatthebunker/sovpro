@@ -19,8 +19,10 @@ Change detection monitors all tracked sites and emits alerts when hosting moves.
 | **Municipal** | 571 | Council members across major cities — ON, QC, BC, AB, and the Atlantic provinces |
 | **Referendum organizations** | 20 | Both sides of Alberta's Oct 19, 2026 independence question plus the UCP's nine referendum questions |
 | **Websites tracked** | ~2,350 | Personal sites, campaign sites, official handles |
+| **Provincial bills** | ~3,950 | NS + ON + BC + QC + AB + NB + NL + NT + NU (9 of 13 legislatures) |
+| **Bill stage events** | ~5,300 | Full Westminster progression captured per bill (1R / 2R / Committee / 3R / Royal Assent ± `comes_into_force` for AB) |
 
-Coverage is built province-by-province via dedicated ingesters (Open North where available, then per-legislature scrapers for gaps like Yukon / Nunavut / NB / NL / BC / ON). See `sovpro --help` for the full list.
+Coverage is built province-by-province via dedicated ingesters (Open North where available, then per-legislature scrapers for gaps like Yukon / Nunavut / NB / NL / BC / ON). Bills are ingested from a mix of Socrata APIs, Drupal JSON, GraphQL backends, official CSVs, and server-rendered HTML — each province is its own beast. See `sovpro --help` and [`docs/plans/provincial-legislature-research.md`](docs/plans/provincial-legislature-research.md) for per-jurisdiction details.
 
 ---
 

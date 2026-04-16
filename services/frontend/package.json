@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mdx-js/react": "^3.0.1",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -17,10 +18,17 @@
     "react-router-dom": "^6.30.3"
   },
   "devDependencies": {
+    "@mdx-js/rollup": "^3.0.1",
     "@types/leaflet": "^1.9.14",
+    "@types/mdx": "^2.0.13",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "rehype-autolink-headings": "^7.1.0",
+    "rehype-slug": "^6.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-mdx-frontmatter": "^5.0.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.1"
   }

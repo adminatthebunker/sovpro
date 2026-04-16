@@ -459,10 +459,34 @@ button.active { background: var(--accent); border-color: var(--accent); }
 .tier-legend__section + .tier-legend__section {
   padding-top: .75rem; border-top: 1px solid var(--border);
 }
-.tier-legend__title { font-weight: 600; color: var(--ink); font-size: .8rem; }
+.tier-legend__title {
+  font-weight: 600; color: var(--ink); font-size: .8rem;
+  display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+}
+.tier-legend__bulk { display: inline-flex; gap: .35rem; }
+.tier-legend__bulk-btn {
+  background: transparent; color: var(--ink); border: 1px solid var(--border);
+  border-radius: 6px; padding: .15rem .5rem; font-size: .72rem; font-weight: 500;
+  cursor: pointer; opacity: .85;
+}
+.tier-legend__bulk-btn:hover:not(:disabled) { opacity: 1; border-color: var(--ink); }
+.tier-legend__bulk-btn:disabled { opacity: .35; cursor: default; }
 .tier-legend__row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
 .tier-legend__item { display: inline-flex; align-items: center; gap: .35rem; }
 .tier-legend__swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+/* Checkbox-style tier items: the whole row is a clickable <label>. Unchecked
+   tiers dim to signal that their features are hidden on the map. */
+.tier-legend__item--check {
+  cursor: pointer; user-select: none;
+  padding: .15rem .4rem; border-radius: 6px;
+  transition: background-color .12s ease, opacity .12s ease;
+}
+.tier-legend__item--check:hover { background: rgba(255, 255, 255, 0.04); }
+.tier-legend__item--check input[type="checkbox"] {
+  margin: 0; accent-color: var(--ink, #e5e7eb); cursor: pointer;
+}
+.tier-legend__item--check.is-off { opacity: .38; }
+.tier-legend__item--check.is-off .tier-legend__swatch { filter: grayscale(0.6); }
 .tier-legend__ant line {
   animation: legend-ant 1.2s linear infinite;
 }

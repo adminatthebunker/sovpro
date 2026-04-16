@@ -1,0 +1,59 @@
+---
+title: "Towards the definitive source of Canadian political data"
+slug: "definitive-canadian-political-data"
+date: "2026-04-17"
+excerpt: "SovereignWatch started as a hosting sovereignty scanner. It's becoming something bigger: a searchable, attributed record of what Canadian politicians say and do, at every level of government."
+author: "adminatthebunker"
+tags: ["launch", "roadmap", "semantic-search"]
+draft: false
+---
+
+When we started SovereignWatch last year, the question was narrow: **where is Canadian political data actually stored?** We built a scanner, mapped ridings to server pins, and coloured the country by sovereignty tier. The headline — that referendum campaigns for both "leave" and "stay" overwhelmingly host in the United States — did what it was meant to do.
+
+The project is now outgrowing that question. The infrastructure we built to track hosting is, it turns out, most of the infrastructure you need to track **political speech itself**. This post is about what comes next.
+
+## What's live today
+
+As of today, SovereignWatch covers every elected federal and provincial politician in Canada — 1,815 politicians across 13 jurisdictions — plus the major municipal councils. We track:
+
+- Names, parties, constituencies, contact details, and social handles
+- Every tracked politician's website and where it's hosted (sovereignty tier 1–6)
+- A **bills layer** for 9 of 13 sub-national legislatures: NS, ON, BC, QC, AB, NB, NL, NT, and NU. About 3,945 bills, 5,326 stage events, and 394 sponsor rows with 99.7% of sponsors linked to the right politician via exact FK joins.
+- Federal bills partially, mirrored from [openparliament.ca](https://openparliament.ca)
+
+You can see the full coverage picture on the [coverage dashboard](/coverage), and follow any politician to their detail page for the raw scan data.
+
+## What's coming next
+
+The core bet is **semantic search over what politicians have said**. Not a keyword search. Not a topic tag. A retrieval layer where you can ask "what has this MP said about housing in the last two years?" and get back actual quotes from Hansard, attributed to them, linked to the original debate.
+
+To ship that, we need three things:
+
+1. **Speeches as first-class data.** Hansard transcripts, committee testimony, and votes — stored in a normalised schema, cross-referenced to bills and to politicians, with attribution captured at-time-of-speech (party, role, constituency as they were when the words were said).
+2. **Embeddings on the same Postgres.** We installed `pgvector` this week and set up the chunk + HNSW index tables. The embedding model is BGE-M3, self-hosted on CPU. No OpenAI, no Pinecone — bootstrapped, local, multilingual (it handles both English and French Hansard by default).
+3. **Hybrid retrieval.** Bill numbers and act names don't embed well in dense vectors alone, so retrieval will combine BM25 (via Postgres `tsvector`) with dense search and a local reranker. Every result links back to the exact paragraph in the source.
+
+Phase 1 is federal Hansard, back to 1994 where openparliament's archive reaches. Phase 2 is ON and QC — the two largest non-federal caucuses and the proof that the pipeline works bilingually.
+
+## The provinces we haven't cracked yet
+
+Four legislatures remain without a bills pipeline:
+
+- **Manitoba** and **Saskatchewan** — both publish bill status as PDF only. A single pdfplumber + speaker-turn extractor investment unlocks both provinces plus Alberta's Hansard, which is also PDF-only. Next engineering bet.
+- **Prince Edward Island** and **Yukon** — both sit behind bot-mitigation WAFs (Radware and Cloudflare respectively). These need browser-automation scaffolding, which we've deferred in favour of the PDF track.
+
+We're honest about those gaps. The [coverage dashboard](/coverage) flags each blocked jurisdiction with the reason, so nobody has to reverse-engineer what's missing from our database.
+
+## Why we take political stances
+
+This needs to be said plainly: **SovereignWatch is not apolitical.** The project is rooted in access-to-information principles and takes strong democratic and progressive stances. When we ingest Hansard, we don't flatten political speech into "both sides said things" neutrality. We build a tool that makes it easier to see who said what, what actions followed the words, and whose interests got served.
+
+Political data is never neutral. Refusing to acknowledge that is itself a stance — usually in favour of whoever holds power. We'd rather name our values up front.
+
+## How to follow along
+
+This blog is the record. As each piece of the semantic-search layer lands — BGE-M3 deployment, federal Hansard ingestion, the first live search box, PDF extraction for MB and SK — there will be a post here explaining what we shipped and how it works. Along the way we'll publish the numbers: how many speeches got ingested, how sponsor-resolution accuracy is holding up, what the retrieval benchmarks look like.
+
+For now: the bills layer is live, the schema for everything else is on disk, and the work of filling it in starts this week.
+
+If you want to flag errors, missing politicians, or misattributed quotes, email [admin@thebunkerops.ca](mailto:admin@thebunkerops.ca). A proper corrections inbox (wired to the same `correction_submissions` table in the database) is next on the list.

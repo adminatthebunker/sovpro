@@ -1,23 +1,83 @@
 import { TIER_META, type SovereigntyTier } from "../types";
 
+interface Props {
+  /** When provided, each tier row renders as a checkbox that toggles
+   *  the tier's visibility on the map. When omitted, renders a static
+   *  key (original behaviour). */
+  visibleTiers?: Set<SovereigntyTier>;
+  onToggleTier?: (tier: SovereigntyTier) => void;
+  onSetAllTiers?: (checked: boolean) => void;
+}
+
 /**
  * Map key — explains every glyph the user might see on the map:
  * tier colors, polygon vs pin vs line styles, and the difference between
  * the static (Canadian) and animated (foreign) connection lines.
+ *
+ * When `visibleTiers` + `onToggleTier` are supplied, the tier row becomes
+ * interactive: unchecking a tier hides every feature of that tier from
+ * the map (constituencies, server pins, and connection lines).
  */
-export function TierLegend() {
+export function TierLegend({ visibleTiers, onToggleTier, onSetAllTiers }: Props = {}) {
   const tiers: SovereigntyTier[] = [1, 2, 3, 4, 5, 6];
+  const interactive = !!visibleTiers && !!onToggleTier;
+  const allOn = interactive && tiers.every(t => visibleTiers!.has(t));
+  const noneOn = interactive && tiers.every(t => !visibleTiers!.has(t));
+
   return (
     <div className="tier-legend">
       <div className="tier-legend__section">
-        <div className="tier-legend__title">Sovereignty tier (color)</div>
-        <div className="tier-legend__row">
-          {tiers.map(t => (
-            <span key={t} className="tier-legend__item">
-              <span className="tier-legend__swatch" style={{ background: TIER_META[t].color }} />
-              <span>{TIER_META[t].emoji} {t} · {TIER_META[t].label}</span>
+        <div className="tier-legend__title">
+          <span>Sovereignty tier (color)</span>
+          {interactive && onSetAllTiers && (
+            <span className="tier-legend__bulk">
+              <button
+                type="button"
+                className="tier-legend__bulk-btn"
+                onClick={() => onSetAllTiers(true)}
+                disabled={allOn}
+              >Show all</button>
+              <button
+                type="button"
+                className="tier-legend__bulk-btn"
+                onClick={() => onSetAllTiers(false)}
+                disabled={noneOn}
+              >Hide all</button>
             </span>
-          ))}
+          )}
+        </div>
+        <div className="tier-legend__row">
+          {tiers.map(t => {
+            const meta = TIER_META[t];
+            const label = (
+              <>
+                <span className="tier-legend__swatch" style={{ background: meta.color }} />
+                <span>{meta.emoji} {t} · {meta.label}</span>
+              </>
+            );
+            if (interactive) {
+              const checked = visibleTiers!.has(t);
+              return (
+                <label
+                  key={t}
+                  className={`tier-legend__item tier-legend__item--check ${checked ? "" : "is-off"}`}
+                  title={`Toggle tier ${t} · ${meta.label}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggleTier!(t)}
+                  />
+                  {label}
+                </label>
+              );
+            }
+            return (
+              <span key={t} className="tier-legend__item">
+                {label}
+              </span>
+            );
+          })}
         </div>
       </div>
 

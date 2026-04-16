@@ -597,6 +597,27 @@ def cmd_enrich_municipal(ctx: click.Context, limit, concurrency: int) -> None:
 # (Nunavut) or leaves with unusable data (NB/NL empty url field,
 # BC mostly-missing roster, Yukon Cloudflare-blocked). Each command is
 # a thin wrapper around the corresponding gap_fillers submodule.
+from .legislative.ns_bills import ingest_ns_bills  # noqa: E402
+from .legislative.ns_bill_pages import fetch_ns_bill_pages  # noqa: E402
+from .legislative.ns_bill_parse import parse_ns_bill_pages  # noqa: E402
+from .legislative.on_bills import (  # noqa: E402
+    discover_ola_bills, fetch_ola_bill_pages, parse_ola_bill_pages,
+)
+from .legislative.sponsor_resolver import resolve_sponsors  # noqa: E402
+from .legislative.bc_bills import (  # noqa: E402
+    enrich_bc_member_ids, ingest_bc_bills,
+)
+from .legislative.ns_rss import ingest_ns_rss  # noqa: E402
+from .legislative.qc_mnas import enrich_qc_mna_ids  # noqa: E402
+from .legislative.qc_bills import (  # noqa: E402
+    fetch_qc_bill_sponsors, ingest_qc_bills_csv, ingest_qc_bills_rss,
+)
+from .legislative.ab_mlas import enrich_ab_mla_ids  # noqa: E402
+from .legislative.ab_bills import ingest_ab_bills  # noqa: E402
+from .legislative.nb_bills import ingest_nb_bills  # noqa: E402
+from .legislative.nl_bills import ingest_nl_bills  # noqa: E402
+from .legislative.nt_bills import ingest_nt_bills  # noqa: E402
+from .legislative.nu_bills import ingest_nu_bills  # noqa: E402
 from .gap_fillers import bc as _gf_bc  # noqa: E402
 from .gap_fillers import nb as _gf_nb  # noqa: E402
 from .gap_fillers import nl as _gf_nl  # noqa: E402
@@ -659,6 +680,489 @@ def cmd_fill_ontario(ctx: click.Context) -> None:
             f"personal_urls={stats['personal_urls']} "
             f"socials={stats['socials']} "
             f"unmatched={stats['unmatched']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Provincial legislative activity — bills (Nova Scotia first)
+# ─────────────────────────────────────────────────────────────────────
+
+
+@cli.command("ingest-ns-bills")
+@click.option("--limit", type=int, default=None,
+              help="Cap total records (for smoke tests). Default: all ~3.5k bills.")
+@click.pass_context
+def cmd_ingest_ns_bills(ctx: click.Context, limit) -> None:
+    """Ingest Nova Scotia bills from the Socrata dataset iz5x-dzyf.
+
+    Populates legislative_sessions, bills, and bill_events. Sponsor
+    resolution is a separate pass — Socrata does not expose sponsor names.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_ns_bills(db, limit=limit)
+        console.print(
+            f"[green]ingest-ns-bills[/green]: "
+            f"bills={stats['bills']} events={stats['events']} "
+            f"sessions={stats['sessions']} skipped={stats['skipped']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("fetch-ns-bill-pages")
+@click.option("--limit", type=int, default=None,
+              help="Max bills to fetch this run (default: all pending).")
+@click.option("--force", is_flag=True,
+              help="Re-fetch even bills whose HTML is already cached.")
+@click.option("--delay", "delay_secs", type=float, default=4.0,
+              help="Minimum delay between requests (seconds). Default 4.0.")
+@click.option("--jitter", "jitter_secs", type=float, default=2.0,
+              help="Additional 0..jitter seconds random delay. Default 2.0.")
+@click.pass_context
+def cmd_fetch_ns_bill_pages(ctx: click.Context, limit, force, delay_secs, jitter_secs) -> None:
+    """Fetch + cache nslegislature.ca HTML for every bill (phase 2).
+
+    Idempotent: skips bills with raw_html already populated unless --force.
+    At 4–6 sec per request, a full 3,500-bill backlog takes ~4–6 hours.
+    Halts on WAF fingerprint detection so progress isn't wasted fighting
+    a live block.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await fetch_ns_bill_pages(
+            db, limit=limit, force=force,
+            delay_secs=delay_secs, jitter_secs=jitter_secs,
+        )
+        flag = " [yellow](WAF-aborted)[/yellow]" if stats["waf_aborted"] else ""
+        console.print(
+            f"[green]fetch-ns-bill-pages[/green]{flag}: "
+            f"ok={stats['ok']} err={stats['err']} total={stats['total']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("discover-on-bills")
+@click.option("--parliament", type=int, default=44)
+@click.option("--session", type=int, default=1)
+@click.pass_context
+def cmd_discover_on_bills(ctx: click.Context, parliament: int, session: int) -> None:
+    """Enumerate Ontario bills from ola.org session index (phase 1)."""
+    async def _wrap(db: Database) -> None:
+        stats = await discover_ola_bills(db, parliament=parliament, session=session)
+        console.print(
+            f"[green]discover-on-bills[/green] P{parliament}-S{session}: "
+            f"bills={stats['bills']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("fetch-on-bill-pages")
+@click.option("--limit", type=int, default=None)
+@click.option("--force", is_flag=True)
+@click.option("--delay", "delay_secs", type=float, default=1.5)
+@click.option("--jitter", "jitter_secs", type=float, default=1.0)
+@click.pass_context
+def cmd_fetch_on_bill_pages(ctx: click.Context, limit, force, delay_secs, jitter_secs) -> None:
+    """Fetch + cache ola.org bill page + /status sub-page (phase 2)."""
+    async def _wrap(db: Database) -> None:
+        stats = await fetch_ola_bill_pages(
+            db, limit=limit, force=force,
+            delay_secs=delay_secs, jitter_secs=jitter_secs,
+        )
+        flag = " [yellow](WAF-aborted)[/yellow]" if stats["waf_aborted"] else ""
+        console.print(
+            f"[green]fetch-on-bill-pages[/green]{flag}: "
+            f"main={stats['main_ok']} status={stats['status_ok']} "
+            f"err={stats['err']} total={stats['total']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("parse-on-bill-pages")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_parse_on_bill_pages(ctx: click.Context, limit) -> None:
+    """Parse cached ola.org HTML into sponsors + events (phase 3)."""
+    async def _wrap(db: Database) -> None:
+        stats = await parse_ola_bill_pages(db, limit=limit)
+        console.print(
+            f"[green]parse-on-bill-pages[/green]: "
+            f"bills={stats['bills']} sponsors={stats['sponsors']} "
+            f"events={stats['events']} titled={stats['titled']} "
+            f"no_sponsor={stats['no_sponsor']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-ns-bills-rss")
+@click.pass_context
+def cmd_ingest_ns_bills_rss(ctx: click.Context) -> None:
+    """Refresh current-session NS bills from the public RSS feed.
+
+    One request — no WAF budget impact. Adds richer status text +
+    commencement metadata for current-session bills that already
+    exist in the DB (via Socrata). Idempotent and safe to schedule.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_ns_rss(db)
+        console.print(
+            f"[green]ingest-ns-bills-rss[/green]: "
+            f"items={stats['items']} matched={stats['matched']} "
+            f"updated={stats['updated']} events_added={stats['events_added']} "
+            f"unmatched={stats['unmatched']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-bc-member-ids")
+@click.pass_context
+def cmd_enrich_bc_member_ids(ctx: click.Context) -> None:
+    """Populate politicians.lims_member_id via LIMS GraphQL allMembers.
+
+    Name-matches active BC provincial politicians against the LIMS
+    member roster. Run before ingest-bc-bills so sponsor resolution
+    becomes an exact integer FK lookup.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await enrich_bc_member_ids(db)
+        console.print(
+            f"[green]enrich-bc-member-ids[/green]: "
+            f"scanned={stats['politicians_scanned']} "
+            f"linked={stats['linked']} ambiguous={stats['ambiguous']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-bc-bills")
+@click.option("--all-sessions", is_flag=True,
+              help="Backfill every historical BC session (default: current only).")
+@click.option("--parliament", type=int, default=None)
+@click.option("--session", type=int, default=None)
+@click.pass_context
+def cmd_ingest_bc_bills(ctx: click.Context, all_sessions, parliament, session) -> None:
+    """Ingest BC bills from LIMS PDMS.
+
+    Default: current session only. Use --all-sessions for full history,
+    or --parliament/--session for a single specific session.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_bc_bills(
+            db,
+            current_only=not all_sessions and parliament is None,
+            parliament=parliament, session=session,
+        )
+        console.print(
+            f"[green]ingest-bc-bills[/green]: "
+            f"sessions={stats['sessions_touched']} bills={stats['bills']} "
+            f"events={stats['events']} sponsors={stats['sponsors']} "
+            f"sponsors_linked={stats['sponsors_linked']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-bill-sponsors")
+@click.option("--limit", type=int, default=None)
+@click.pass_context
+def cmd_resolve_bill_sponsors(ctx: click.Context, limit) -> None:
+    """Link bill_sponsors → politicians via slug join + name match.
+
+    Pure offline. Re-entrant: only touches rows with politician_id NULL.
+    As it links by name, it backfills politicians.<source>_slug so
+    subsequent runs short-circuit to the slug index.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await resolve_sponsors(db, limit=limit)
+        console.print(
+            f"[green]resolve-bill-sponsors[/green]: "
+            f"scanned={stats['scanned']} by_slug={stats['linked_by_slug']} "
+            f"by_name={stats['linked_by_name']} "
+            f"slugs_backfilled={stats['slugs_backfilled']} "
+            f"unmatched={stats['unmatched']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-qc-mna-ids")
+@click.pass_context
+def cmd_enrich_qc_mna_ids(ctx: click.Context) -> None:
+    """Populate politicians.qc_assnat_id by scraping the MNA index page.
+
+    Numeric MNA ids are embedded in the profile-URL slug. Run before
+    fetch-qc-bill-sponsors so bill sponsor resolution becomes an exact
+    integer FK lookup — no name-fuzz, no ambiguity.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await enrich_qc_mna_ids(db)
+        console.print(
+            f"[green]enrich-qc-mna-ids[/green]: "
+            f"scanned={stats['politicians_scanned']} "
+            f"linked={stats['linked']} ambiguous={stats['ambiguous']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-qc-bills")
+@click.option("--all-sessions", is_flag=True,
+              help="Ingest every session in the CSV (default: current only).")
+@click.pass_context
+def cmd_ingest_qc_bills(ctx: click.Context, all_sessions) -> None:
+    """Ingest Quebec bills from the donneesquebec.ca CSV export.
+
+    Authoritative daily snapshot — one HTTP GET for the whole roster.
+    Emits one bill_events row per bill (the last stage reached). Run
+    ingest-qc-bills-rss after this to fill in the full stage timeline.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_qc_bills_csv(db, current_only=not all_sessions)
+        console.print(
+            f"[green]ingest-qc-bills[/green]: "
+            f"rows={stats['rows']} sessions={stats['sessions_touched']} "
+            f"bills={stats['bills']} events={stats['events']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-qc-bills-rss")
+@click.pass_context
+def cmd_ingest_qc_bills_rss(ctx: click.Context) -> None:
+    """Refresh current-session QC stage events from the public RSS feed.
+
+    One request — every stage transition on every current-session bill.
+    Idempotent (bill_events_uniq). Safe to schedule daily.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_qc_bills_rss(db)
+        console.print(
+            f"[green]ingest-qc-bills-rss[/green]: "
+            f"items={stats['items']} matched={stats['matched']} "
+            f"events_added={stats['events_added']} "
+            f"unmatched={stats['unmatched']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("fetch-qc-bill-sponsors")
+@click.option("--limit", type=int, default=None,
+              help="Cap bills scanned this run (default: every un-sponsored bill).")
+@click.option("--delay", type=float, default=2.0,
+              help="Delay between HTTP requests (seconds).")
+@click.pass_context
+def cmd_fetch_qc_bill_sponsors(ctx: click.Context, limit, delay) -> None:
+    """Fetch QC bill detail pages and link sponsors by MNA numeric id.
+
+    ~150 bills/session; 2s default delay = ~5 min to complete. Direct
+    FK lookup via politicians.qc_assnat_id, so any bill whose sponsor
+    is a current sitting MNA resolves cleanly. Skips bills that already
+    have a sponsor row — safe to re-run.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await fetch_qc_bill_sponsors(db, limit=limit, delay_seconds=delay)
+        console.print(
+            f"[green]fetch-qc-bill-sponsors[/green]: "
+            f"scanned={stats['scanned']} fetched={stats['pages_fetched']} "
+            f"sponsors={stats['sponsors']} linked={stats['sponsors_linked']} "
+            f"no_sponsor={stats['no_sponsor_found']} "
+            f"not_found={stats['not_found']} errors={stats['errors']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("enrich-ab-mla-ids")
+@click.pass_context
+def cmd_enrich_ab_mla_ids(ctx: click.Context) -> None:
+    """Populate politicians.ab_assembly_mid by scraping the MLAs index page.
+
+    Zero-padded 4-char mids are embedded in profile-URL query strings.
+    Run before ingest-ab-bills so sponsor resolution is an exact FK
+    lookup — no name-fuzz.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await enrich_ab_mla_ids(db)
+        console.print(
+            f"[green]enrich-ab-mla-ids[/green]: "
+            f"scanned={stats['politicians_scanned']} "
+            f"linked={stats['linked']} ambiguous={stats['ambiguous']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-ab-bills")
+@click.option("--legislature", type=int, default=None,
+              help="One specific legislature (pair with --session for one session).")
+@click.option("--session", type=int, default=None,
+              help="One specific session (requires --legislature).")
+@click.option("--all-sessions-in-legislature", type=int, default=None,
+              metavar="L", help="Every session in legislature L.")
+@click.option("--all-sessions", is_flag=True,
+              help="Backfill every session ever (Legislature 1 onward, ~137 sessions).")
+@click.option("--delay", type=float, default=1.5,
+              help="Delay between session fetches (seconds).")
+@click.pass_context
+def cmd_ingest_ab_bills(
+    ctx: click.Context, legislature, session,
+    all_sessions_in_legislature, all_sessions, delay,
+) -> None:
+    """Ingest Alberta bills from the Assembly Dashboard.
+
+    One HTTP GET per session returns the full bill roster + stage
+    history + sponsor. Default: current session only.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_ab_bills(
+            db,
+            legislature=legislature, session=session,
+            all_sessions_in_legislature=all_sessions_in_legislature,
+            all_sessions=all_sessions,
+            delay_seconds=delay,
+        )
+        console.print(
+            f"[green]ingest-ab-bills[/green]: "
+            f"sessions={stats['sessions_touched']} bills={stats['bills']} "
+            f"events={stats['events']} sponsors={stats['sponsors']} "
+            f"sponsors_linked={stats['sponsors_linked']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-nb-bills")
+@click.option("--legislature", type=int, default=None,
+              help="One specific legislature (pair with --session).")
+@click.option("--session", type=int, default=None,
+              help="One specific session (requires --legislature).")
+@click.option("--all-sessions-in-legislature", type=int, default=None,
+              metavar="L", help="Every session in legislature L.")
+@click.option("--delay", type=float, default=1.5,
+              help="Delay between bill detail-page fetches (seconds).")
+@click.pass_context
+def cmd_ingest_nb_bills(
+    ctx: click.Context, legislature, session,
+    all_sessions_in_legislature, delay,
+) -> None:
+    """Ingest New Brunswick bills from legnb.ca.
+
+    Default: current session. Per-bill detail fetch is the cost —
+    ~35 bills/session × 1.5s delay ≈ 1 minute. Sponsor resolution is
+    name-based (legnb.ca exposes no numeric MLA id).
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_nb_bills(
+            db,
+            legislature=legislature, session=session,
+            all_sessions_in_legislature=all_sessions_in_legislature,
+            delay_seconds=delay,
+        )
+        console.print(
+            f"[green]ingest-nb-bills[/green]: "
+            f"sessions={stats['sessions_touched']} bills={stats['bills']} "
+            f"events={stats['events']} sponsors={stats['sponsors']} "
+            f"sponsors_linked={stats['sponsors_linked']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-nl-bills")
+@click.option("--ga", type=int, default=None, metavar="G",
+              help="General Assembly number (pair with --session).")
+@click.option("--session", type=int, default=None,
+              help="Session number (requires --ga).")
+@click.option("--all-sessions-in-ga", type=int, default=None,
+              metavar="G", help="Every session in GA G.")
+@click.option("--all-sessions", is_flag=True,
+              help="Every session in the index (GA 44 onwards, ~40 sessions).")
+@click.option("--delay", type=float, default=1.0,
+              help="Delay between session fetches (seconds).")
+@click.pass_context
+def cmd_ingest_nl_bills(
+    ctx: click.Context, ga, session,
+    all_sessions_in_ga, all_sessions, delay,
+) -> None:
+    """Ingest Newfoundland & Labrador bills from assembly.nl.ca.
+
+    One HTTP GET per session = full stage timeline. **No sponsor data**
+    (NL doesn't publish it on the list or per-bill pages). Default:
+    current session.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_nl_bills(
+            db,
+            ga=ga, session=session,
+            all_sessions_in_ga=all_sessions_in_ga,
+            all_sessions=all_sessions,
+            delay_seconds=delay,
+        )
+        console.print(
+            f"[green]ingest-nl-bills[/green]: "
+            f"sessions={stats['sessions_touched']} "
+            f"bills={stats['bills']} events={stats['events']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-nt-bills")
+@click.option("--delay", type=float, default=1.5,
+              help="Delay between per-bill detail-page fetches (seconds).")
+@click.pass_context
+def cmd_ingest_nt_bills(ctx: click.Context, delay) -> None:
+    """Ingest Northwest Territories bills from ntassembly.ca.
+
+    List page + per-bill detail pages. Assembly + session parsed from
+    each detail page, so multi-session pages are handled implicitly.
+    No sponsor data (consensus government).
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_nt_bills(db, delay_seconds=delay)
+        console.print(
+            f"[green]ingest-nt-bills[/green]: "
+            f"sessions={stats['sessions_touched']} "
+            f"bills={stats['bills']} events={stats['events']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-nu-bills")
+@click.option("--assembly", type=int, default=None,
+              help="Assembly number (default: current sitting).")
+@click.option("--session", type=int, default=None,
+              help="Session number (default: current sitting).")
+@click.pass_context
+def cmd_ingest_nu_bills(ctx: click.Context, assembly, session) -> None:
+    """Ingest Nunavut bills from assembly.nu.ca/bills-and-legislation.
+
+    Drupal 9 table view — one HTTP GET returns every current-session
+    bill with typed <time> elements for each stage. Caller provides
+    assembly/session (Drupal doesn't print them). No sponsor data
+    (consensus government).
+    """
+    from .legislative.nu_bills import DEFAULT_ASSEMBLY, DEFAULT_SESSION
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_nu_bills(
+            db,
+            assembly=assembly if assembly is not None else DEFAULT_ASSEMBLY,
+            session=session if session is not None else DEFAULT_SESSION,
+        )
+        console.print(
+            f"[green]ingest-nu-bills[/green]: "
+            f"sessions={stats['sessions_touched']} "
+            f"bills={stats['bills']} events={stats['events']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("parse-ns-bill-pages")
+@click.option("--limit", type=int, default=None,
+              help="Cap bills parsed this run (for iteration on the regex).")
+@click.pass_context
+def cmd_parse_ns_bill_pages(ctx: click.Context, limit) -> None:
+    """Parse cached bill HTML into bill_sponsors + bill_events (phase 3).
+
+    Pure offline. Safe to re-run. Skips bills that already have a
+    sponsor row; delete from bill_sponsors to reparse.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await parse_ns_bill_pages(db, limit=limit)
+        console.print(
+            f"[green]parse-ns-bill-pages[/green]: "
+            f"bills={stats['bills']} sponsors={stats['sponsors']} "
+            f"events={stats['events']} no_sponsor={stats['no_sponsor']}"
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 

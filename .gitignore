@@ -74,3 +74,6 @@ sovpro
 # Playwright MCP artifacts
 .playwright-mcp/
 *.playwright.png
+
+# Claude Code local agent state
+.claude/

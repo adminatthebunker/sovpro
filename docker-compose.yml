@@ -11,7 +11,10 @@
 services:
   # ── Database ──────────────────────────────────────────────────────
   db:
-    image: postgis/postgis:16-3.4
+    build:
+      context: ./db
+      dockerfile: Dockerfile
+    image: sovpro-db:latest
     container_name: sw-db
     environment:
       POSTGRES_DB: sovereignwatch

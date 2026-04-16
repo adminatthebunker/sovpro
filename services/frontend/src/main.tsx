@@ -8,6 +8,9 @@ import Lander from "./pages/Lander";
 import MapPage from "./pages/MapPage";
 import PoliticiansPage from "./pages/PoliticiansPage";
 import PoliticianDetail from "./pages/PoliticianDetail";
+import BlogListPage from "./pages/BlogListPage";
+import BlogPostPage from "./pages/BlogPostPage";
+import CoveragePage from "./pages/CoveragePage";
 
 // Legacy /politician/:id → /politicians/:id, preserving any #hash (e.g. #socials)
 // so existing deep-links keep the right tab open after the redirect.
@@ -27,6 +30,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="politicians" element={<PoliticiansPage />} />
           <Route path="politicians/:id" element={<PoliticianDetail />} />
           <Route path="politician/:id" element={<LegacyPoliticianRedirect />} />
+          <Route path="blog" element={<BlogListPage />} />
+          <Route path="blog/:slug" element={<BlogPostPage />} />
+          <Route path="coverage" element={<CoveragePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

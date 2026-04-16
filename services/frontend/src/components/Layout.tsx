@@ -22,6 +22,12 @@ export function Layout() {
           <NavLink to="/politicians" className={({ isActive }) => (isActive ? "active" : "")}>
             Politicians
           </NavLink>
+          <NavLink to="/coverage" className={({ isActive }) => (isActive ? "active" : "")}>
+            Coverage
+          </NavLink>
+          <NavLink to="/blog" className={({ isActive }) => (isActive ? "active" : "")}>
+            Blog
+          </NavLink>
           <ShareMenu />
           <a
             className="shell__contact"

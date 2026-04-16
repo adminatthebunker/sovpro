@@ -8,6 +8,10 @@ COPY public ./public
 COPY src ./src
 ARG VITE_API_BASE_URL=/api/v1
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+# VITE_SHOW_DRAFTS=1 includes draft-marked MDX posts (src/content/blog/*.mdx
+# with `draft: true` frontmatter) in the build. Leave unset for prod.
+ARG VITE_SHOW_DRAFTS=
+ENV VITE_SHOW_DRAFTS=$VITE_SHOW_DRAFTS
 RUN npm run build
 
 # ── runtime: static server via nginx ───────────────────────

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MapView } from "../components/MapView";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -11,6 +11,9 @@ import { PostalLookupBar, type PostalLookupResponse } from "../components/Postal
 import { PostalResultsDrawer } from "../components/PostalResultsDrawer";
 import { PartyReportCard } from "../components/PartyReportCard";
 import { Faq } from "../components/Faq";
+import type { SovereigntyTier } from "../types";
+
+const ALL_TIERS: SovereigntyTier[] = [1, 2, 3, 4, 5, 6];
 
 export default function MapPage() {
   useDocumentTitle("Hosting Map");
@@ -24,6 +27,19 @@ export default function MapPage() {
     includeNoData: true,
     politicianIds: undefined,
   });
+  const [visibleTiers, setVisibleTiers] = useState<Set<SovereigntyTier>>(
+    () => new Set(ALL_TIERS)
+  );
+  const toggleTier = useCallback((t: SovereigntyTier) => {
+    setVisibleTiers(prev => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t); else next.add(t);
+      return next;
+    });
+  }, []);
+  const setAllTiers = useCallback((checked: boolean) => {
+    setVisibleTiers(checked ? new Set(ALL_TIERS) : new Set());
+  }, []);
   const [activeTab, setActiveTab] = useState<"map" | "referendum" | "changes" | "faq">("map");
   const [reportParty, setReportParty] = useState<string | null>(null);
   const [postalResult, setPostalResult] = useState<PostalLookupResponse | null>(null);
@@ -65,7 +81,7 @@ export default function MapPage() {
           </p>
           <div className={`map-with-drawer ${(reportParty || postalResult) ? "is-open" : ""}`}>
             <div className="map-with-drawer__map">
-              <MapView filters={filters} />
+              <MapView filters={filters} visibleTiers={visibleTiers} />
             </div>
             {postalResult && (
               <PostalResultsDrawer
@@ -84,7 +100,11 @@ export default function MapPage() {
               />
             )}
           </div>
-          <TierLegend />
+          <TierLegend
+            visibleTiers={visibleTiers}
+            onToggleTier={toggleTier}
+            onSetAllTiers={setAllTiers}
+          />
         </section>
       )}
 
