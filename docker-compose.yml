@@ -97,12 +97,11 @@ services:
       # dedicate one to embedding.
       NVIDIA_VISIBLE_DEVICES: ${EMBED_CUDA_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # Expandable allocator segments help avoid CUDA fragmentation
-      # accumulating over thousands of batches. Hypothesized trigger
-      # for the "unspecified launch failure" we saw at ~30-40k chunks
-      # into an overnight run. Combined with the server's fail-fast
-      # guard as a safety net.
-      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
+      # PYTORCH_CUDA_ALLOC_CONF left unset after an experiment with
+      # expandable_segments:True caused "CUDA-capable device busy or
+      # unavailable" on every request — incompatible with this build.
+      # Fail-fast guard in server.py remains as the recovery mechanism.
+      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF:-}
     volumes:
       - embedmodels:/models
     restart: unless-stopped
