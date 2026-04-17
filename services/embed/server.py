@@ -194,6 +194,44 @@ def _release_gpu_cache():
         pass
 
 
+def _fatal_on_cuda_error(exc: BaseException) -> None:
+    """If the exception looks like a poisoned CUDA context, exit the
+    process so Docker restarts the container with a fresh context.
+
+    Observed in production during a 240k-chunk overnight run: once
+    `CUDA error: unspecified launch failure` fires, every subsequent
+    /embed call returns 500 with the same error for the life of the
+    process — the model's CUDA context is permanently toast. Before
+    this guard, the container would keep serving healthy 200s on
+    /health while every inference failed, silently losing hours of
+    scheduler time. Fail-fast restores auto-recovery: the caller
+    retries on next batch, the fresh container has a clean context,
+    and the ingest pipeline picks up where it left off because
+    speech_chunks.embedding is still NULL for unprocessed rows.
+
+    We only exit on messages clearly indicating CUDA context damage
+    to avoid restarting on benign errors (empty batches, tokenizer
+    edge cases, etc.).
+    """
+    import os
+    msg = str(exc).lower()
+    fatal_markers = (
+        "cuda error",
+        "cublas",
+        "cudnn",
+        "device-side assert",
+        "illegal memory access",
+    )
+    if any(m in msg for m in fatal_markers):
+        log.error("fatal CUDA error detected; exiting for container restart: %s", exc)
+        # Flush loggers, then hard exit (os._exit bypasses uvicorn's
+        # graceful shutdown — intentional, since CUDA is hung).
+        import sys
+        sys.stderr.flush()
+        sys.stdout.flush()
+        os._exit(42)
+
+
 @app.post("/flush-cache")
 def flush_cache():
     """Manually release the CUDA caching allocator back to the OS.
@@ -234,14 +272,18 @@ def embed(req: EmbedRequest):
 
     model = _get_embed_model()
     t0 = time.monotonic()
-    # `encode` returns {'dense_vecs': np.ndarray[B, 1024], ...}
-    out = model.encode(
-        texts,
-        max_length=MAX_INPUT_LEN,
-        return_dense=True,
-        return_sparse=False,
-        return_colbert_vecs=False,
-    )
+    try:
+        # `encode` returns {'dense_vecs': np.ndarray[B, 1024], ...}
+        out = model.encode(
+            texts,
+            max_length=MAX_INPUT_LEN,
+            return_dense=True,
+            return_sparse=False,
+            return_colbert_vecs=False,
+        )
+    except RuntimeError as exc:
+        _fatal_on_cuda_error(exc)
+        raise
     dense = out["dense_vecs"]  # shape (B, 1024)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
@@ -276,7 +318,11 @@ def rerank(req: RerankRequest):
     pairs = [[p.query, p.document] for p in req.pairs]
     model = _get_rerank_model()
     t0 = time.monotonic()
-    scores = model.compute_score(pairs, max_length=MAX_INPUT_LEN, normalize=True)
+    try:
+        scores = model.compute_score(pairs, max_length=MAX_INPUT_LEN, normalize=True)
+    except RuntimeError as exc:
+        _fatal_on_cuda_error(exc)
+        raise
     elapsed_ms = int((time.monotonic() - t0) * 1000)
     # FlagEmbedding returns a scalar when len==1, list otherwise.
     if isinstance(scores, (int, float)):
