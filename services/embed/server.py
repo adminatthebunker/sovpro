@@ -178,12 +178,15 @@ def health():
 def _release_gpu_cache():
     """Return PyTorch's CUDA caching allocator to the OS.
 
-    Runs at the end of each inference handler so `nvidia-smi` reports
-    real memory after a request completes. The allocator will grow
-    back on the next call; the cost is a handful of milliseconds of
-    cudaMalloc on the first batch after a quiet period. Worth it
-    because it stops the container holding ~5 GiB of idle VRAM that
-    blocks the user's other GPU workloads.
+    Exposed via POST /flush-cache for the "I need the GPU right now"
+    case. Do NOT call this from inside inference handlers: on a 6 GiB
+    consumer GPU (RTX 4050 Mobile), forcing the caching allocator to
+    release on every batch churns cudaMalloc/cudaFree at a cadence the
+    driver's allocator can't sustain — observed 2026-04-17 as a ~100x
+    regression in run duration (71k chunks → 448 chunks before the
+    first 'unspecified launch failure'). PyTorch's allocator is
+    explicitly designed to hold freed blocks for reuse; defeating it
+    per-request accelerates driver-level fragmentation.
     """
     try:
         import torch
@@ -299,7 +302,6 @@ def embed(req: EmbedRequest):
         )
         for i, vec in enumerate(dense)
     ]
-    _release_gpu_cache()
     return EmbedResponse(
         model=EMBED_MODEL,
         dim=DIM,
@@ -329,7 +331,6 @@ def rerank(req: RerankRequest):
         scores = [float(scores)]
     else:
         scores = [float(s) for s in scores]
-    _release_gpu_cache()
     return RerankResponse(
         model=RERANK_MODEL,
         scores=scores,
