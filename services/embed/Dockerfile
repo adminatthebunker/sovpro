@@ -36,6 +36,18 @@ COPY requirements.txt .
 # since requirements.txt doesn't pin it.
 RUN pip install -r requirements.txt
 
+# Upgrade cuDNN over the base image's 9.1.0.70. cuDNN 9.1 has a
+# documented bug in the fp16 multi-head-attention path on sm_89 (Ada)
+# that manifests as `CUDA error: unspecified launch failure` followed
+# by kernel Xid 62 (PMU halted) + Xid 154 (GPU Reset Required) after
+# roughly ~1000 attention kernel launches. On the RTX 4050 Mobile
+# this bit us at ~1000-1100 embedded chunks into a run; the poisoned
+# driver state then required a host reboot to clear. Fixed in cuDNN
+# 9.3+. We pin 9.5.1.17 as a well-settled post-fix point release.
+# cuDNN preserves ABI compatibility within the 9.x series so torch
+# 2.5.1's bindings link cleanly against it.
+RUN pip install --upgrade nvidia-cudnn-cu12==9.5.1.17
+
 COPY server.py ./
 
 VOLUME ["/models"]
