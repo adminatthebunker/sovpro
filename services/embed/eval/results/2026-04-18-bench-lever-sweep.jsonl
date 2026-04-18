@@ -1,0 +1,7 @@
+{"label": "b16_s512_sort", "batch_size": 16, "max_seq_len": 512, "pre_sort": true, "seconds": 126.95, "chunks_per_sec": 39.4, "vram_peak_gib": 2.38}
+{"label": "b16_s512_nosort", "batch_size": 16, "max_seq_len": 512, "pre_sort": false, "seconds": 128.39, "chunks_per_sec": 38.9, "vram_peak_gib": 2.38}
+{"label": "b32_s512_sort", "batch_size": 32, "max_seq_len": 512, "pre_sort": true, "seconds": 136.97, "chunks_per_sec": 36.5, "vram_peak_gib": 3.55}
+{"label": "b64_s512_sort", "oom": true, "batch_size": 64, "max_seq_len": 512, "sort": true}
+{"label": "b64_s256_sort", "batch_size": 64, "max_seq_len": 256, "pre_sort": true, "seconds": 100.74, "chunks_per_sec": 49.6, "vram_peak_gib": 3.55, "ndcg_at_10": 0.3613, "recall_at_20": 0.3025, "crosslingual_recall_at_10": 0.0563}
+{"label": "b64_s128_sort", "batch_size": 64, "max_seq_len": 128, "pre_sort": true, "seconds": 57.72, "chunks_per_sec": 86.6, "vram_peak_gib": 2.38, "ndcg_at_10": 0.3124, "recall_at_20": 0.2612, "crosslingual_recall_at_10": 0.0625}
+{"label": "b128_s128_sort", "batch_size": 128, "max_seq_len": 128, "pre_sort": true, "seconds": 59.13, "chunks_per_sec": 84.6, "vram_peak_gib": 3.55, "ndcg_at_10": 0.3138, "recall_at_20": 0.2625, "crosslingual_recall_at_10": 0.0625}

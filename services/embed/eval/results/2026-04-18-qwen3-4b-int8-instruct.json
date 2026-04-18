@@ -1,0 +1,693 @@
+{
+  "model": "Qwen/Qwen3-Embedding-4B",
+  "variant": "instruct",
+  "date": "2026-04-18",
+  "sample_size": 5000,
+  "queries": 40,
+  "batch_size": 8,
+  "aggregate": {
+    "ndcg_at_10_mean": 0.3951,
+    "recall_at_20_mean": 0.35,
+    "crosslingual_ndcg_at_10_mean": 0.1838,
+    "crosslingual_recall_at_10_mean": 0.1062,
+    "query_latency_p50_ms": 144.3,
+    "query_latency_p95_ms": 215.4,
+    "sample_encode_seconds": 621.0,
+    "sample_encode_rate_chunks_per_sec": 8.05,
+    "gpu_peak_vram_gb": 5.55
+  },
+  "by_category": {
+    "A_euphemism": {
+      "n": 9,
+      "ndcg_at_10_mean": 0.3504,
+      "recall_at_20_mean": 0.3111
+    },
+    "B_crosslingual": {
+      "n": 8,
+      "ndcg_at_10_mean": 0.1837,
+      "recall_at_20_mean": 0.1812
+    },
+    "C_script": {
+      "n": 5,
+      "ndcg_at_10_mean": 0.4089,
+      "recall_at_20_mean": 0.31
+    },
+    "D_stance": {
+      "n": 7,
+      "ndcg_at_10_mean": 0.4163,
+      "recall_at_20_mean": 0.4214
+    },
+    "E_bill": {
+      "n": 5,
+      "ndcg_at_10_mean": 0.666,
+      "recall_at_20_mean": 0.6
+    },
+    "F_edge": {
+      "n": 6,
+      "ndcg_at_10_mean": 0.482,
+      "recall_at_20_mean": 0.375
+    }
+  },
+  "per_query": [
+    {
+      "query_id": "A01",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2489,
+      "recall_at_20": 0.1,
+      "top_5_chunk_ids": [
+        "b0504a32-681c-4609-9ff7-4086589513ec",
+        "36e625a9-ca8e-4606-8420-e4a7151540ab",
+        "f5c8bb34-9a91-4f2d-8172-1cad5f9614b4",
+        "29f01697-9774-4ffd-af0a-4bdf59d6c2ce",
+        "2f059529-06ff-4b99-962e-c51ef6b65597"
+      ]
+    },
+    {
+      "query_id": "A02",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0734,
+      "recall_at_20": 0.15,
+      "top_5_chunk_ids": [
+        "3fb5083a-d3e7-4b52-a50f-91a05f45e461",
+        "20bc81a0-65f3-40a6-9605-bedd97341c31",
+        "40978639-a590-490a-9a4f-4cb5712560a6",
+        "358eee2f-272a-4ed9-9e04-32578a99badd",
+        "f5c3635c-3094-4f7e-a561-a97a3522ec4e"
+      ]
+    },
+    {
+      "query_id": "A03",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.1585,
+      "recall_at_20": 0.3,
+      "top_5_chunk_ids": [
+        "86ab2b87-4d25-4f83-b6a3-86aeb5088a28",
+        "2ff55235-1f55-44d9-9ae0-0569f11178cf",
+        "b7ad3f64-709d-4e70-b0ad-fc4915c934c8",
+        "56c0d30b-f634-4c0b-8784-ee4062121325",
+        "567a0870-c1c9-461c-88ee-3916c7b57598"
+      ]
+    },
+    {
+      "query_id": "A04",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.7846,
+      "recall_at_20": 0.5,
+      "top_5_chunk_ids": [
+        "b2990a66-e5b9-4807-a0ed-421d349a0be7",
+        "d32bb796-abcd-4731-a2ae-cfd76a5e48ed",
+        "dbb579d2-b9a2-4a09-b958-b20027b5d139",
+        "b5993ce4-9203-4eee-87dc-d1d7ed1a356d",
+        "bc5d82f3-4ea9-4776-b60f-8605a0739f20"
+      ]
+    },
+    {
+      "query_id": "A05",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2743,
+      "recall_at_20": 0.4,
+      "top_5_chunk_ids": [
+        "ee5ea93f-ebb0-47f5-8556-f403de50b4b0",
+        "a1ba3112-521e-49ab-850b-8e3f88d4f92a",
+        "6e01eeb4-1725-453f-bed2-9f01c1d47287",
+        "c7b75c63-042f-4194-96df-e8b0c92f86b4",
+        "e5011764-599c-4dbe-a73b-ddf5cc6b0089"
+      ]
+    },
+    {
+      "query_id": "A06",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.5294,
+      "recall_at_20": 0.55,
+      "top_5_chunk_ids": [
+        "ba7268b0-d4fe-4174-baca-cb32c15801cd",
+        "78c9058f-3531-4e47-9a51-0ee36a055e90",
+        "6738124c-46cd-4917-8c37-536d58573f23",
+        "6e09a52d-5432-4b96-b711-fe9105b1d3e8",
+        "076c730b-1459-483d-9067-e99a91afaece"
+      ]
+    },
+    {
+      "query_id": "A07",
+      "category": "A_euphemism",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.4383,
+      "recall_at_20": 0.35,
+      "top_5_chunk_ids": [
+        "11f0f9cf-1170-4499-88df-11c2bb9788ef",
+        "851af068-91fb-4a62-9a53-1db823a5f33d",
+        "0e9a1e9e-3bbe-4320-8ce6-0298152fb528",
+        "045178d1-7a16-4de0-8825-3721acd519fd",
+        "4b4b85fc-bbf0-4d7c-9bcd-a6a43d66247e"
+      ]
+    },
+    {
+      "query_id": "A08",
+      "category": "A_euphemism",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0663,
+      "recall_at_20": 0.05,
+      "top_5_chunk_ids": [
+        "e373dec6-5a6c-41db-aa08-dd4dc414db7b",
+        "f3538bb2-8d4c-47ce-9560-80d5667bc784",
+        "b0c15b00-2673-43a6-a2bf-34d9411a4fac",
+        "a7f28cba-c36c-456e-88e7-5a81a986b2c1",
+        "7317be35-c57b-4a76-8bd7-ed3d37dfd405"
+      ]
+    },
+    {
+      "query_id": "A09",
+      "category": "A_euphemism",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.5795,
+      "recall_at_20": 0.4,
+      "top_5_chunk_ids": [
+        "3c9d2634-c48f-4ada-96d9-1857b358c4ad",
+        "fde55ca5-f6fc-4376-ae78-b71a6eae78fb",
+        "e464e986-7279-4a36-b1d7-cbc7a8687761",
+        "0030b48d-e987-4e54-91fc-504c71b5f1ff",
+        "baa5f06e-8770-4154-9931-b3a0bba6f0b1"
+      ]
+    },
+    {
+      "query_id": "B01",
+      "category": "B_crosslingual",
+      "language": "en",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.7799,
+      "recall_at_20": 0.8,
+      "top_5_chunk_ids": [
+        "d4e20bad-9370-42ca-8915-5657c65d4473",
+        "ace5e8b9-382f-4e89-9f57-e97504f96796",
+        "0d45352c-798a-44b7-b062-aff621ad7be6",
+        "56e80376-f5f2-4cfd-b93d-e407e3792bb0",
+        "aa4eade5-4d63-4f5b-a6c1-dac9446bd270"
+      ]
+    },
+    {
+      "query_id": "B02",
+      "category": "B_crosslingual",
+      "language": "en",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0,
+      "recall_at_20": 0.0,
+      "top_5_chunk_ids": [
+        "d32bb796-abcd-4731-a2ae-cfd76a5e48ed",
+        "70b6999d-d36c-4d6e-8c58-75388cac92eb",
+        "dbb579d2-b9a2-4a09-b958-b20027b5d139",
+        "a8408050-c7f4-46a5-8118-6bd9bf691772",
+        "b2990a66-e5b9-4807-a0ed-421d349a0be7"
+      ]
+    },
+    {
+      "query_id": "B03",
+      "category": "B_crosslingual",
+      "language": "en",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0784,
+      "recall_at_20": 0.05,
+      "top_5_chunk_ids": [
+        "bebc6dc9-b9fe-4e16-b417-c757028bbdd1",
+        "41d23a94-ad71-4491-aa2b-05f03a92b240",
+        "aa39df73-40c2-4dc3-b7ac-cdb4c01e1333",
+        "c52081c2-36e9-49dc-acd1-06a1ca7c93b6",
+        "11cda8cf-bd53-496a-9a8a-fd2a690a5e9d"
+      ]
+    },
+    {
+      "query_id": "B04",
+      "category": "B_crosslingual",
+      "language": "en",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0,
+      "recall_at_20": 0.0,
+      "top_5_chunk_ids": [
+        "3920bf8b-9537-4edd-bc16-c57ec77ca14f",
+        "7a5ed63b-0ba4-4c8a-a8ba-515d2b7af1b3",
+        "a7f28cba-c36c-456e-88e7-5a81a986b2c1",
+        "a49fbc2f-8b5e-47b9-90c8-f3c028f238f7",
+        "df6d8af1-b189-40f7-9739-be4b50756208"
+      ]
+    },
+    {
+      "query_id": "B05",
+      "category": "B_crosslingual",
+      "language": "fr",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.3273,
+      "recall_at_20": 0.2,
+      "top_5_chunk_ids": [
+        "da3ef750-8d37-4b35-b5c0-5b212c6dbd65",
+        "05be9e60-1512-4995-abf1-bb6ddc41cb7d",
+        "ba7268b0-d4fe-4174-baca-cb32c15801cd",
+        "a12dba3f-f31f-4345-a786-0e0de5ead252",
+        "b1be83d5-a1d0-40ba-ac46-34bda219cacb"
+      ]
+    },
+    {
+      "query_id": "B06",
+      "category": "B_crosslingual",
+      "language": "fr",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0,
+      "recall_at_20": 0.0,
+      "top_5_chunk_ids": [
+        "25c21828-b5e7-4c56-bb62-1aa21ad0a6a2",
+        "a277cac3-3ad6-4552-9ee2-3dfd2955b843",
+        "2fcf763e-7dff-46a0-b918-9f206467196c",
+        "ab5e4a46-774a-4207-b2a9-f708969a6d4f",
+        "3fb5083a-d3e7-4b52-a50f-91a05f45e461"
+      ]
+    },
+    {
+      "query_id": "B07",
+      "category": "B_crosslingual",
+      "language": "fr",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.0,
+      "recall_at_20": 0.05,
+      "top_5_chunk_ids": [
+        "2781f7a7-92cc-46ad-8891-b08b853d7a07",
+        "86ab2b87-4d25-4f83-b6a3-86aeb5088a28",
+        "2ff55235-1f55-44d9-9ae0-0569f11178cf",
+        "56c0d30b-f634-4c0b-8784-ee4062121325",
+        "567a0870-c1c9-461c-88ee-3916c7b57598"
+      ]
+    },
+    {
+      "query_id": "B08",
+      "category": "B_crosslingual",
+      "language": "fr",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2844,
+      "recall_at_20": 0.35,
+      "top_5_chunk_ids": [
+        "a04c99ac-f4e2-4c46-91f6-7717905bbfd5",
+        "d8c88b4a-e54b-45ad-ad53-e253806a661e",
+        "d3a93a04-86ea-470a-8e26-6cf50ce19e3b",
+        "b80be875-86b8-4472-a213-18426c556c2b",
+        "bdcb4d88-4901-4f7b-8c7d-369845d9e65c"
+      ]
+    },
+    {
+      "query_id": "C01",
+      "category": "C_script",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.7624,
+      "recall_at_20": 0.6,
+      "top_5_chunk_ids": [
+        "69b0fd9d-d877-41a8-8647-779aa0ea6800",
+        "7b6136ec-7875-4691-81d2-3cf9ab54966d",
+        "c799c8f9-b8f2-4a75-a532-0be5cb31b82b",
+        "b7e2afa2-aad1-4676-a525-d3c9822625ae",
+        "5eac4460-3214-443c-a0c9-bc74c01f901d"
+      ]
+    },
+    {
+      "query_id": "C02",
+      "category": "C_script",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.3689,
+      "recall_at_20": 0.3,
+      "top_5_chunk_ids": [
+        "6b088955-d79d-4498-ab34-71fdb7de2e2a",
+        "9c009d79-ba74-4587-8cb3-a907f5d14bd2",
+        "3920bf8b-9537-4edd-bc16-c57ec77ca14f",
+        "fd82a3f0-7a39-44a8-ac0f-ff65cc4c334c",
+        "792e1699-0f31-4995-993d-186c7727dbe5"
+      ]
+    },
+    {
+      "query_id": "C03",
+      "category": "C_script",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.5599,
+      "recall_at_20": 0.35,
+      "top_5_chunk_ids": [
+        "73330757-6653-42b1-9135-38a5e9b35001",
+        "15757bdd-379a-41ae-8a15-7e85821a5631",
+        "622583d1-5a94-433d-8c80-b7c60fd8b09a",
+        "0ef64087-3b07-4f53-ab3c-c95f631a5506",
+        "76404fb1-c3f7-4cc9-90b4-ab5b3a079c1c"
+      ]
+    },
+    {
+      "query_id": "C04",
+      "category": "C_script",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.1331,
+      "recall_at_20": 0.15,
+      "top_5_chunk_ids": [
+        "c890c132-a7cc-4f15-a740-c8224dd71f6e",
+        "c3c548be-84f7-41f4-9870-d2bd3050c18a",
+        "62a67b58-d051-4d49-ba10-1c5eea2d2adc",
+        "97fc2a79-a388-44fa-b432-886409c082ea",
+        "34d11567-b178-4686-9d85-c6886d997cc8"
+      ]
+    },
+    {
+      "query_id": "C05",
+      "category": "C_script",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2201,
+      "recall_at_20": 0.15,
+      "top_5_chunk_ids": [
+        "a0d4933e-cd90-43d7-8808-07cf71174355",
+        "8cb88e91-5ef0-4eae-84c9-fd6892126379",
+        "3b3c16a6-33ba-4c33-82fe-0f97635ae938",
+        "6ff56023-1eec-4dcb-b07b-1cc8b20cf97f",
+        "98e5585d-9518-4809-beb6-271f01998b42"
+      ]
+    },
+    {
+      "query_id": "D01",
+      "category": "D_stance",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.11,
+      "recall_at_20": 0.15,
+      "top_5_chunk_ids": [
+        "b0504a32-681c-4609-9ff7-4086589513ec",
+        "bccc78b3-2181-4e5d-8a27-8985ff6a5dc0",
+        "a49fbc2f-8b5e-47b9-90c8-f3c028f238f7",
+        "fc9034cc-f2bf-47a1-927f-8135c9cc466d",
+        "88392331-e690-4ae2-b761-737561e72d62"
+      ]
+    },
+    {
+      "query_id": "D02",
+      "category": "D_stance",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2966,
+      "recall_at_20": 0.5,
+      "top_5_chunk_ids": [
+        "b0504a32-681c-4609-9ff7-4086589513ec",
+        "36e625a9-ca8e-4606-8420-e4a7151540ab",
+        "29f01697-9774-4ffd-af0a-4bdf59d6c2ce",
+        "f5c8bb34-9a91-4f2d-8172-1cad5f9614b4",
+        "6455792b-2242-4006-bfb0-3ac02faf2e09"
+      ]
+    },
+    {
+      "query_id": "D03",
+      "category": "D_stance",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.6719,
+      "recall_at_20": 0.6,
+      "top_5_chunk_ids": [
+        "611b7fba-9f13-45ed-a6a7-921885bcf8e4",
+        "d30397e2-2bb8-4ae9-bfd4-cc6a961a6258",
+        "14821130-ea76-4edd-b09e-b765c7ddf5ea",
+        "a92d6de2-daed-4036-bc13-a98a3d512b5f",
+        "167573e0-8133-406a-a753-7191dfe6e427"
+      ]
+    },
+    {
+      "query_id": "D04",
+      "category": "D_stance",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.6115,
+      "recall_at_20": 0.35,
+      "top_5_chunk_ids": [
+        "5aadd727-c440-4608-9472-14659b0e77b6",
+        "c9addbc1-2787-42e7-b6c7-3dc0f73de348",
+        "40f4ba2f-6002-4ac2-a620-d2f1484da3cb",
+        "1698f25a-6c6d-44dd-923b-9b2a60ed2f46",
+        "a28801db-f307-4fb4-afcb-f2e70766ebaa"
+      ]
+    },
+    {
+      "query_id": "D05",
+      "category": "D_stance",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.6469,
+      "recall_at_20": 0.6,
+      "top_5_chunk_ids": [
+        "90d391d7-f6e6-4e49-9025-ffd2ab7908e3",
+        "52805ba7-57fe-4efb-969c-80459d97bde8",
+        "8d9d3abd-d914-4b39-ae99-d4f674abe10b",
+        "9d24a36e-1d03-45eb-a93d-a76c20ab22d6",
+        "f354960f-6e3e-4488-a61c-47d909bb88ac"
+      ]
+    },
+    {
+      "query_id": "D06",
+      "category": "D_stance",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.4669,
+      "recall_at_20": 0.4,
+      "top_5_chunk_ids": [
+        "646a41df-bd06-43ff-860d-c1aa466650e6",
+        "bac736f4-f131-4710-a6a3-b13b055f2db0",
+        "bde7f6f4-c35d-4850-91ad-f2d92b0dd2d8",
+        "7fb23b3d-093a-4a10-9e6b-3bafee678c6e",
+        "0f366e5b-7de6-4127-a73c-b69b24790812"
+      ]
+    },
+    {
+      "query_id": "D07",
+      "category": "D_stance",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.11,
+      "recall_at_20": 0.35,
+      "top_5_chunk_ids": [
+        "b0c15b00-2673-43a6-a2bf-34d9411a4fac",
+        "469b9982-c09d-43ce-ad2b-4bd16125919e",
+        "716eaa09-42bd-41f6-8110-e382beeacd17",
+        "db32ea8e-f90a-47d6-8e32-5d8e4a702150",
+        "e1703846-207f-4271-bc3b-f751b649b0d9"
+      ]
+    },
+    {
+      "query_id": "E01",
+      "category": "E_bill",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.5645,
+      "recall_at_20": 0.7,
+      "top_5_chunk_ids": [
+        "611b7fba-9f13-45ed-a6a7-921885bcf8e4",
+        "a92d6de2-daed-4036-bc13-a98a3d512b5f",
+        "14821130-ea76-4edd-b09e-b765c7ddf5ea",
+        "167573e0-8133-406a-a753-7191dfe6e427",
+        "5e041e01-f3a9-4c81-b924-6aead0b635d9"
+      ]
+    },
+    {
+      "query_id": "E02",
+      "category": "E_bill",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.3405,
+      "recall_at_20": 0.45,
+      "top_5_chunk_ids": [
+        "5aadd727-c440-4608-9472-14659b0e77b6",
+        "a28801db-f307-4fb4-afcb-f2e70766ebaa",
+        "40f4ba2f-6002-4ac2-a620-d2f1484da3cb",
+        "b910d058-0d82-41bb-8351-d4623088d08c",
+        "94995187-a959-490e-894f-d6af7a7de063"
+      ]
+    },
+    {
+      "query_id": "E03",
+      "category": "E_bill",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 1.0,
+      "recall_at_20": 0.85,
+      "top_5_chunk_ids": [
+        "5a80ee7c-07d6-48f0-ae64-e8156f9ee262",
+        "182c42ad-2171-431b-9e1c-45d80ced6ffe",
+        "8107b108-0b47-42fc-8222-06f524b8674e",
+        "d9789dde-c742-48be-844d-cfa3a2802520",
+        "7efd52cb-10fc-4270-b9b5-78c73fe2111a"
+      ]
+    },
+    {
+      "query_id": "E04",
+      "category": "E_bill",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 1.0,
+      "recall_at_20": 0.75,
+      "top_5_chunk_ids": [
+        "a47118ec-f55d-4a41-90ab-9dedef8a452b",
+        "00c465ec-68df-4be1-b964-09a7f787fb68",
+        "3a4c3404-2440-4459-814a-9814f29b136d",
+        "470e1429-c5ea-4718-8298-6dad357fa309",
+        "d626e0bd-110f-49c1-b87c-7175d7da11f6"
+      ]
+    },
+    {
+      "query_id": "E05",
+      "category": "E_bill",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.4252,
+      "recall_at_20": 0.25,
+      "top_5_chunk_ids": [
+        "ea4d2ba3-d4cd-4a8d-b805-ed3306399ef9",
+        "77ac6e48-bdd4-4e36-a2e9-4c61d3959506",
+        "611b7fba-9f13-45ed-a6a7-921885bcf8e4",
+        "14821130-ea76-4edd-b09e-b765c7ddf5ea",
+        "4c94a01d-8df6-4474-aa98-9c0bc71d0502"
+      ]
+    },
+    {
+      "query_id": "F01",
+      "category": "F_edge",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.1952,
+      "recall_at_20": 0.2,
+      "top_5_chunk_ids": [
+        "982818e2-b8c0-4240-9710-6e4dd987b238",
+        "89295fa7-83a3-4ec1-bed1-4cc2384c4474",
+        "40a973ed-7b6b-4fcd-b273-fa67a19189b4",
+        "e776de3c-7413-4d63-8bb7-e9160999b390",
+        "2d959058-5768-4e4a-8adc-405b263d81ac"
+      ]
+    },
+    {
+      "query_id": "F02",
+      "category": "F_edge",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2895,
+      "recall_at_20": 0.2,
+      "top_5_chunk_ids": [
+        "d30397e2-2bb8-4ae9-bfd4-cc6a961a6258",
+        "22b2443c-fe87-4171-8e24-18b781a48ec3",
+        "942fbc68-75d0-409b-8861-9284222837ae",
+        "c652fd36-037a-405a-95d8-a3bf3537f65a",
+        "c2a9ca19-84c0-4147-bcc6-9d4787c82adb"
+      ]
+    },
+    {
+      "query_id": "F03",
+      "category": "F_edge",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.4815,
+      "recall_at_20": 0.45,
+      "top_5_chunk_ids": [
+        "95866467-7fec-46ac-8233-97758326acbf",
+        "3b8b8e97-d0d7-4e28-a060-658be4359b0f",
+        "734a61ab-75fd-482e-9ab9-ca271c185d99",
+        "a36e21ae-1a0b-464f-87fb-115d9dea7dc0",
+        "045178d1-7a16-4de0-8825-3721acd519fd"
+      ]
+    },
+    {
+      "query_id": "F04",
+      "category": "F_edge",
+      "language": "en",
+      "target_language": "en",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.9364,
+      "recall_at_20": 0.85,
+      "top_5_chunk_ids": [
+        "51e8dc31-218a-4402-ab20-99fd1f271b8b",
+        "c3a5f658-5051-4a2c-8b89-2fa0f149e349",
+        "7a1983de-e350-4226-85c1-11b45fa1a832",
+        "013b5450-99f1-40ef-9870-11c672e69382",
+        "d198b7be-65f1-4b0d-9401-0d95f10362be"
+      ]
+    },
+    {
+      "query_id": "F05",
+      "category": "F_edge",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.7695,
+      "recall_at_20": 0.5,
+      "top_5_chunk_ids": [
+        "bc75f25d-70e0-4612-841f-71ce1ab7287e",
+        "f1396c15-6fc8-4601-b110-fcda866fbd7b",
+        "96386560-178a-4385-931b-06fe79275012",
+        "a8d72a6c-45ae-470b-b84b-58b193297733",
+        "31543d06-deed-4d7b-be2d-3ea4ec98209f"
+      ]
+    },
+    {
+      "query_id": "F06",
+      "category": "F_edge",
+      "language": "fr",
+      "target_language": "fr",
+      "relevant_count": 20,
+      "ndcg_at_10": 0.2201,
+      "recall_at_20": 0.05,
+      "top_5_chunk_ids": [
+        "4bbbde8d-d063-49ca-b3b2-6506b94844b8",
+        "ff43d647-a930-42c3-a1f6-a566be3d31e4",
+        "a30cdf8a-ce02-4f63-9b21-19a2e48425a3",
+        "c50422ee-ecd1-475f-a159-96fb1e389f91",
+        "95b90533-0326-45fa-8e60-5b055a643d31"
+      ]
+    }
+  ]
+}

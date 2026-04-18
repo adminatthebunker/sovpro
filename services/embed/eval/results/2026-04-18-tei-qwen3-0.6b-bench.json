@@ -1,0 +1,11 @@
+{
+  "model": "Qwen/Qwen3-Embedding-0.6B (TEI ghcr 89-1.9)",
+  "n_docs": 5000,
+  "client_batch": 16,
+  "serial_seconds": 66.8,
+  "serial_chunks_per_sec": 74.9,
+  "parallel4_seconds": 65.99,
+  "parallel4_chunks_per_sec": 75.8,
+  "parallel8_seconds": 66.31,
+  "parallel8_chunks_per_sec": 75.4
+}
