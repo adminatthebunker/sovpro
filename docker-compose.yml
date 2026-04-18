@@ -97,11 +97,20 @@ services:
       # dedicate one to embedding.
       NVIDIA_VISIBLE_DEVICES: ${EMBED_CUDA_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      # PYTORCH_CUDA_ALLOC_CONF left unset after an experiment with
-      # expandable_segments:True caused "CUDA-capable device busy or
-      # unavailable" on every request — incompatible with this build.
-      # Fail-fast guard in server.py remains as the recovery mechanism.
-      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF:-}
+      # Allocator tuning for the RTX 4050 Mobile (6 GiB Ada). The earlier
+      # `expandable_segments:True` experiment on 2026-04-16 was blamed
+      # for crash-looping but the real culprit was a wedged NVIDIA
+      # driver state (see docs/runbooks/resume-after-reboot-2026-04-16.md).
+      # Re-enabled on a healthy driver 2026-04-17 combined with:
+      #   - garbage_collection_threshold:0.8 → release cached blocks
+      #     once reserved memory climbs above 80% of a limit, pre-empting
+      #     the fragmentation spiral that precedes our Xid 62 crashes.
+      #   - max_split_size_mb:512 → prevents outlier 8192-token batches
+      #     from carving oversized arenas the allocator can't reuse.
+      PYTORCH_CUDA_ALLOC_CONF: ${PYTORCH_CUDA_ALLOC_CONF-expandable_segments:True,garbage_collection_threshold:0.8,max_split_size_mb:512}
+      # Cap cuBLAS workspace so it doesn't compete with the model
+      # weights for the 6 GiB budget. :4096:8 = 4 MiB × 8 streams.
+      CUBLAS_WORKSPACE_CONFIG: ${CUBLAS_WORKSPACE_CONFIG-:4096:8}
     volumes:
       - embedmodels:/models
     restart: unless-stopped
