@@ -1348,6 +1348,32 @@ def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("embed-speech-chunks-next")
+@click.option("--limit", type=int, default=None,
+              help="Max chunks to embed this run (default: all pending).")
+@click.option("--batch-size", type=int, default=32,
+              help="Texts per TEI /embed call. TEI's --max-client-batch-size (default 64) is the hard cap.")
+@click.pass_context
+def cmd_embed_speech_chunks_next(ctx: click.Context, limit, batch_size) -> None:
+    """Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B).
+
+    Parallel to embed-speech-chunks but targets the new column. Uses
+    batched UPDATE ... FROM UNNEST for ~1 DB round-trip per batch
+    instead of per chunk. Calls EMBED_NEXT_URL (default http://tei:80).
+    Safe to interrupt and resume — unembedded chunks stay NULL.
+    """
+    from .legislative.speech_embedder import embed_pending_next as _embed
+
+    async def _wrap(db: Database) -> None:
+        stats = await _embed(db, limit_chunks=limit, batch_size=batch_size)
+        console.print(
+            f"[green]embed-speech-chunks-next[/green]: seen={stats.chunks_seen} "
+            f"embedded={stats.chunks_embedded} batches={stats.batches} "
+            f"errors={stats.errors} server_ms={stats.total_elapsed_ms}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})

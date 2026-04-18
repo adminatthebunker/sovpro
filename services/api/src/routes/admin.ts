@@ -49,6 +49,13 @@ const COMMAND_CATALOG = [
       { name: "batch_size", type: "int", required: false, default: 32, help: "Texts per /embed call." },
     ],
   },
+  { key: "embed-speech-chunks-next", category: "hansard",
+    description: "Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B). Requires `tei` service up.",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Max chunks to embed this run." },
+      { name: "batch_size", type: "int", required: false, default: 32, help: "Texts per TEI /embed call." },
+    ],
+  },
   // bills
   { key: "ingest-ns-bills", category: "bills", description: "Nova Scotia bills via Socrata.",
     args: [{ name: "limit", type: "int", required: false, help: "Max bills this run." }] },

@@ -80,6 +80,17 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Texts per /embed call. 32 is the default sweet spot; GPU hosts can push to 128."},
         ],
     },
+    "embed-speech-chunks-next": {
+        "description": "Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B). Faster path; requires `tei` service up (docker compose --profile embedding-qwen3 up -d tei).",
+        "cli": "embed-speech-chunks-next",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Max chunks to embed this run."},
+            {"name": "batch_size", "type": "int", "required": False, "default": 32,
+             "help": "Texts per TEI /embed call. Match TEI's --max-client-batch-size (default 64)."},
+        ],
+    },
 
     # ── Provincial bills (already live) ───────────────────────────────
     "ingest-ns-bills": {
