@@ -1448,6 +1448,33 @@ def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("resolve-acting-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap candidate speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_acting_speakers(ctx: click.Context, limit) -> None:
+    """Resolve politician_id on federal speeches tagged with a presiding-
+    officer attribution like 'The Acting Speaker (Mr. McClelland)'.
+
+    Openparliament doesn't populate politician_url for these turns, so
+    they land with politician_id NULL at ingest. This walks them after
+    the fact, extracts the parenthesised name, and unique-matches
+    against the politicians table.
+    """
+    from .legislative.acting_speaker_resolver import resolve_acting_speakers as _resolve
+
+    async def _wrap(db: Database) -> None:
+        stats = await _resolve(db, limit=limit)
+        console.print(
+            f"[green]resolve-acting-speakers[/green]: "
+            f"scanned={stats['scanned']} resolved={stats['resolved']} "
+            f"ambiguous={stats['ambiguous']} "
+            f"no_politician_found={stats['no_politician_found']} "
+            f"no_parens={stats['no_parens']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 if __name__ == "__main__":
     try:
         cli(obj={})
