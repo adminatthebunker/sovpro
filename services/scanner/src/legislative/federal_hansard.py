@@ -93,6 +93,66 @@ SOURCE_SYSTEM = "openparliament"
 API_ROOT = "https://api.openparliament.ca"
 WEB_ROOT = "https://openparliament.ca"
 REQUEST_TIMEOUT = 60
+
+# Known federal parliament/session date ranges. Used to:
+#   1. Auto-derive --since / --until when the user ingests by (parliament,
+#      session) without explicit dates. Without this, fetch_debates walks
+#      every Hansard sitting day back to 1994 regardless of the
+#      parliament/session flags, which was the bug that mislabeled
+#      ~896k speeches as P43-S2 on 2026-04-18/19.
+#   2. Power the `fix-speech-sessions` retag command that repairs rows
+#      already mis-tagged.
+#
+# Dates are the first and last sitting days of each session (inclusive).
+# For the current session (no end yet), end_date is a sentinel far in the
+# future; override with --until if you want tighter bounds.
+#
+# Source: ourcommons.ca parliamentary-sessions reference. Revisit when a
+# parliament ends / new one begins.
+FEDERAL_SESSION_DATES: list[tuple[int, int, date, date]] = [
+    (35, 1, date(1994,  1, 17), date(1996,  2,  2)),
+    (35, 2, date(1996,  2, 27), date(1997,  4, 27)),
+    (36, 1, date(1997,  9, 22), date(1999,  9, 18)),
+    (36, 2, date(1999, 10, 12), date(2000, 10, 22)),
+    (37, 1, date(2001,  1, 29), date(2002,  9, 16)),
+    (37, 2, date(2002,  9, 30), date(2003, 11, 12)),
+    (37, 3, date(2004,  2,  2), date(2004,  5, 23)),
+    (38, 1, date(2004, 10,  4), date(2005, 11, 29)),
+    (39, 1, date(2006,  4,  3), date(2007,  9, 14)),
+    (39, 2, date(2007, 10, 16), date(2008,  9,  7)),
+    (40, 1, date(2008, 11, 18), date(2008, 12,  4)),
+    (40, 2, date(2009,  1, 26), date(2009, 12, 30)),
+    (40, 3, date(2010,  3,  3), date(2011,  3, 26)),
+    (41, 1, date(2011,  6,  2), date(2013,  9, 13)),
+    (41, 2, date(2013, 10, 16), date(2015,  8,  2)),
+    (42, 1, date(2015, 12,  3), date(2019,  9, 11)),
+    (43, 1, date(2019, 12,  5), date(2020,  8, 18)),
+    (43, 2, date(2020,  9, 23), date(2021,  8, 15)),
+    (44, 1, date(2021, 11, 22), date(2099, 12, 31)),   # open-ended; cap with --until when ended
+]
+
+
+def federal_session_bounds(parliament: int, session: int) -> tuple[date, date]:
+    """Return (start, end) for a federal parliament/session. Raises
+    ValueError for unknown tuples so callers don't silently walk the
+    whole corpus."""
+    for p, s, start, end in FEDERAL_SESSION_DATES:
+        if p == parliament and s == session:
+            return start, end
+    raise ValueError(
+        f"no date bounds known for Parliament {parliament}, Session {session}. "
+        f"Add to FEDERAL_SESSION_DATES in federal_hansard.py."
+    )
+
+
+def federal_session_for_date(d: date) -> Optional[tuple[int, int]]:
+    """Reverse lookup: which (parliament, session) does this date fall into?
+    Returns None for dates outside all known ranges (pre-1994 or future)."""
+    for p, s, start, end in FEDERAL_SESSION_DATES:
+        if start <= d <= end:
+            return p, s
+    return None
+
 HEADERS = {
     "User-Agent": "SovereignWatchBot/1.0 (+https://canadianpoliticaldata.ca; civic-transparency)",
     "Accept": "application/json",

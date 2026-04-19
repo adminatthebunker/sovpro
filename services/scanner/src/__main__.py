@@ -1262,18 +1262,40 @@ def cmd_ingest_federal_hansard(
     over the same date range are safe and update mutable columns.
     """
     from datetime import date as _date
-    from .legislative.federal_hansard import ingest as _ingest
+    from .legislative.federal_hansard import ingest as _ingest, federal_session_bounds
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
+
+    effective_since = _parse_d(since)
+    effective_until = _parse_d(until)
+
+    # Auto-derive date bounds from the parliament/session if the caller
+    # didn't provide explicit --since / --until. Without this, the
+    # underlying /debates/ walk enumerates every Hansard sitting day
+    # openparliament has indexed (back to 1994) and tags them all with
+    # whichever session we named — which is how 896k speeches ended up
+    # mis-labeled as P43-S2 on 2026-04-18. Explicit flags still win.
+    if effective_since is None and effective_until is None:
+        try:
+            auto_since, auto_until = federal_session_bounds(parliament, session)
+            effective_since = auto_since
+            effective_until = auto_until
+            console.print(
+                f"[dim]auto-deriving date range for P{parliament}-S{session}: "
+                f"{effective_since} → {effective_until}[/dim]"
+            )
+        except ValueError as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise click.Abort()
 
     async def _wrap(db: Database) -> None:
         stats = await _ingest(
             db,
             parliament=parliament,
             session=session,
-            since=_parse_d(since),
-            until=_parse_d(until),
+            since=effective_since,
+            until=effective_until,
             limit_debates=limit_debates,
             limit_speeches=limit_speeches,
         )
@@ -1284,6 +1306,45 @@ def cmd_ingest_federal_hansard(
             f"skipped_empty={stats.skipped_empty} "
             f"unresolved_slug={stats.speeches_unresolved}"
         )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("backfill-politicians-openparliament")
+@click.option("--limit", type=int, default=None,
+              help="Cap slugs fetched (smoke-test aid). Omit for full backfill.")
+@click.option("--resolve/--no-resolve", default=True,
+              help="After upserting politicians, re-run speech/chunk resolution. Default on.")
+@click.pass_context
+def cmd_backfill_politicians_openparliament(
+    ctx: click.Context, limit: Optional[int], resolve: bool,
+) -> None:
+    """Create missing politicians rows by fetching openparliament.ca.
+
+    Discovers slugs referenced by speeches with NULL politician_id,
+    fetches each from api.openparliament.ca, and upserts into the
+    politicians table with source_id='op:<slug>'. Then re-resolves
+    speeches.politician_id and speech_chunks.politician_id.
+
+    Safe to re-run — skips slugs already present. 5 concurrent HTTP
+    fetches; ~3 minutes for 700 slugs.
+    """
+    from .legislative.politicians_op_backfill import run as _run_backfill, resolve_missing
+
+    async def _wrap(db: Database) -> None:
+        stats = await _run_backfill(db, limit=limit)
+        console.print(
+            f"[green]backfill-politicians-openparliament[/green]: "
+            f"considered={stats.slugs_considered} fetched={stats.fetched} "
+            f"inserted={stats.inserted} updated={stats.updated} "
+            f"errors={stats.fetch_errors}"
+        )
+        if resolve:
+            res = await resolve_missing(db)
+            console.print(
+                f"[green]resolve[/green]: "
+                f"speeches_resolved={res['speeches_resolved']} "
+                f"chunks_resolved={res['chunks_resolved']}"
+            )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
