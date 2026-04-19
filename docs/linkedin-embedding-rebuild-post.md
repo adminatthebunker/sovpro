@@ -6,7 +6,7 @@ Draft copy for announcing the 10.8× throughput unlock that opened the full fede
 
 ---
 
-📊 From months to hours: I rebuilt SovereignWatch's search pipeline this weekend.
+📊 From months to hours: I rebuilt Canadian Political Data's search pipeline this weekend.
 
 The goal: every speech ever made in the Canadian House of Commons, searchable by meaning — ask "housing affordability" and get back debate moments that argue about gatekeepers and missing-middles, not just ones that use the exact phrase.
 
