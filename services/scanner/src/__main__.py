@@ -1448,6 +1448,35 @@ def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("refresh-coverage-stats")
+@click.pass_context
+def cmd_refresh_coverage_stats(ctx: click.Context) -> None:
+    """Recompute jurisdiction_sources counts from live tables.
+
+    Drives the public /coverage page. Flips Hansard status 'none'/
+    'partial'/'live' based on speech-count thresholds, updates
+    speeches_count / politicians_count / bills_count, stamps
+    last_verified_at = now(). Status flags for bills/votes/committees
+    are left alone — those are editorial.
+    """
+    from .legislative.coverage_stats import refresh_coverage_stats as _refresh
+
+    async def _wrap(db: Database) -> None:
+        report = await _refresh(db)
+        for code, stats in sorted(report.items()):
+            arrow = (
+                f"hansard {stats['prev_hansard_status']}→{stats['hansard_status']}"
+                if stats["prev_hansard_status"] != stats["hansard_status"]
+                else f"hansard={stats['hansard_status']}"
+            )
+            console.print(
+                f"[green]{code}[/green]: speeches={stats['speeches']} "
+                f"(was {stats['prev_speeches']}) politicians={stats['politicians']} "
+                f"bills={stats['bills']}  {arrow}"
+            )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("resolve-acting-speakers")
 @click.option("--limit", type=int, default=None,
               help="Cap candidate speeches scanned (smoke-test aid).")

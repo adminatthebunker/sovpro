@@ -49,6 +49,16 @@ const COMMAND_CATALOG = [
       { name: "batch_size", type: "int", required: false, default: 32, help: "Texts per TEI /embed call." },
     ],
   },
+  { key: "resolve-acting-speakers", category: "hansard",
+    description: "Resolve politician_id on presiding-officer speeches (The Acting Speaker / Deputy Speaker + parenthesised MP name).",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Cap candidate speeches scanned." },
+    ],
+  },
+  { key: "refresh-coverage-stats", category: "admin",
+    description: "Recompute jurisdiction_sources counts and Hansard status from live data. Drives /coverage.",
+    args: [],
+  },
   // bills
   { key: "ingest-ns-bills", category: "bills", description: "Nova Scotia bills via Socrata.",
     args: [{ name: "limit", type: "int", required: false, help: "Max bills this run." }] },

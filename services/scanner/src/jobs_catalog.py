@@ -80,6 +80,21 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Texts per TEI /embed call. Match TEI's --max-client-batch-size (default 64)."},
         ],
     },
+    "resolve-acting-speakers": {
+        "description": "Resolve politician_id on presiding-officer speeches (The Acting Speaker / Deputy Speaker + parenthesised MP name).",
+        "cli": "resolve-acting-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap candidate speeches scanned (smoke-test aid)."},
+        ],
+    },
+    "refresh-coverage-stats": {
+        "description": "Recompute jurisdiction_sources counts (speeches, politicians, bills) and flip Hansard status from live data. Drives /coverage.",
+        "cli": "refresh-coverage-stats",
+        "category": "admin",
+        "args": [],
+    },
 
     # ── Provincial bills (already live) ───────────────────────────────
     "ingest-ns-bills": {
