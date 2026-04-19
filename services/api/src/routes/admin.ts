@@ -43,14 +43,7 @@ const COMMAND_CATALOG = [
     args: [{ name: "limit", type: "int", required: false, help: "Max speeches to chunk (default: all pending)." }],
   },
   { key: "embed-speech-chunks", category: "hansard",
-    description: "Fill speech_chunks.embedding via the local BGE-M3 service.",
-    args: [
-      { name: "limit", type: "int", required: false, help: "Max chunks to embed this run." },
-      { name: "batch_size", type: "int", required: false, default: 32, help: "Texts per /embed call." },
-    ],
-  },
-  { key: "embed-speech-chunks-next", category: "hansard",
-    description: "Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B). Requires `tei` service up.",
+    description: "Fill speech_chunks.embedding via TEI (Qwen3-Embedding-0.6B). ~50 c/s end-to-end.",
     args: [
       { name: "limit", type: "int", required: false, help: "Max chunks to embed this run." },
       { name: "batch_size", type: "int", required: false, default: 32, help: "Texts per TEI /embed call." },

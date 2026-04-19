@@ -1348,6 +1348,44 @@ def cmd_backfill_politicians_openparliament(
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("backfill-politician-terms-openparliament")
+@click.option("--limit", type=int, default=None,
+              help="Cap politicians processed (smoke-test aid). Omit for full run.")
+@click.option("--slug", type=str, default=None,
+              help="Target exactly one openparliament slug (e.g. pierre-poilievre).")
+@click.pass_context
+def cmd_backfill_politician_terms_openparliament(
+    ctx: click.Context, limit: Optional[int], slug: Optional[str],
+) -> None:
+    """Hydrate politician_terms from openparliament.ca `memberships`.
+
+    For every federal politician with a known `openparliament_slug`,
+    fetches `/politicians/<slug>/` and rewrites their politician_terms
+    from the `memberships` array (one row per parliament served in,
+    with real election start_date and end_date).
+
+    Supersedes the Open North single-row federal current term when
+    present — openparliament has the real dates, not the scrape date.
+    Safe to re-run: each politician's `openparliament:memberships`
+    rows are deleted and re-written atomically per fetch.
+
+    ~1 req/sec against api.openparliament.ca; ~25 min for 1,300 MPs.
+    """
+    from .legislative.politicians_op_backfill import run_terms_backfill as _run_terms
+
+    async def _wrap(db: Database) -> None:
+        stats = await _run_terms(db, limit=limit, slug=slug)
+        console.print(
+            f"[green]backfill-politician-terms-openparliament[/green]: "
+            f"considered={stats.politicians_considered} fetched={stats.fetched} "
+            f"updated={stats.politicians_updated} inserted={stats.terms_inserted} "
+            f"deleted={stats.terms_deleted} "
+            f"no_memberships={stats.politicians_skipped_no_memberships} "
+            f"errors={stats.fetch_errors}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("jobs-worker")
 @click.pass_context
 def cmd_jobs_worker(ctx: click.Context) -> None:
@@ -1388,14 +1426,15 @@ def cmd_chunk_speeches(ctx: click.Context, limit) -> None:
 @click.option("--limit", type=int, default=None,
               help="Max chunks to embed this run (default: all pending).")
 @click.option("--batch-size", type=int, default=32,
-              help="Texts per /embed call. Bounded by EMBED_MAX_BATCH on the embed service (default 64).")
+              help="Texts per TEI /embed call. TEI's --max-client-batch-size (default 64) is the hard cap.")
 @click.pass_context
 def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
-    """Fill speech_chunks.embedding for every chunk currently NULL.
+    """Fill speech_chunks.embedding via TEI (Qwen3-Embedding-0.6B).
 
-    Calls the embed service at EMBED_URL (default http://embed:8000).
-    CPU-bound — expect ~1 text/sec at the default 4-core cap. Safe to
-    interrupt and resume; unembedded chunks stay NULL.
+    Calls TEI at EMBED_URL (default http://tei:80). Uses batched
+    UPDATE ... FROM UNNEST for ~1 DB round-trip per batch instead of per
+    chunk — measured at 50.9 chunks/sec end-to-end. Safe to interrupt
+    and resume; unembedded chunks stay NULL and get picked up on next run.
     """
     from .legislative.speech_embedder import embed_pending as _embed
 
@@ -1403,32 +1442,6 @@ def cmd_embed_speech_chunks(ctx: click.Context, limit, batch_size) -> None:
         stats = await _embed(db, limit_chunks=limit, batch_size=batch_size)
         console.print(
             f"[green]embed-speech-chunks[/green]: seen={stats.chunks_seen} "
-            f"embedded={stats.chunks_embedded} batches={stats.batches} "
-            f"errors={stats.errors} server_ms={stats.total_elapsed_ms}"
-        )
-    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
-
-
-@cli.command("embed-speech-chunks-next")
-@click.option("--limit", type=int, default=None,
-              help="Max chunks to embed this run (default: all pending).")
-@click.option("--batch-size", type=int, default=32,
-              help="Texts per TEI /embed call. TEI's --max-client-batch-size (default 64) is the hard cap.")
-@click.pass_context
-def cmd_embed_speech_chunks_next(ctx: click.Context, limit, batch_size) -> None:
-    """Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B).
-
-    Parallel to embed-speech-chunks but targets the new column. Uses
-    batched UPDATE ... FROM UNNEST for ~1 DB round-trip per batch
-    instead of per chunk. Calls EMBED_NEXT_URL (default http://tei:80).
-    Safe to interrupt and resume — unembedded chunks stay NULL.
-    """
-    from .legislative.speech_embedder import embed_pending_next as _embed
-
-    async def _wrap(db: Database) -> None:
-        stats = await _embed(db, limit_chunks=limit, batch_size=batch_size)
-        console.print(
-            f"[green]embed-speech-chunks-next[/green]: seen={stats.chunks_seen} "
             f"embedded={stats.chunks_embedded} batches={stats.batches} "
             f"errors={stats.errors} server_ms={stats.total_elapsed_ms}"
         )

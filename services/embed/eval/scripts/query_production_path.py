@@ -1,9 +1,9 @@
-"""Production-path query validation — TEI + embedding_next HNSW end-to-end.
+"""Production-path query validation — TEI + embedding HNSW end-to-end.
 
 Two modes:
 
     eval:         rerun the 40-query eval against the live TEI service
-                  using pgvector HNSW over embedding_next. Confirms the
+                  using pgvector HNSW over embedding. Confirms the
                   production path matches the offline eval numbers.
 
     interactive:  accept a question on stdin, return the top-10 chunks
@@ -63,12 +63,12 @@ def vec_literal(vec: list[float]) -> str:
 
 async def search_chunks(conn, q_vec: list[float], *,
                         limit: int = 10, lang: str | None = None) -> list[dict]:
-    """HNSW cosine search over speech_chunks.embedding_next.
+    """HNSW cosine search over speech_chunks.embedding.
 
     Joins speeches + politicians so the caller gets everything needed
     to render a result card. Uses the cosine distance operator (<=>).
     """
-    where = "sc.embedding_next IS NOT NULL"
+    where = "sc.embedding IS NOT NULL"
     params: list = [vec_literal(q_vec)]
     if lang:
         where += " AND sc.language = $2"
@@ -83,11 +83,11 @@ async def search_chunks(conn, q_vec: list[float], *,
                sc.politician_id::text,
                s.speaker_name_raw,
                s.source_url,
-               1 - (sc.embedding_next <=> $1::vector) AS similarity
+               1 - (sc.embedding <=> $1::vector) AS similarity
           FROM speech_chunks sc
           JOIN speeches s ON s.id = sc.speech_id
          WHERE {where}
-         ORDER BY sc.embedding_next <=> $1::vector ASC
+         ORDER BY sc.embedding <=> $1::vector ASC
          LIMIT {int(limit)}
     """
     rows = await conn.fetch(sql, *params)
@@ -147,7 +147,7 @@ async def cmd_eval() -> None:
 
     await pool.close()
 
-    print("\n── Production-path retrieval quality (TEI + embedding_next HNSW) ──")
+    print("\n── Production-path retrieval quality (TEI + embedding HNSW) ──")
     print(f"  NDCG@10               mean = {statistics.mean(overall_ndcg):.4f}")
     print(f"  Recall@20             mean = {statistics.mean(overall_recall):.4f}")
     print(f"  Cross-ling R@10       mean = {(statistics.mean(xl_recall) if xl_recall else 0):.4f}")

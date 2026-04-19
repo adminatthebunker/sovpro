@@ -70,19 +70,8 @@ COMMANDS: dict[str, dict[str, Any]] = {
         ],
     },
     "embed-speech-chunks": {
-        "description": "Fill speech_chunks.embedding via the local BGE-M3 service.",
+        "description": "Fill speech_chunks.embedding via TEI (Qwen3-Embedding-0.6B). ~50 chunks/sec end-to-end on GPU.",
         "cli": "embed-speech-chunks",
-        "category": "hansard",
-        "args": [
-            {"name": "limit", "type": "int", "required": False,
-             "help": "Max chunks to embed this run."},
-            {"name": "batch_size", "type": "int", "required": False, "default": 32,
-             "help": "Texts per /embed call. 32 is the default sweet spot; GPU hosts can push to 128."},
-        ],
-    },
-    "embed-speech-chunks-next": {
-        "description": "Fill speech_chunks.embedding_next via TEI (Qwen3-Embedding-0.6B). Faster path; requires `tei` service up (docker compose --profile embedding-qwen3 up -d tei).",
-        "cli": "embed-speech-chunks-next",
         "category": "hansard",
         "args": [
             {"name": "limit", "type": "int", "required": False,
