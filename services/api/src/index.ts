@@ -19,6 +19,8 @@ import socialsRoutes from "./routes/socials.js";
 import committeesRoutes from "./routes/committees.js";
 import openparliamentRoutes from "./routes/openparliament.js";
 import coverageRoutes from "./routes/coverage.js";
+import searchRoutes from "./routes/search.js";
+import speechRoutes from "./routes/speeches.js";
 import adminRoutes from "./routes/admin.js";
 
 const app = Fastify({
@@ -74,6 +76,8 @@ await app.register(ogRoutes, { prefix: "/api/v1/og" });
 await app.register(socialsRoutes, { prefix: "/api/v1/socials" });
 await app.register(committeesRoutes, { prefix: "/api/v1/committees" });
 await app.register(coverageRoutes, { prefix: "/api/v1/coverage" });
+await app.register(searchRoutes, { prefix: "/api/v1/search" });
+await app.register(speechRoutes, { prefix: "/api/v1/speeches" });
 await app.register(adminRoutes, { prefix: "/api/v1/admin" });
 // Mounted under the same /politicians prefix so the final URL is
 // /api/v1/politicians/:id/openparliament (REST sub-resource pattern).

@@ -26,7 +26,7 @@
 
 **Deferred:** Manitoba + Saskatchewan are PDF-only (bill status documents), awaiting a `pdfplumber`-based extraction tool. PEI is behind Radware ShieldSquare; Yukon behind Cloudflare Bot Management — both awaiting a Playwright-based browser automation track.
 
-Per-jurisdiction probe history, endpoint findings, and module pointers live in [`plans/provincial-legislature-research.md`](plans/provincial-legislature-research.md).
+Per-jurisdiction probe history, endpoint findings, and module pointers live in [`research/`](research/) — one self-contained dossier per jurisdiction (see [`research/overview.md`](research/overview.md) for the shared schema log + probe hierarchy).
 
 ## Attribution required
 

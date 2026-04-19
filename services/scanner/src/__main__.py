@@ -71,6 +71,13 @@ from .opennorth import (
 from .scanner import scan_all
 from .seed_orgs import seed_organizations
 from .socials import bulk_import_socials, normalize_socials, verify_liveness
+from .socials_audit import audit_socials
+from .socials_probe import PLATFORMS_SUPPORTED, probe_missing_socials
+from .socials_agent import (
+    DEFAULT_BATCH_SIZE as AGENT_DEFAULT_BATCH_SIZE,
+    DEFAULT_MODEL as AGENT_DEFAULT_MODEL,
+    agent_find_socials,
+)
 from .resolve_openparliament import resolve_slugs
 from .socials_enrichment import (
     enrich_all_socials,
@@ -406,6 +413,53 @@ def cmd_normalize_socials(ctx: click.Context) -> None:
     asyncio.run(_run(normalize_socials, ctx.obj["dsn"]))
 
 
+@cli.command("audit-socials")
+@click.option("--csv", "csv_path", default=None,
+              help="Where to write the missing-rows CSV (default $POLITICIAN_SOCIALS_AUDIT_CSV or /tmp/politician_socials_audit.csv)")
+@click.option("--no-csv", is_flag=True, help="Skip CSV export; just print tables")
+@click.pass_context
+def cmd_audit_socials(ctx: click.Context, csv_path, no_csv) -> None:
+    """Snapshot social coverage and refresh v_socials_missing view."""
+    asyncio.run(_run(audit_socials, ctx.obj["dsn"],
+                     csv_path=csv_path, no_csv=no_csv))
+
+
+@cli.command("probe-missing-socials")
+@click.option("--platform", type=click.Choice(list(PLATFORMS_SUPPORTED)),
+              default="bluesky",
+              help="Which missing platform to probe (default: bluesky)")
+@click.option("--limit", type=int, default=500,
+              help="Max v_socials_missing rows to process this run")
+@click.option("--dry-run", is_flag=True,
+              help="Print would-be inserts without writing")
+@click.pass_context
+def cmd_probe_missing_socials(ctx: click.Context, platform: str,
+                              limit: int, dry_run: bool) -> None:
+    """Tier-2: pattern-probe URL candidates and upsert scored hits."""
+    asyncio.run(_run(probe_missing_socials, ctx.obj["dsn"],
+                     platform=platform, limit=limit, dry_run=dry_run))
+
+
+@cli.command("agent-missing-socials")
+@click.option("--platform", type=str, default=None,
+              help="Focus on a single platform (e.g. twitter). Default: all missing platforms per politician.")
+@click.option("--batch-size", type=int, default=AGENT_DEFAULT_BATCH_SIZE,
+              help="Politicians per agent call (capped at 25)")
+@click.option("--max-batches", type=int, default=20,
+              help="Hard cap on agent calls per invocation")
+@click.option("--model", type=str, default=AGENT_DEFAULT_MODEL)
+@click.option("--dry-run", is_flag=True,
+              help="Print candidate hits without inserting")
+@click.pass_context
+def cmd_agent_missing_socials(ctx: click.Context, platform, batch_size,
+                              max_batches, model, dry_run) -> None:
+    """Tier-3: Sonnet agent + web_search for residual missing socials."""
+    asyncio.run(_run(agent_find_socials, ctx.obj["dsn"],
+                     platform=platform, batch_size=batch_size,
+                     max_batches=max_batches, model=model,
+                     dry_run=dry_run))
+
+
 @cli.command("verify-socials")
 @click.option("--limit", type=int, default=500, help="Max rows to verify per run")
 @click.option("--stale-hours", type=int, default=168,
@@ -438,6 +492,46 @@ def cmd_scan(ctx: click.Context, limit, stale_hours, concurrency, only) -> None:
     asyncio.run(_run(scan_all, ctx.obj["dsn"],
                      limit=limit, stale_hours=stale_hours,
                      concurrency=concurrency, owner_type=only))
+
+
+@cli.command("backfill-politician-photos")
+@click.option("--limit", type=int, default=None,
+              help="Cap the number of politicians processed this run.")
+@click.option("--stale-days", type=int, default=30,
+              help="Re-fetch photos whose last fetch is older than N days.")
+@click.option("--politician-id", type=str, default=None,
+              help="Process a single politician by UUID (overrides limit/stale filters).")
+@click.option("--concurrency", type=int, default=4,
+              help="Parallel fetches. Per-host rate limiting still applies.")
+@click.pass_context
+def cmd_backfill_photos(
+    ctx: click.Context,
+    limit: Optional[int],
+    stale_days: int,
+    politician_id: Optional[str],
+    concurrency: int,
+) -> None:
+    """Mirror upstream politician portraits onto the local `assets` volume.
+
+    Writes to /assets/politicians/<uuid>.<ext> and updates politicians.photo_path
+    + photo_bytes_hash + photo_fetched_at + photo_source_url. The original
+    photo_url is left untouched for attribution and re-fetch.
+    """
+    from .photos import backfill_politician_photos
+
+    async def _wrap(db: Database) -> None:
+        stats = await backfill_politician_photos(
+            db,
+            limit=limit,
+            stale_days=stale_days,
+            politician_id=politician_id,
+            concurrency=concurrency,
+        )
+        console.print(f"[green]backfill-politician-photos[/green]: {stats.summary()}")
+        for sample in stats.fail_samples:
+            console.print(f"  [yellow]fail[/yellow] {sample}")
+
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
 @cli.command("refresh-views")
@@ -1305,6 +1399,149 @@ def cmd_ingest_federal_hansard(
             f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
             f"skipped_empty={stats.skipped_empty} "
             f"unresolved_slug={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-ab-hansard")
+@click.option("--legislature", type=int, required=True,
+              help="Alberta Legislature number (e.g. 31).")
+@click.option("--session", type=int, required=True,
+              help="Session within the legislature (e.g. 2).")
+@click.option("--since", type=str, default=None,
+              help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only fetch sittings on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-sittings", type=int, default=None,
+              help="Cap on sitting PDFs fetched (newest-first).")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.pass_context
+def cmd_ingest_ab_hansard(
+    ctx: click.Context, legislature, session, since, until,
+    limit_sittings, limit_speeches,
+) -> None:
+    """Ingest Alberta Hansard by parsing sitting PDFs from docs.assembly.ab.ca.
+
+    Scrapes the transcripts-by-type listing for the given legislature+session,
+    fetches each sitting's PDF, extracts text via Poppler (`pdftotext`), and
+    upserts one `speeches` row per speaker turn. Speaker attribution is
+    resolved against AB MLAs via `politicians.ab_assembly_mid`-populated
+    roster; surname collisions leave politician_id NULL.
+
+    Idempotent via UNIQUE (source_system, source_url, sequence); re-runs
+    over the same date range update mutable columns without duplicating.
+    """
+    from datetime import date as _date
+    from .legislative.ab_hansard import ingest as _ingest
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        stats = await _ingest(
+            db,
+            legislature=legislature,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_sittings=limit_sittings,
+            limit_speeches=limit_speeches,
+        )
+        console.print(
+            f"[green]ingest-ab-hansard[/green]: "
+            f"sittings={stats.sittings_scanned} seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} "
+            f"resolved={stats.speeches_resolved} role_only={stats.speeches_role_only} "
+            f"ambiguous={stats.speeches_ambiguous} unresolved={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-bc-hansard")
+@click.option("--parliament", type=int, required=True,
+              help="BC Parliament number (e.g. 43).")
+@click.option("--session", type=int, required=True,
+              help="Session within the parliament (e.g. 2).")
+@click.option("--since", type=str, default=None,
+              help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only fetch sittings on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-sittings", type=int, default=None,
+              help="Cap on sittings processed (newest-first when capped).")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.option("--url", "one_off_url", type=str, default=None,
+              help="Bypass discovery and ingest a single sitting URL directly. "
+                   "Useful for smoke-testing the parser on a known file.")
+@click.pass_context
+def cmd_ingest_bc_hansard(
+    ctx: click.Context, parliament, session, since, until,
+    limit_sittings, limit_speeches, one_off_url,
+) -> None:
+    """Ingest BC Hansard from LIMS HDMS (Blues + Final HTML → speeches).
+
+    Discovery: LIMS HDMS debate-index JSON at
+      https://lims.leg.bc.ca/hdms/debates/{parl}{sess}
+    gives every House sitting with Blues filename + Final redirect (when
+    published). For each sitting we fetch the best-available HTML (Final
+    if published, else Blues), parse speaker turns, and upsert into
+    `speeches`.
+
+    Blues vs Final use the same canonical `source_url` so Final replaces
+    Blues in place on `ON CONFLICT DO UPDATE`. Speaker resolution uses
+    politicians.lims_member_id (populated by bc_bills.enrich_bc_member_ids).
+
+    Idempotent via UNIQUE (source_system, source_url, sequence).
+    """
+    from datetime import date as _date
+    from .legislative.bc_hansard import ingest as _ingest
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        stats = await _ingest(
+            db,
+            parliament=parliament,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_sittings=limit_sittings,
+            limit_speeches=limit_speeches,
+            one_off_url=one_off_url,
+        )
+        console.print(
+            f"[green]ingest-bc-hansard[/green]: "
+            f"sittings={stats.sittings_scanned} seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} parse_errors={stats.parse_errors} "
+            f"resolved={stats.speeches_resolved} presiding={stats.speeches_presiding} "
+            f"role_only={stats.speeches_role_only} ambiguous={stats.speeches_ambiguous} "
+            f"unresolved={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-bc-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_bc_speakers(ctx: click.Context, limit: Optional[int]) -> None:
+    """Re-resolve politician_id on BC speeches with NULL politician_id.
+
+    Run after expanding the BC MLA roster, fixing name-normalization, or
+    enriching lims_member_id on previously-unlinked politicians. Idempotent.
+    """
+    from .legislative.bc_hansard import resolve_bc_speakers as _resolve
+
+    async def _wrap(db: Database) -> None:
+        stats = await _resolve(db, limit=limit)
+        console.print(
+            f"[green]resolve-bc-speakers[/green]: "
+            f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
+            f"still_unresolved={stats.still_unresolved}"
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 

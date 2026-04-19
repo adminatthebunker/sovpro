@@ -1691,16 +1691,26 @@ button.active { background: var(--accent); border-color: var(--accent); }
 }
 
 .pol-card {
+  position: relative;
   display: flex; flex-direction: column; gap: .6rem;
   padding: .85rem; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--panel); color: var(--ink); text-decoration: none;
+  background: var(--panel); color: var(--ink);
   transition: border-color .15s, background .15s, transform .15s;
 }
 .pol-card:hover {
   border-color: var(--accent); background: var(--panel-2);
-  text-decoration: none; transform: translateY(-1px);
+  transform: translateY(-1px);
 }
-.pol-card__top { display: grid; grid-template-columns: 52px 1fr; gap: .75rem; min-width: 0; }
+.pol-card__stretch {
+  position: absolute; inset: 0; z-index: 1;
+  border-radius: inherit;
+  font-size: 0;
+  /* The Link's own text ("View <name>") is visually hidden but read by screen readers. */
+  color: transparent;
+}
+.pol-card__stretch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pol-card__top { position: relative; z-index: 2; display: grid; grid-template-columns: 52px 1fr; gap: .75rem; min-width: 0; pointer-events: none; }
+.pol-card__top a, .pol-card__top button { pointer-events: auto; }
 .pol-card__photo {
   width: 52px; height: 52px; border-radius: 50%; overflow: hidden;
   background: var(--panel-2); display: flex; align-items: center; justify-content: center;
@@ -1720,20 +1730,78 @@ button.active { background: var(--accent); border-color: var(--accent); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+.pol-card__quote {
+  position: relative; z-index: 2;
+  display: block; pointer-events: auto;
+  color: var(--ink-muted); text-decoration: none;
+  font-size: .78rem; font-style: italic; line-height: 1.35;
+  padding: .45rem .55rem;
+  background: rgba(255, 255, 255, .02);
+  border-left: 2px solid var(--border);
+  border-radius: 0 4px 4px 0;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.pol-card__quote:hover {
+  border-left-color: var(--accent);
+  color: var(--ink);
+  background: rgba(255, 255, 255, .04);
+}
+.pol-card__quote-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.pol-card__quote-date {
+  display: block;
+  font-style: normal;
+  font-size: .68rem;
+  margin-top: .15rem;
+  color: var(--ink-muted);
+  opacity: .75;
+}
+
+.pol-card__tab-nav {
+  position: relative; z-index: 2;
+  display: flex; gap: .3rem; flex-wrap: wrap;
+  padding-top: .5rem; border-top: 1px solid var(--border);
+  pointer-events: none;
+}
+.pol-card__tab-nav > .pol-card__tab-btn { pointer-events: auto; }
+.pol-card__tab-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 28px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--ink-muted);
+  transition: background .12s ease, border-color .12s ease, color .12s ease, transform .12s ease;
+}
+.pol-card__tab-btn:hover, .pol-card__tab-btn:focus-visible {
+  background: var(--panel-2);
+  border-color: var(--accent);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
 .pol-card__socials {
-  margin-top: auto; padding-top: .5rem;
-  border-top: 1px solid var(--border);
+  position: relative; z-index: 2;
+  margin-top: auto;
+  pointer-events: none;
 }
 .pol-card__social-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-wrap: wrap; gap: .4rem;
+  pointer-events: none;
 }
+.pol-card__social { pointer-events: auto; }
 .pol-card__social {
   display: inline-flex; align-items: center; justify-content: center;
   width: 28px; height: 28px; border-radius: 6px;
   background: var(--bg); border: 1px solid var(--border);
+  transition: background .12s ease, border-color .12s ease;
 }
-.pol-card__social-icon { font-size: .9rem; font-weight: 700; }
+.pol-card__social svg { width: 14px; height: 14px; }
+.pol-card:hover .pol-card__social { background: var(--panel-2); border-color: #3a4658; }
 .pol-card__no-socials {
   font-size: .72rem; color: var(--ink-muted);
   font-style: italic;

@@ -7,6 +7,8 @@ export interface PoliticianListItem extends PoliticianCore {
   office_count: number;
   committee_count: number;
   current_term_started_at: string | null;
+  latest_speech_text: string | null;
+  latest_speech_at: string | null;
 }
 
 export interface PoliticianListResponse {

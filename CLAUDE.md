@@ -10,7 +10,7 @@ SovereignWatch is becoming **the definitive source of Canadian political data** 
 
 1. `docs/goals.md` — north star, audience, non-goals
 2. `docs/plans/semantic-layer.md` — schema, vector store, embedding plan, phased rollout
-3. `docs/plans/provincial-legislature-research.md` — per-jurisdiction research + status
+3. `docs/research/` — one self-contained research dossier per jurisdiction (federal + 13 provinces/territories), plus `overview.md` for cross-cutting schema log, probe hierarchy, research-handoff protocol, and known blockers
 4. `docs/architecture.md` — service-by-service runtime architecture
 5. `docs/scanner.md`, `docs/api.md`, `docs/operations.md` — per-component references
 
@@ -72,7 +72,7 @@ Before building any new ingestion pipeline, check in order:
 
 As of 2026-04-16 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* Hansard / votes / committees pipeline on top of the 9 live bills pipelines.
 
-Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/plans/provincial-legislature-research.md` and `feedback_research_handoff.md` for the full protocol.
+Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
 
 ### 6. Rate-limit and cache persistently
 

@@ -1,6 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { query, queryOne } from "../db.js";
+import { resolvePhotoUrl } from "../lib/photos.js";
+
+/** Collapse whitespace and cap at `max` chars on a word boundary, appending ellipsis. */
+function truncateQuote(raw: string, max: number): string {
+  const clean = raw.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(" ");
+  const trimmed = (lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[\s,.;:!?—-]+$/, "");
+  return `${trimmed}…`;
+}
 
 // ── Shared helpers ────────────────────────────────────────────────
 //
@@ -268,6 +279,11 @@ export default async function politicianRoutes(app: FastifyInstance) {
     // Aggregate fields: platforms array + office/committee counts +
     // current-term start timestamp. All joined via LEFT JOIN LATERAL
     // so the row is returned even when no related rows exist.
+    //
+    // `latest_speech` is a scalar subquery (not LATERAL) so Postgres only
+    // evaluates it for the 50-ish rows that survive LIMIT; without NULLS LAST
+    // the planner can walk idx_speeches_politician backwards and stop at the
+    // first row with word_count >= 15 — sub-millisecond per politician.
     const listSql = `
       SELECT
         p.*,
@@ -277,7 +293,12 @@ export default async function politicianRoutes(app: FastifyInstance) {
         COALESCE(socials.platforms, '{}'::text[]) AS social_platforms,
         COALESCE(offices.n, 0)::int               AS office_count,
         COALESCE(committees.n, 0)::int            AS committee_count,
-        term.started_at                           AS current_term_started_at
+        term.started_at                           AS current_term_started_at,
+        (SELECT jsonb_build_object('text', text, 'spoken_at', spoken_at)
+           FROM speeches
+          WHERE politician_id = p.id AND word_count >= 15
+          ORDER BY spoken_at DESC
+          LIMIT 1)                                AS latest_speech
       FROM politicians p
       ${tierJoin}
       LEFT JOIN LATERAL (
@@ -301,17 +322,31 @@ export default async function politicianRoutes(app: FastifyInstance) {
       ORDER BY p.last_name NULLS LAST, p.name
       LIMIT ${limit} OFFSET ${offset}
     `;
-    const items = await query(listSql, params);
+    const rawItems = await query<Record<string, unknown>>(listSql, params);
+    const items = rawItems.map((row) => {
+      const speech = row.latest_speech as { text?: string; spoken_at?: string } | null;
+      const excerpt = speech?.text ? truncateQuote(speech.text, 240) : null;
+      return {
+        ...row,
+        photo_url: resolvePhotoUrl(row as { photo_path?: string | null; photo_url?: string | null }),
+        latest_speech_text: excerpt,
+        latest_speech_at: speech?.spoken_at ?? null,
+        latest_speech: undefined,
+      };
+    });
 
     return { items, page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) };
   });
 
   app.get("/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
-    const pol = await queryOne(
+    const pol = await queryOne<Record<string, unknown>>(
       `SELECT * FROM politicians WHERE id = $1 AND is_active = true`, [id]
     );
     if (!pol) return reply.notFound();
+    (pol as Record<string, unknown>).photo_url = resolvePhotoUrl(
+      pol as { photo_path?: string | null; photo_url?: string | null }
+    );
 
     const websites = await query(
       `

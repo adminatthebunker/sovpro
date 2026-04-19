@@ -98,9 +98,21 @@ If the user stays on BGE-M3:
 2. Historical backfill on BGE-M3 at current rate.
 3. Revisit the Qwen3-4B decision after a GPU upgrade (if one happens).
 
+## Production-path regression tracking
+
+The offline rows above score each model against a 5,000-chunk sample. The live `/api/v1/search/speeches` endpoint searches the full `embedding_next` column (~620k rows as of 2026-04-18, growing) and does extra work (query-side instruct wrapping, `ts_headline` highlighting, joins to `politicians` / `speeches` / `legislative_sessions`). Numbers are **not directly comparable** to the offline table — the search space is ~125× larger, so the 20 gold chunks per query get diluted by other truly-relevant chunks that weren't annotated.
+
+Purpose of these rows is **wiring-regression detection**: if someone breaks the instruct prompt, flips the distance operator, or introduces a filter bleed, the NDCG falls to near zero and top results go off-topic. A healthy row looks like the one below — absolute numbers are low, but top-1 chunks are thematically on-topic for each query.
+
+| Path | Date | NDCG@10 | Recall@20 | XL R@10 | p50 (ms) | Notes |
+|---|---|---:|---:|---:|---:|---|
+| `/api/v1/search/speeches` (Qwen3-0.6B, instruct) | 2026-04-18 | 0.033 | 0.031 | 0.000 | 2,690 | Baseline row. p50 is inflated because the `embed-speech-chunks-next` backfill is actively hammering TEI — expect this to drop to ~100 ms once backfill completes. |
+
+Script: `services/embed/eval/scripts/run_eval_search.py`. Invoke with `--base-url http://localhost:8088` to hit via nginx.
+
 ## Source files
 
 - Queries: `services/embed/eval/queries/queries.jsonl`
 - Sample: `services/embed/eval/sample/chunk_ids.txt`
-- Scripts: `services/embed/eval/scripts/{draft_queries,build_sample,run_eval_bgem3,run_eval_qwen3}.py`
-- Raw results: `services/embed/eval/results/2026-04-18-*.json`
+- Scripts: `services/embed/eval/scripts/{draft_queries,build_sample,run_eval_bgem3,run_eval_qwen3,run_eval_search}.py`
+- Raw results: `services/embed/eval/results/2026-04-18-*.json`, `services/embed/eval/out/search_results.json`

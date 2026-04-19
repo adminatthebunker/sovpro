@@ -4,45 +4,11 @@ import {
   type PoliticianCore,
   type PoliticianSocial,
 } from "../hooks/usePolitician";
+import { SocialIcon, platformLabel } from "./SocialIcon";
 
 interface Props {
   politicianId: string;
   politician: PoliticianCore | null;
-}
-
-const PLATFORM_ICON: Record<string, string> = {
-  twitter: "𝕏",
-  x: "𝕏",
-  facebook: "f",
-  instagram: "◎",
-  tiktok: "♪",
-  youtube: "▶",
-  linkedin: "in",
-  threads: "@",
-  bluesky: "🦋",
-  mastodon: "🐘",
-  telegram: "✈",
-  rss: "📡",
-};
-
-const PLATFORM_LABEL: Record<string, string> = {
-  twitter: "Twitter / X",
-  x: "X (Twitter)",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  linkedin: "LinkedIn",
-  threads: "Threads",
-  bluesky: "Bluesky",
-  mastodon: "Mastodon",
-  telegram: "Telegram",
-  rss: "RSS feed",
-};
-
-function prettyPlatform(raw: string): string {
-  const k = raw.toLowerCase();
-  return PLATFORM_LABEL[k] ?? raw;
 }
 
 /** Derive socials from the raw JSONB on the politician record — used as
@@ -110,8 +76,7 @@ export function PoliticianSocialsTab({ politicianId, politician }: Props) {
 }
 
 function SocialCard({ social: s }: { social: PoliticianSocial }) {
-  const icon = PLATFORM_ICON[s.platform.toLowerCase()] ?? "●";
-  const label = prettyPlatform(s.platform);
+  const label = platformLabel(s.platform);
   const handle = s.handle ?? deriveHandle(s.url, s.platform);
   const neverVerified = s.last_verified_at === null;
   const status = neverVerified ? "unverified" : s.is_live ? "live" : "dead";
@@ -123,7 +88,9 @@ function SocialCard({ social: s }: { social: PoliticianSocial }) {
       target="_blank"
       rel="noopener noreferrer"
     >
-      <div className="pol-social-card__icon" aria-hidden="true">{icon}</div>
+      <div className="pol-social-card__icon" aria-hidden="true">
+        <SocialIcon platform={s.platform} size={20} />
+      </div>
       <div className="pol-social-card__body">
         <div className="pol-social-card__platform">{label}</div>
         {handle && <div className="pol-social-card__handle">{handle}</div>}

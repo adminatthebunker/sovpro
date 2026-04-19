@@ -45,6 +45,9 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
 - Runs `db/seed.sql` next to populate referendum organizations
 - Migrations in `db/migrations/` applied manually (see CLAUDE.md)
 - pgvector powers HNSW indexes on `speech_chunks.embedding`; `unaccent` for FR tsvector
+- **HNSW database-level tuning** (applied via `ALTER DATABASE`; verify with `SELECT unnest(setconfig) FROM pg_db_role_setting WHERE setdatabase = (SELECT oid FROM pg_database WHERE datname='sovereignwatch')`):
+  - `hnsw.iterative_scan = relaxed_order` — without this, filtered semantic searches (e.g. `province_territory='BC'`) return 0 rows because the HNSW walk's default `ef_search=40` is dominated by the 1.5M federal chunks; top-K rarely includes any filter-matching rows. With iterative scan, pgvector keeps walking the graph until enough filter-matches accumulate.
+  - `hnsw.ef_search = 200` — raised from 40 to give the iterative scan a larger candidate pool. Provincial-filtered queries run in ~130ms; unfiltered federal stays at ~25ms. Both values persist across DB restarts.
 - Persists in named volume `pgdata`
 
 ### `api` (Node 20 + Fastify)

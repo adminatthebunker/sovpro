@@ -6,7 +6,7 @@
 
 ## Purpose
 
-SovereignWatch is expanding from "where are Canadian political websites hosted?" into the **leading source of Canadian political data**, with an eventual goal of semantic search over what politicians are saying on any topic, at every level of government.
+Canadian Political Data is expanding from "where are Canadian political websites hosted?" into the **leading source of Canadian political data**, with an eventual goal of semantic search over what politicians are saying on any topic, at every level of government.
 
 This doc pins down scope, goals, and architectural choices before we write any more code. Each question is followed by an empty **Answer:** block. Fill in what you can; leave "TBD" where you're not ready. Feed it back and we'll turn your answers into:
 
@@ -324,7 +324,7 @@ Options:
 
 ### 5.4 Outreach
 
-Should we proactively email every province's legislative library introducing SovereignWatch and asking for API access or crawl allowlisting? Cheap and often works.
+Should we proactively email every province's legislative library introducing Canadian Political Data and asking for API access or crawl allowlisting? Cheap and often works.
 
 **Answer:**
 > This is a maybe for sure. I would like to have something seperate from government oversight. 

@@ -38,6 +38,34 @@ const COMMAND_CATALOG = [
       { name: "limit_speeches", type: "int", required: false, help: "Cap on TOTAL speeches ingested." },
     ],
   },
+  { key: "ingest-ab-hansard", category: "hansard",
+    description: "Pull Alberta Legislative Assembly speeches from PDF-only Hansard into the `speeches` table.",
+    args: [
+      { name: "legislature", type: "int", required: true, help: "AB Legislature number (e.g. 31)." },
+      { name: "session", type: "int", required: true, help: "Session within the legislature (e.g. 2)." },
+      { name: "since", type: "date", required: false, help: "Only fetch sittings on/after this date." },
+      { name: "until", type: "date", required: false, help: "Only fetch sittings on/before this date." },
+      { name: "limit_sittings", type: "int", required: false, help: "Cap on sitting PDFs fetched (newest-first)." },
+      { name: "limit_speeches", type: "int", required: false, help: "Cap on TOTAL speeches ingested." },
+    ],
+  },
+  { key: "ingest-bc-hansard", category: "hansard",
+    description: "Pull BC Legislative Assembly Hansard (Blues + Final HTML via LIMS HDMS) into `speeches`.",
+    args: [
+      { name: "parliament", type: "int", required: true, help: "BC Parliament number (e.g. 43)." },
+      { name: "session", type: "int", required: true, help: "Session within the parliament (e.g. 2)." },
+      { name: "since", type: "date", required: false, help: "Only fetch sittings on/after this date." },
+      { name: "until", type: "date", required: false, help: "Only fetch sittings on/before this date." },
+      { name: "limit_sittings", type: "int", required: false, help: "Cap on sittings processed (newest-first when capped)." },
+      { name: "limit_speeches", type: "int", required: false, help: "Cap on TOTAL speeches ingested." },
+    ],
+  },
+  { key: "resolve-bc-speakers", category: "hansard",
+    description: "Re-resolve politician_id on BC speeches with NULL politician_id.",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Cap speeches scanned (smoke-test aid)." },
+    ],
+  },
   { key: "chunk-speeches", category: "hansard",
     description: "Split speeches.text into retrievable `speech_chunks` rows (idempotent).",
     args: [{ name: "limit", type: "int", required: false, help: "Max speeches to chunk (default: all pending)." }],
@@ -120,12 +148,50 @@ const COMMAND_CATALOG = [
   { key: "ingest-legislatures", category: "enrichment", description: "Full provincial/territorial legislature ingest.", args: [] },
   { key: "harvest-personal-socials", category: "enrichment", description: "Scrape personal sites for social handles.",
     args: [{ name: "limit", type: "int", required: false, help: "Max politicians this run." }] },
+  // socials audit + tiered backfill
+  { key: "audit-socials", category: "enrichment",
+    description: "Snapshot social-media coverage; refresh v_socials_missing view.",
+    args: [{ name: "no_csv", type: "bool", required: false, help: "Skip CSV export; print tables only." }] },
+  { key: "enrich-socials-all", category: "enrichment",
+    description: "Tier-1: wikidata + openparliament + masto-host enrichment. Zero LLM cost.", args: [] },
+  { key: "probe-missing-socials", category: "enrichment",
+    description: "Tier-2: pattern-probe candidate URLs for missing socials. Zero LLM cost.",
+    args: [
+      { name: "platform", type: "str", required: false, default: "bluesky",
+        help: "bluesky | twitter | facebook | instagram | youtube | threads" },
+      { name: "limit", type: "int", required: false, default: 500, help: "Max missing rows to probe this run." },
+      { name: "dry_run", type: "bool", required: false, help: "Print would-be inserts without writing." },
+    ] },
+  { key: "agent-missing-socials", category: "enrichment",
+    description: "Tier-3: Sonnet agent + web_search fills residual missing handles. Requires ANTHROPIC_API_KEY.",
+    args: [
+      { name: "platform", type: "str", required: false, help: "Focus one platform (omit for all-missing)." },
+      { name: "batch_size", type: "int", required: false, default: 10, help: "Politicians per agent call (max 25)." },
+      { name: "max_batches", type: "int", required: false, default: 20, help: "Hard cap on agent calls per run." },
+      { name: "model", type: "str", required: false, help: "Override the default Claude model." },
+      { name: "dry_run", type: "bool", required: false, help: "Print candidate hits without inserting." },
+    ] },
+  { key: "verify-socials", category: "enrichment",
+    description: "Liveness check on politician_socials URLs. Writes social_dead change rows on live→dead flips.",
+    args: [
+      { name: "limit", type: "int", required: false, default: 500, help: "Max rows to verify per run." },
+      { name: "stale_hours", type: "int", required: false, default: 168, help: "Re-verify if older than N hours." },
+    ] },
   // maintenance
   { key: "refresh-views", category: "maintenance", description: "Refresh map materialized views.", args: [] },
   { key: "seed-orgs", category: "maintenance", description: "Re-apply referendum/advocacy orgs seed.", args: [] },
   { key: "backfill-terms", category: "maintenance",
     description: "One-time: open an initial politician_terms row for every active politician without an existing open term. Prereq for party-at-time queries.",
     args: [] },
+  { key: "backfill-politician-photos", category: "maintenance",
+    description: "Mirror upstream politician portraits to the local /assets volume; re-fetch stale rows (>30 days) on each run. Idempotent.",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Cap politicians processed this run." },
+      { name: "stale_days", type: "int", required: false, default: 30, help: "Re-fetch if last fetch is older than N days." },
+      { name: "politician_id", type: "str", required: false, help: "Process a single politician by UUID." },
+      { name: "concurrency", type: "int", required: false, default: 4, help: "Parallel fetches. Per-host spacing still applies." },
+    ],
+  },
   { key: "scan", category: "maintenance", description: "Infrastructure scan across tracked websites.",
     args: [
       { name: "limit", type: "int", required: false, help: "Max sites this run." },
@@ -382,5 +448,98 @@ export default async function adminRoutes(app: FastifyInstance) {
       },
       recent_failures: recentFailures,
     };
+  });
+
+  // ── Socials audit + review queue ───────────────────────────────
+  // The Tier-2 probe and Tier-3 agent can land rows with
+  // flagged_low_confidence=true. This endpoint surfaces them for
+  // human spot-checking; approve (clear flag) / reject (delete).
+  app.get("/socials/coverage", async () => {
+    const [total, withAny, sources, platforms] = await Promise.all([
+      queryOne<{ n: number }>(
+        `SELECT COUNT(*)::int AS n FROM politicians WHERE is_active = true`),
+      queryOne<{ n: number }>(
+        `SELECT COUNT(DISTINCT politician_id)::int AS n
+           FROM politician_socials
+          WHERE politician_id IN (SELECT id FROM politicians WHERE is_active = true)`),
+      query<{ source: string; n: number; flagged: number }>(
+        `SELECT COALESCE(source, '<null>') AS source,
+                COUNT(*)::int AS n,
+                COUNT(*) FILTER (WHERE flagged_low_confidence = true)::int AS flagged
+           FROM politician_socials
+          GROUP BY source
+          ORDER BY n DESC`),
+      query<{ platform: string; n: number; flagged: number }>(
+        `SELECT platform,
+                COUNT(*)::int AS n,
+                COUNT(*) FILTER (WHERE flagged_low_confidence = true)::int AS flagged
+           FROM politician_socials
+          GROUP BY platform
+          ORDER BY n DESC`),
+    ]);
+    return {
+      total_active: total?.n ?? 0,
+      with_any_social: withAny?.n ?? 0,
+      by_source: sources,
+      by_platform: platforms,
+    };
+  });
+
+  const flaggedListQuery = z.object({
+    platform: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  });
+
+  app.get("/socials/flagged", async (req, reply) => {
+    const q = flaggedListQuery.safeParse(req.query);
+    if (!q.success) return reply.badRequest(q.error.message);
+    const { platform, limit, offset } = q.data;
+    const params: unknown[] = [];
+    const where: string[] = ["s.flagged_low_confidence = true"];
+    if (platform) { params.push(platform); where.push(`s.platform = $${params.length}`); }
+    params.push(limit); const limIdx = params.length;
+    params.push(offset); const offIdx = params.length;
+    const rows = await query(
+      `SELECT s.id, s.politician_id, s.platform, s.handle, s.url,
+              s.source, s.confidence::float AS confidence,
+              s.evidence_url, s.discovered_at,
+              p.name AS politician_name,
+              p.level, p.province_territory, p.party, p.constituency_name
+         FROM politician_socials s
+         JOIN politicians p ON p.id = s.politician_id
+        WHERE ${where.join(" AND ")}
+        ORDER BY s.confidence ASC, s.discovered_at DESC NULLS LAST
+        LIMIT $${limIdx} OFFSET $${offIdx}`,
+      params as any,
+    );
+    return { items: rows };
+  });
+
+  app.post("/socials/:id/approve", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+    const row = await queryOne(
+      `UPDATE politician_socials
+          SET flagged_low_confidence = false,
+              confidence = GREATEST(confidence, 1.0),
+              updated_at = now()
+        WHERE id = $1
+        RETURNING id, flagged_low_confidence, confidence`,
+      [id] as any,
+    );
+    if (!row) return reply.notFound();
+    return row;
+  });
+
+  app.post("/socials/:id/reject", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+    const row = await queryOne(
+      `DELETE FROM politician_socials WHERE id = $1 RETURNING id`,
+      [id] as any,
+    );
+    if (!row) return reply.notFound();
+    return reply.code(204).send();
   });
 }

@@ -85,8 +85,10 @@ export default function CoveragePage() {
             {jurisdictions.map((j) => (
               <tr key={j.jurisdiction}>
                 <th scope="row" className="coverage__jurisdiction">
-                  <span className="coverage__code">{j.jurisdiction}</span>
-                  <span className="coverage__legname">{j.legislature_name}</span>
+                  <div className="coverage__jurisdiction-inner">
+                    <span className="coverage__code">{j.jurisdiction}</span>
+                    <span className="coverage__legname">{j.legislature_name}</span>
+                  </div>
                 </th>
                 <td className="coverage__seats">{j.seats ?? "—"}</td>
                 <td><StatusPill status={j.bills_status} /></td>

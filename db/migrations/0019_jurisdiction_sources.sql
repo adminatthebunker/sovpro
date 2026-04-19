@@ -13,7 +13,7 @@
 --      and the frontend renders an explanatory banner rather than
 --      hiding them.
 --
--- Difficulty ratings match docs/plans/provincial-legislature-research.md:
+-- Difficulty ratings match docs/research/overview.md:
 --   1 = documented API
 --   2 = undocumented but structured (JSON/XML/Socrata)
 --   3 = predictable HTML scrape

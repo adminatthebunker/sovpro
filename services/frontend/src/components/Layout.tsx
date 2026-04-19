@@ -22,6 +22,9 @@ export function Layout() {
           <NavLink to="/politicians" className={({ isActive }) => (isActive ? "active" : "")}>
             Politicians
           </NavLink>
+          <NavLink to="/search" className={({ isActive }) => (isActive ? "active" : "")}>
+            Search
+          </NavLink>
           <NavLink to="/coverage" className={({ isActive }) => (isActive ? "active" : "")}>
             Coverage
           </NavLink>

@@ -60,6 +60,12 @@ export function PoliticianTermsTab({ politicianId }: Props) {
 
   return (
     <div className="pol-tab">
+      <p className="pol-tab__note">
+        A term here is a continuous period of service in a specific seat.
+        Rows break on <strong>riding</strong> or <strong>party</strong> changes,
+        not at every general election — an MP who wins re-election in the same
+        riding stays on a single row across parliaments.
+      </p>
       <ol className="pol-terms">
         {sorted.map(t => <TermRow key={t.id} term={t} />)}
       </ol>

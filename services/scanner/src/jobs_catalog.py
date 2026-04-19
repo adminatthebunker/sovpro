@@ -60,6 +60,53 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap on TOTAL speeches ingested this run."},
         ],
     },
+    "ingest-ab-hansard": {
+        "description": "Pull Alberta Legislative Assembly speeches from PDF-only Hansard into the `speeches` table.",
+        "cli": "ingest-ab-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "legislature", "type": "int", "required": True,
+             "help": "AB Legislature number (e.g. 31)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the legislature (e.g. 2)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sitting PDFs fetched this run (newest-first)."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "ingest-bc-hansard": {
+        "description": "Pull BC Legislative Assembly Hansard (Blues + Final HTML via LIMS HDMS) into `speeches`.",
+        "cli": "ingest-bc-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "parliament", "type": "int", "required": True,
+             "help": "BC Parliament number (e.g. 43)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the parliament (e.g. 2)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed this run (newest-first when capped)."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-bc-speakers": {
+        "description": "Re-resolve politician_id on BC speeches with NULL politician_id.",
+        "cli": "resolve-bc-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
     "chunk-speeches": {
         "description": "Split speeches.text into retrievable `speech_chunks` rows (idempotent).",
         "cli": "chunk-speeches",
@@ -206,6 +253,62 @@ COMMANDS: dict[str, dict[str, Any]] = {
                   "help": "Max politicians to process this run."}],
     },
 
+    # ── Socials audit + backfill (tiered) ────────────────────────────
+    # Tier 1 (zero LLM): re-run the existing upstream enrichers
+    # (enrich-socials-all, harvest-personal-socials) first. Tier 2 is
+    # pattern probing; Tier 3 is Sonnet-agent web search. Run audit-
+    # socials between tiers to snapshot progress.
+    "audit-socials": {
+        "description": "Snapshot social-media coverage; refresh v_socials_missing view.",
+        "cli": "audit-socials", "category": "enrichment",
+        "args": [
+            {"name": "no_csv", "type": "bool", "required": False,
+             "help": "Skip CSV export; just print summary tables."},
+        ],
+    },
+    "probe-missing-socials": {
+        "description": "Tier-2: pattern-probe candidate URLs for missing socials. Zero LLM cost.",
+        "cli": "probe-missing-socials", "category": "enrichment",
+        "args": [
+            {"name": "platform", "type": "str", "required": False, "default": "bluesky",
+             "help": "One of: bluesky, twitter, facebook, instagram, youtube, threads."},
+            {"name": "limit", "type": "int", "required": False, "default": 500,
+             "help": "Max missing-rows to probe this run."},
+            {"name": "dry_run", "type": "bool", "required": False,
+             "help": "Print would-be inserts without writing."},
+        ],
+    },
+    "agent-missing-socials": {
+        "description": "Tier-3: Sonnet agent + web_search fills residual missing handles. Requires ANTHROPIC_API_KEY.",
+        "cli": "agent-missing-socials", "category": "enrichment",
+        "args": [
+            {"name": "platform", "type": "str", "required": False,
+             "help": "Focus on a single platform (omit for all-missing-per-politician)."},
+            {"name": "batch_size", "type": "int", "required": False, "default": 10,
+             "help": "Politicians per agent call (max 25)."},
+            {"name": "max_batches", "type": "int", "required": False, "default": 20,
+             "help": "Hard cap on agent calls per run."},
+            {"name": "model", "type": "str", "required": False,
+             "help": "Override the default Claude model."},
+            {"name": "dry_run", "type": "bool", "required": False,
+             "help": "Print candidate hits without inserting."},
+        ],
+    },
+    "verify-socials": {
+        "description": "Liveness check on politician_socials URLs. Writes social_dead change rows on live→dead flips.",
+        "cli": "verify-socials", "category": "enrichment",
+        "args": [
+            {"name": "limit", "type": "int", "required": False, "default": 500,
+             "help": "Max rows to verify per run."},
+            {"name": "stale_hours", "type": "int", "required": False, "default": 168,
+             "help": "Re-verify rows whose last_verified_at is older than this."},
+        ],
+    },
+    "enrich-socials-all": {
+        "description": "Tier-1: Run wikidata → openparliament → masto-host enrichment end-to-end.",
+        "cli": "enrich-socials-all", "category": "enrichment", "args": [],
+    },
+
     # ── Maintenance ──────────────────────────────────────────────────
     "refresh-views": {
         "description": "Refresh `map_politicians` and `map_organizations` materialized views.",
@@ -218,6 +321,20 @@ COMMANDS: dict[str, dict[str, Any]] = {
     "backfill-terms": {
         "description": "One-time: open an initial politician_terms row for every active politician without an existing open term. Prereq for party-at-time queries.",
         "cli": "backfill-terms", "category": "maintenance", "args": [],
+    },
+    "backfill-politician-photos": {
+        "description": "Mirror upstream politician portraits to the local /assets volume; re-fetch stale rows (>30 days) on each run. Idempotent.",
+        "cli": "backfill-politician-photos", "category": "maintenance",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap politicians processed this run."},
+            {"name": "stale_days", "type": "int", "required": False, "default": 30,
+             "help": "Re-fetch if last fetch is older than N days."},
+            {"name": "politician_id", "type": "str", "required": False,
+             "help": "Process a single politician by UUID (overrides other filters)."},
+            {"name": "concurrency", "type": "int", "required": False, "default": 4,
+             "help": "Parallel fetches. Per-host spacing still applies."},
+        ],
     },
     "scan": {
         "description": "Infrastructure scan across every tracked website.",

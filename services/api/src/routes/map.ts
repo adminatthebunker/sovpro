@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { query } from "../db.js";
+import { resolvePhotoUrl } from "../lib/photos.js";
 import type { MapRow } from "../types.js";
 
 const geoQuery = z.object({
@@ -49,14 +50,20 @@ export default async function mapRoutes(app: FastifyInstance) {
     if (group === "politicians" || group === "all") {
       const where: string[] = [];
       const params: (string | number | string[])[] = [];
-      if (level)    { params.push(level);    where.push(`level = $${params.length}`); }
-      if (province) { params.push(province); where.push(`province_territory = $${params.length}`); }
-      if (party)    { params.push(party);    where.push(`party = $${params.length}`); }
-      if (politicianIdsArr) { params.push(politicianIdsArr); where.push(`politician_id::text = ANY($${params.length}::text[])`); }
+      if (level)    { params.push(level);    where.push(`mp.level = $${params.length}`); }
+      if (province) { params.push(province); where.push(`mp.province_territory = $${params.length}`); }
+      if (party)    { params.push(party);    where.push(`mp.party = $${params.length}`); }
+      if (politicianIdsArr) { params.push(politicianIdsArr); where.push(`mp.politician_id::text = ANY($${params.length}::text[])`); }
       const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
-      const rows = await query<MapRow>(
-        `SELECT * FROM map_politicians ${whereSql}`,
+      // Join `politicians` to pull the locally-mirrored photo path; the
+      // materialized view only carries the upstream URL, so the resolver
+      // below prefers photo_path when it's populated.
+      const rows = await query<MapRow & { photo_path: string | null }>(
+        `SELECT mp.*, p.photo_path
+           FROM map_politicians mp
+           LEFT JOIN politicians p ON p.id = mp.politician_id
+           ${whereSql}`,
         params
       );
 
@@ -129,7 +136,7 @@ export default async function mapRoutes(app: FastifyInstance) {
               politician_name: row.name,
               party: row.party,
               elected_office: row.elected_office,
-              photo_url: (row as MapRow & { photo_url?: string }).photo_url ?? null,
+              photo_url: resolvePhotoUrl(row as MapRow & { photo_url?: string | null; photo_path?: string | null }),
               sites: g.sites,
               site_count: g.sites.length,
               canadian: g.canadian,

@@ -8,18 +8,21 @@ import { PoliticianOfficesTab } from "../components/PoliticianOfficesTab";
 import { PoliticianTermsTab } from "../components/PoliticianTermsTab";
 import { PoliticianChangesTab } from "../components/PoliticianChangesTab";
 import { PoliticianOpenparliamentTab } from "../components/PoliticianOpenparliamentTab";
+import { PoliticianSpeechesTab } from "../components/PoliticianSpeechesTab";
 import "../styles/politician-detail.css";
+import "../styles/hansard-search.css";
 
-type TabKey = "socials" | "offices" | "terms" | "changes" | "parliament";
+type TabKey = "socials" | "offices" | "terms" | "changes" | "speeches" | "parliament";
 
 const BASE_TABS: Array<{ key: TabKey; label: string }> = [
   { key: "socials", label: "Socials" },
   { key: "offices", label: "Offices" },
   { key: "terms",   label: "Terms" },
   { key: "changes", label: "Changes" },
+  { key: "speeches", label: "Speeches" },
 ];
 
-const ALL_TAB_KEYS: TabKey[] = ["socials", "offices", "terms", "changes", "parliament"];
+const ALL_TAB_KEYS: TabKey[] = ["socials", "offices", "terms", "changes", "speeches", "parliament"];
 
 function parseTabFromHash(): TabKey {
   if (typeof window === "undefined") return "socials";
@@ -119,6 +122,9 @@ export default function PoliticianDetail() {
         )}
         {tab === "changes" && (
           <PoliticianChangesTab politicianId={politicianId} />
+        )}
+        {tab === "speeches" && (
+          <PoliticianSpeechesTab politicianId={politicianId} />
         )}
         {tab === "parliament" && showParliamentTab && (
           <PoliticianOpenparliamentTab politicianId={politicianId} />

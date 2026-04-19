@@ -14,10 +14,13 @@ Three public entry points:
     is older than `stale_hours`. Update is_live + last_verified_at.
     When a handle flips live -> dead, write a politician_changes row.
 
-  upsert_social(db, politician_id, platform_hint, url)
+  upsert_social(db, politician_id, platform_hint, url, *, source, ...)
     Low-level helper shared with the discovery pass in enrich.py.
     Canonicalises handle, upserts the row, and writes a `social_added`
     politician_changes row on first insert.
+    `source` is required — every caller must declare where the URL came
+    from ('wikidata', 'openparliament', 'personal_site', 'pattern_probe',
+    'agent_sonnet', etc.). Used for provenance in migration 0026.
 
 Canonicalisation map (plan spec):
   twitter / x.com  -> platform='twitter', handle = last path segment w/o '@'
@@ -221,6 +224,28 @@ _IGNORED_HANDLES: frozenset[str] = frozenset({
 })
 
 
+# Sources trusted enough to never flag. Tier-2 and Tier-3 discoveries use
+# confidence thresholds documented on the politician_socials table.
+_TRUSTED_SOURCES: frozenset[str] = frozenset({
+    "legacy", "legacy_jsonb", "wikidata", "openparliament",
+    "masto_host", "personal_site", "muni_scrape", "html_regex",
+    "gap_filler", "admin_manual", "agent_batch",
+})
+
+_PROBE_FLAG_THRESHOLD = 0.70
+_AGENT_FLAG_THRESHOLD = 0.85
+
+
+def _should_flag(source: str, confidence: float) -> bool:
+    """Return True if this row should land in the review queue."""
+    if source == "pattern_probe":
+        return confidence < _PROBE_FLAG_THRESHOLD
+    if source == "agent_sonnet":
+        return confidence < _AGENT_FLAG_THRESHOLD
+    # Everything else is upstream-trusted; don't flag.
+    return False
+
+
 # ── SQL helpers ───────────────────────────────────────────────────
 
 async def upsert_social(
@@ -228,6 +253,10 @@ async def upsert_social(
     politician_id: str,
     platform_hint: Optional[str],
     url: str,
+    *,
+    source: str,
+    confidence: float = 1.0,
+    evidence_url: Optional[str] = None,
 ) -> Optional[CanonicalSocial]:
     """Canonicalise `url` and upsert a politician_socials row.
 
@@ -236,29 +265,70 @@ async def upsert_social(
 
     Writes a `social_added` politician_changes row the first time this
     (politician_id, platform, handle) tuple is seen.
+
+    Args:
+      source: where this URL came from. See politician_socials.source column
+        comment (migration 0026) for allowed values.
+      confidence: 0.0-1.0. Upstream feeds pass 1.0; Tier-2 probe passes the
+        name-match score; Tier-3 agent passes the agent's self-reported
+        confidence.
+      evidence_url: page the discovery process verified against (Wikipedia
+        article, bsky profile, og:title source). Null for upstream feeds
+        where the feed is itself the evidence.
+
+    The row's flagged_low_confidence flag is derived from confidence + source:
+      pattern_probe:  flagged below 0.70
+      agent_sonnet:   flagged below 0.85
+      everything else: never flagged (upstream feeds are trusted)
     """
     canon = canonicalize(platform_hint, url)
     if canon is None or canon.platform == "other" or not canon.handle:
         return None
 
+    # Clamp confidence just in case a caller hands us something wild.
+    conf = max(0.0, min(1.0, float(confidence)))
+    flagged = _should_flag(source, conf)
+
     # Check existence first so we only log 'social_added' once per handle.
     existing = await db.fetchrow(
         """
-        SELECT id FROM politician_socials
+        SELECT id, confidence FROM politician_socials
         WHERE politician_id = $1 AND platform = $2 AND LOWER(handle) = LOWER($3)
         """,
         politician_id, canon.platform, canon.handle,
     )
 
+    # On conflict: only overwrite provenance if the new confidence beats
+    # the existing one. Protects Tier-1 legacy rows from being clobbered
+    # by a lower-confidence probe or agent hit.
     await db.execute(
         """
-        INSERT INTO politician_socials (politician_id, platform, handle, url)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO politician_socials
+            (politician_id, platform, handle, url,
+             source, confidence, evidence_url, flagged_low_confidence, discovered_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
         ON CONFLICT (politician_id, platform, LOWER(handle)) DO UPDATE SET
             url = EXCLUDED.url,
+            source = CASE
+                WHEN EXCLUDED.confidence > COALESCE(politician_socials.confidence, 0)
+                THEN EXCLUDED.source
+                ELSE politician_socials.source
+            END,
+            confidence = GREATEST(COALESCE(politician_socials.confidence, 0), EXCLUDED.confidence),
+            evidence_url = CASE
+                WHEN EXCLUDED.confidence > COALESCE(politician_socials.confidence, 0)
+                THEN EXCLUDED.evidence_url
+                ELSE politician_socials.evidence_url
+            END,
+            flagged_low_confidence = CASE
+                WHEN EXCLUDED.confidence > COALESCE(politician_socials.confidence, 0)
+                THEN EXCLUDED.flagged_low_confidence
+                ELSE politician_socials.flagged_low_confidence
+            END,
             updated_at = now()
         """,
         politician_id, canon.platform, canon.handle, canon.url,
+        source, conf, evidence_url, flagged,
     )
 
     if existing is None:
@@ -285,7 +355,12 @@ async def upsert_social(
 
 # ── Bulk import from agent findings ──────────────────────────────
 
-async def bulk_import_socials(db: Database, *, input_path: str) -> None:
+async def bulk_import_socials(
+    db: Database,
+    *,
+    input_path: str,
+    source: str = "agent_batch",
+) -> None:
     """Import agent-discovered social URLs from a JSONL file.
 
     Each line must be a JSON object of the form:
@@ -298,8 +373,14 @@ async def bulk_import_socials(db: Database, *, input_path: str) -> None:
     isation map and writes a `social_added` change row on first insert.
     Unknown platforms (YouTube handle that 404s, random campaign domain)
     silently no-op rather than polluting the table.
+
+    `source` is applied to every row inserted. Defaults to 'agent_batch'
+    which is trusted (no confidence flag). Callers that want to land
+    low-confidence rows should prefer the Tier-3 agent driver which sets
+    source='agent_sonnet' with per-URL confidence.
     """
     path = str(input_path)
+    batch_source = source
     processed = 0
     pols_seen: set[str] = set()
     added: Counter[str] = Counter()
@@ -350,7 +431,10 @@ async def bulk_import_socials(db: Database, *, input_path: str) -> None:
                 pid, canon.platform, canon.handle,
             )
             try:
-                result = await upsert_social(db, pid, None, url)
+                result = await upsert_social(
+                    db, pid, None, url,
+                    source=batch_source,
+                )
             except Exception as exc:
                 errors += 1
                 log.warning("upsert failed for %s %s: %s", pid, url, exc)
@@ -406,7 +490,10 @@ async def normalize_socials(db: Database) -> None:
             if not isinstance(url, str) or not url:
                 continue
             try:
-                canon = await upsert_social(db, pid, platform_hint, url)
+                canon = await upsert_social(
+                    db, pid, platform_hint, url,
+                    source="legacy_jsonb",
+                )
             except Exception as exc:
                 log.warning("upsert failed for %s %s: %s", pid, url, exc)
                 continue
@@ -482,7 +569,12 @@ async def verify_liveness(
             async def handle(row) -> None:
                 async with sem:
                     prior_live = row["is_live"]
-                    classification, status = await _classify(client, row["url"])
+                    if row["platform"] == "bluesky":
+                        classification, status = await _classify_bluesky(
+                            client, row["handle"], row["url"],
+                        )
+                    else:
+                        classification, status = await _classify(client, row["url"])
                     try:
                         if classification == "live":
                             await db.execute(
@@ -558,6 +650,39 @@ async def verify_liveness(
         f"[green]✓ live={stats['live']} dead={stats['dead']} "
         f"transient={stats['transient']} flips_to_dead={len(flips_to_dead)}[/green]"
     )
+
+
+_BSKY_PROFILE_API = "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile"
+
+
+async def _classify_bluesky(
+    client: httpx.AsyncClient,
+    handle: Optional[str],
+    url: str,
+) -> tuple[str, Optional[int]]:
+    """Bluesky-specific liveness check.
+
+    bsky.app/profile/<handle> is a JS-rendered SPA route that returns HTTP
+    404 to unauthenticated HEAD/GET from bot User-Agents, even for live
+    accounts. The authoritative signal is the App View API
+    (public.api.bsky.app/xrpc/app.bsky.actor.getProfile) which returns a
+    JSON profile for any live account and 400/404 for missing ones.
+
+    Fall back to the generic `_classify` if we have no handle to look up.
+    """
+    h = (handle or "").strip()
+    if not h:
+        return await _classify(client, url)
+    try:
+        r = await client.get(_BSKY_PROFILE_API, params={"actor": h})
+    except httpx.HTTPError:
+        return "transient", None
+    if r.status_code == 200:
+        return "live", 200
+    if r.status_code in (400, 404):
+        # App View returns 400 "Profile not found" for missing handles.
+        return "dead", r.status_code
+    return "transient", r.status_code
 
 
 async def _classify(client: httpx.AsyncClient, url: str) -> tuple[str, Optional[int]]:

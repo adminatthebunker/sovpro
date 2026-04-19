@@ -19,6 +19,7 @@ export default function Lander() {
   const navigate = useNavigate();
   const [postal, setPostal] = useState("");
   const [postalError, setPostalError] = useState<string | null>(null);
+  const [hansard, setHansard] = useState("");
 
   function submitPostal(e: React.FormEvent) {
     e.preventDefault();
@@ -29,6 +30,13 @@ export default function Lander() {
     }
     const canonical = trimmed.replace(/\s|-/g, "").toUpperCase();
     navigate(`/map?postal=${canonical}`);
+  }
+
+  function submitHansard(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = hansard.trim();
+    if (!trimmed) return;
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
   }
 
   return (
@@ -65,6 +73,28 @@ export default function Lander() {
           {postalError && <div className="lander__find-error">{postalError}</div>}
           <p className="lander__find-hint">
             We'll look up your MP, MLA, and municipal councillors and show where their sites are hosted.
+          </p>
+        </form>
+
+        <form className="lander__find" onSubmit={submitHansard}>
+          <label className="lander__find-label" htmlFor="lander-hansard">
+            <span aria-hidden="true">🔎</span> Search Hansard
+          </label>
+          <div className="lander__find-row">
+            <input
+              id="lander-hansard"
+              type="search"
+              placeholder='Search speeches (e.g. "carbon pricing")'
+              value={hansard}
+              onChange={e => setHansard(e.target.value)}
+              aria-label="Search Canadian parliamentary speeches"
+            />
+            <button type="submit" className="lander__btn lander__btn--primary">
+              Search →
+            </button>
+          </div>
+          <p className="lander__find-hint">
+            Search what every federal politician has said on the record.
           </p>
         </form>
 

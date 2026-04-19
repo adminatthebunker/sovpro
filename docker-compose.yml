@@ -131,6 +131,9 @@ services:
       EMBED_URL: ${EMBED_URL:-http://tei:80}
       EMBED_MODEL_TAG: ${EMBED_MODEL_TAG:-qwen3-embedding-0.6b}
       EMBED_BATCH: ${EMBED_BATCH:-32}
+      # Optional — used by agent-missing-socials (Tier-3 socials backfill).
+      # If unset, the command aborts gracefully rather than proceeding.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./data:/data:ro
       - ./db:/app/db:ro
@@ -139,6 +142,9 @@ services:
       # so the refreshed _muni_sets_generated.py persists to the host repo.
       - ./scripts:/app/scripts:ro
       - ./services/scanner/src:/app/src
+      # Locally-mirrored binary assets (politician portraits, etc).
+      # Written by backfill-politician-photos; served RO by nginx.
+      - assets:/assets
     profiles: ["tools"]
     networks: [sw]
 
@@ -165,10 +171,15 @@ services:
       GEOIP_ASN_PATH:  /data/GeoLite2-ASN.mmdb
       JOBS_POLL_INTERVAL: ${JOBS_POLL_INTERVAL:-5}
       JOBS_DEFAULT_TIMEOUT: ${JOBS_DEFAULT_TIMEOUT:-7200}
+      # Required when running the agent-missing-socials job via the admin
+      # worker. Unset ⇒ job will log the ANTHROPIC_API_KEY-missing warning
+      # and exit cleanly.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - ./data:/data:ro
       - ./db:/app/db:ro
       - ./services/scanner/src:/app/src
+      - assets:/assets
     entrypoint: ["python", "-m", "src", "jobs-worker"]
     restart: unless-stopped
     networks: [sw]
@@ -227,6 +238,7 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - assets:/var/www/assets:ro
     depends_on: [api, frontend]
     restart: unless-stopped
     networks: [sw]
@@ -248,6 +260,7 @@ volumes:
   changedata:
   kumadata:
   embedmodels:
+  assets:
 
 networks:
   sw:

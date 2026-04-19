@@ -329,7 +329,11 @@ async def enrich_from_wikidata(
         pid = slot["politician_id"]
         for (platform_hint, _handle), url in slot["handles"].items():
             try:
-                canon = await upsert_social(db, pid, platform_hint, url)
+                canon = await upsert_social(
+                    db, pid, platform_hint, url,
+                    source="wikidata",
+                    evidence_url=uri,  # the Wikidata entity URI
+                )
             except Exception as exc:
                 log.warning("wikidata upsert failed for %s %s: %s", pid, url, exc)
                 continue
@@ -482,7 +486,11 @@ async def enrich_from_openparl(db: Database) -> int:
                     else:
                         url = url_tmpl.format(value=v)
                     try:
-                        canon = await upsert_social(db, pid, platform_hint, url)
+                        canon = await upsert_social(
+                            db, pid, platform_hint, url,
+                            source="openparliament",
+                            evidence_url=detail_url,
+                        )
                     except Exception as exc:
                         log.warning("openparl upsert failed for %s %s: %s", pid, url, exc)
                         continue
@@ -499,7 +507,11 @@ async def enrich_from_openparl(db: Database) -> int:
                 if "ourcommons.ca" in url:
                     continue
                 try:
-                    canon = await upsert_social(db, pid, None, url)
+                    canon = await upsert_social(
+                        db, pid, None, url,
+                        source="openparliament",
+                        evidence_url=detail_url,
+                    )
                 except Exception as exc:
                     log.warning("openparl link upsert failed for %s %s: %s", pid, url, exc)
                     continue
@@ -667,7 +679,12 @@ async def enrich_mastodon_candidates(db: Database) -> int:
                 username = account.get("username") or handle
                 url = account.get("url") or f"https://{MASTO_HOST}/@{username}"
                 try:
-                    canon = await upsert_social(db, pid, "mastodon", url)
+                    canon = await upsert_social(
+                        db, pid, "mastodon", url,
+                        source="masto_host",
+                        confidence=min(1.0, 0.70 + overlap * 0.30),
+                        evidence_url=url,
+                    )
                 except Exception as exc:
                     log.warning("mastodon upsert failed for %s: %s", pid, exc)
                     continue

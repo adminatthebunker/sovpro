@@ -1,4 +1,4 @@
-# SovereignWatch — Goals
+# Canadian Political Data — Goals
 
 **Last updated:** 2026-04-16
 **Status:** Canonical. Revisit quarterly or when scope changes.

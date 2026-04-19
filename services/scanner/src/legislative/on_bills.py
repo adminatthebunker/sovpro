@@ -12,7 +12,7 @@ replacing Socrata (ola.org has no API):
                         bill_events.
 
 Scope for this pass: Parliament 44, Session 1 only. Backfill of
-earlier Parliaments is deferred — see provincial-legislature-research.md.
+earlier Parliaments is deferred — see docs/research/ontario.md.
 
 No WAF has been observed on ola.org across probe traffic, so pacing is
 ~1.5 sec/req (vs. NS's 4–6 sec). Still polite — ola.org is a small

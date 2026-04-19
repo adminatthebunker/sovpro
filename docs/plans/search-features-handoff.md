@@ -1,10 +1,10 @@
-# Handoff: SovereignWatch search features
+# Handoff: Canadian Political Data search features
 
-You're taking over to design and build the search API + UI for SovereignWatch. The retrieval layer is brand-new — no search endpoint exists yet. Below is everything you need to start.
+You're taking over to design and build the search API + UI for Canadian Political Data. The retrieval layer is brand-new — no search endpoint exists yet. Below is everything you need to start.
 
 ---
 
-## What SovereignWatch is
+## What Canadian Political Data is
 
 Read `docs/goals.md` and `docs/plans/semantic-layer.md` first — those are the product + schema authorities. One-line summary: it's becoming the definitive source of Canadian political data, and the feature you're building is the "single search box over what politicians have said" surfaced in the goals doc.
 
@@ -157,7 +157,7 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 
 1. **Politician-scoped search vs corpus-wide search** — same UI with a filter, or a dedicated "speeches by MP X" sub-view?
 2. **Saved searches / alerts** — "email me when a new speech matching 'X' is indexed." Schema ready (`scanner_schedules` precedent); product decision.
-3. **Permalinks for individual chunks** — we have `source_url` + `source_anchor` back to the Hansard source. Should the result card deep-link to the Hansard page, or to a SovereignWatch-internal `/chunk/<uuid>` page?
+3. **Permalinks for individual chunks** — we have `source_url` + `source_anchor` back to the Hansard source. Should the result card deep-link to the Hansard page, or to an internal `/chunk/<uuid>` page?
 4. **Cross-lingual UX** — since Qwen3 is weaker here, should we default `lang=any` (one result list, mixed quality on bilingual queries) or default to user's language + offer a "search in both" toggle?
 5. **Result context expansion** — click a chunk to see its parent speech? The surrounding chunks in the same speech?
 

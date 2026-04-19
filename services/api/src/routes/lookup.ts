@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { query } from "../db.js";
+import { resolvePhotoUrl } from "../lib/photos.js";
 
 /**
  * /api/v1/lookup/postcode/:code
@@ -69,10 +70,12 @@ export default async function lookupRoutes(app: FastifyInstance) {
         id: string; name: string; party: string | null;
         elected_office: string | null; level: string;
         constituency_name: string | null;
+        photo_path: string | null; photo_url: string | null;
         worst_tier: number | null; best_tier: number | null;
         websites: number; canadian: number; cdn: number; us: number; foreign: number;
       }>(
         `SELECT p.id, p.name, p.party, p.elected_office, p.level, p.constituency_name,
+                p.photo_path, p.photo_url,
                 MAX(s.sovereignty_tier) AS worst_tier,
                 MIN(s.sovereignty_tier) AS best_tier,
                 COUNT(DISTINCT w.id) FILTER (WHERE w.label <> 'shared_official')::int AS websites,
@@ -118,7 +121,9 @@ export default async function lookupRoutes(app: FastifyInstance) {
         elected_office: rep.elected_office,
         party: rep.party_name,
         email: rep.email,
-        photo_url: rep.photo_url,
+        photo_url: local[0]
+          ? resolvePhotoUrl({ photo_path: local[0].photo_path, photo_url: rep.photo_url ?? local[0].photo_url })
+          : (rep.photo_url ?? null),
         in_database: !!local[0],
         scan_summary: local[0]
           ? {

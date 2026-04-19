@@ -3,7 +3,7 @@
 **Last updated:** 2026-04-18 (evening)
 **Status:** Phase 1 (query set) + Phase 2 (comparison run) shipped. **Verdict: Qwen3-Embedding-4B (INT8, instruct) beats BGE-M3 by +17.6% NDCG@10 and +31% cross-lingual R@10 on the 5 k-chunk eval sample.** See `services/embed/eval/REPORT.md` for the full write-up. Re-embed is hardware-feasible but blocks on caveats (INT8 only; fp16 needs >6 GiB VRAM; auto-labels noisy). Phase 3 (throughput) and Phase B9 (migration) pending user decision.
 
-This doc is the authoritative tracking document for the SovereignWatch embedding model bake-off: BGE-M3 (incumbent) vs Qwen3-Embedding-0.6B vs Qwen3-Embedding-4B. It also tracks the independent throughput-optimization workstream. If this disagrees with `docs/plans/semantic-layer.md`, that doc wins for schema; this one wins for model choice.
+This doc is the authoritative tracking document for the Canadian Political Data embedding model bake-off: BGE-M3 (incumbent) vs Qwen3-Embedding-0.6B vs Qwen3-Embedding-4B. It also tracks the independent throughput-optimization workstream. If this disagrees with `docs/plans/semantic-layer.md`, that doc wins for schema; this one wins for model choice.
 
 ## Why now
 

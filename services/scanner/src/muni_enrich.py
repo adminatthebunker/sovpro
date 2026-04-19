@@ -693,7 +693,10 @@ async def enrich_municipal(
                                     socials = _extract_socials_from_html(
                                         r2.text)
                                     socials_found += await _attach_socials(
-                                        db, str(row["id"]), socials)
+                                        db, str(row["id"]), socials,
+                                        source="muni_scrape",
+                                        evidence_url=personal,
+                                    )
                             except Exception:
                                 pass
                     except Exception as exc:

@@ -272,14 +272,25 @@ async def _attach(db: Database, politician_id: str, url: str, label: str = "pers
     return row is not None
 
 
-async def _attach_socials(db: Database, politician_id: str, socials: dict[str, str]) -> int:
+async def _attach_socials(
+    db: Database,
+    politician_id: str,
+    socials: dict[str, str],
+    *,
+    source: str = "html_regex",
+    evidence_url: Optional[str] = None,
+) -> int:
     """Upsert each discovered social into politician_socials. Returns count saved."""
     if not socials:
         return 0
     saved = 0
     for platform_hint, url in socials.items():
         try:
-            canon = await upsert_social(db, politician_id, platform_hint, url)
+            canon = await upsert_social(
+                db, politician_id, platform_hint, url,
+                source=source,
+                evidence_url=evidence_url,
+            )
             if canon is not None:
                 saved += 1
         except Exception as exc:

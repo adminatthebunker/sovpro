@@ -1,0 +1,548 @@
+/* ── Hansard Search ──────────────────────────────────────────────
+ * Semantic search UI over speech_chunks. Uses the shared tokens in
+ * global.css; card styling is shared across /search and the Speeches
+ * tab on politician-detail pages via .speech-result.
+ */
+
+.hansard-search {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+}
+
+.hansard-search__header {
+  margin-bottom: 1.5rem;
+}
+
+.hansard-search__title {
+  margin: 0 0 .5rem;
+  font-size: 2rem;
+  letter-spacing: -0.025em;
+}
+
+.hansard-search__subtitle {
+  margin: 0 0 1rem;
+  color: var(--ink-muted);
+  font-size: 1.05rem;
+  line-height: 1.5;
+}
+
+.hansard-search__banner {
+  margin: 0;
+  padding: .65rem .9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ca);
+  border-radius: 6px;
+  color: var(--ink-muted);
+  font-size: .85rem;
+  line-height: 1.45;
+}
+
+.hansard-search__form {
+  display: flex;
+  gap: .5rem;
+  margin: 0 0 1rem;
+}
+
+.hansard-search__input {
+  flex: 1;
+  padding: .75rem 1rem;
+  font-size: 1.05rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color .15s;
+}
+
+.hansard-search__input:focus {
+  border-color: var(--accent);
+}
+
+/* ── Filters row ──────────────────────────────────────────────── */
+
+.speech-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin: 0 0 1.5rem;
+  padding: .85rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.speech-filters__item {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 120px;
+  flex: 1 1 auto;
+}
+
+.speech-filters__label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.speech-filters__item select,
+.speech-filters__item input {
+  padding: .4rem .55rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: .9rem;
+}
+
+.speech-filters__item select:focus,
+.speech-filters__item input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Results ──────────────────────────────────────────────────── */
+
+.hansard-search__results {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.hansard-search__hint {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  color: var(--ink-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.hansard-search__error {
+  padding: 1rem 1.25rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.hansard-search__summary {
+  font-size: .9rem;
+  color: var(--ink-muted);
+}
+
+.hansard-search__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.hansard-search__item {
+  margin: 0;
+}
+
+.hansard-search__pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.hansard-search__pager button {
+  padding: .5rem 1rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hansard-search__pager button:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+
+.hansard-search__pager button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.hansard-search__pager-label {
+  color: var(--ink-muted);
+  font-size: .9rem;
+}
+
+/* ── Speech result card (reused on /search and Speeches tab) ─── */
+
+.speech-result {
+  padding: 1rem 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.speech-result__speaker {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+}
+
+.speech-result__photo {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+  background: var(--panel-2);
+}
+
+.speech-result__photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.speech-result__speaker-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.speech-result__speaker-name {
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.speech-result__speaker-name:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.speech-result__speaker-name--unresolved {
+  color: var(--ink-muted);
+  font-style: italic;
+  cursor: default;
+}
+
+.speech-result__speaker-sub {
+  font-size: .8rem;
+  color: var(--ink-muted);
+}
+
+.speech-result__socials {
+  display: inline-flex;
+  gap: .3rem;
+  margin-top: .15rem;
+  flex-wrap: wrap;
+}
+
+.speech-result__social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--ink-muted);
+  font-size: .72rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  transition: background-color .12s, color .12s;
+}
+
+.speech-result__social:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.speech-result__chamber {
+  font-weight: 600;
+  color: var(--cdn);
+  letter-spacing: .03em;
+}
+
+.speech-result__meta {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  font-size: .8rem;
+  color: var(--ink-muted);
+  flex-wrap: wrap;
+}
+
+.speech-result__lang {
+  margin-left: auto;
+  padding: .05rem .5rem;
+  font-size: .65rem;
+  font-weight: 700;
+  background: var(--panel-2);
+  color: var(--ink-muted);
+  border-radius: 999px;
+  letter-spacing: .05em;
+}
+
+.speech-result__snippet {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: .98rem;
+}
+
+.speech-result__snippet b {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--ink);
+  padding: 0 .1em;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.speech-result__actions {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: .35rem;
+  border-top: 1px solid var(--border);
+}
+
+.speech-result__action {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: .88rem;
+  font-weight: 600;
+}
+
+.speech-result__action:hover {
+  text-decoration: underline;
+}
+
+.speech-result__action--secondary {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.speech-result__similarity {
+  margin-left: auto;
+  font-size: .75rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.speech-result__share {
+  position: relative;
+  display: inline-flex;
+}
+
+.speech-result__action--share {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.speech-result__action--share:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.speech-result__share-menu {
+  position: absolute;
+  top: calc(100% + .35rem);
+  right: 0;
+  z-index: 40;
+  min-width: 12rem;
+  padding: .35rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: .05rem;
+}
+
+.speech-result__share-head {
+  padding: .35rem .55rem .5rem;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: .25rem;
+}
+
+.speech-result__share-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .45rem .55rem;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: .85rem;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color .1s;
+}
+
+.speech-result__share-item:hover {
+  background: var(--panel-2);
+  text-decoration: none;
+}
+
+.speech-result__share-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+
+/* ── Narrow screens ───────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .hansard-search__title { font-size: 1.6rem; }
+  .speech-filters { flex-direction: column; }
+  .speech-filters__item { min-width: 0; }
+  .speech-result__speaker { align-items: flex-start; }
+  .speech-result__actions { font-size: .85rem; }
+}
+
+/* ── Speeches tab (inside politician detail) ─────────────────── */
+
+.pol-speeches {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pol-speeches__toolbar {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+
+.pol-speeches__input {
+  flex: 1;
+  padding: .55rem .85rem;
+  font-size: .95rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.pol-speeches__input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pol-speeches__clear {
+  padding: .5rem .85rem;
+  background: var(--panel);
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pol-speeches__clear:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.pol-speeches__hint {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--ink-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 0;
+}
+
+.pol-speeches__error {
+  padding: 1rem 1.25rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel));
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.pol-speeches__summary {
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
+.pol-speeches__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.pol-speeches__item {
+  margin: 0;
+}
+
+.pol-speeches__pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.pol-speeches__pager button {
+  padding: .5rem 1rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pol-speeches__pager button:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--accent);
+}
+
+.pol-speeches__pager button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.pol-speeches__pager-label {
+  color: var(--ink-muted);
+  font-size: .9rem;
+}

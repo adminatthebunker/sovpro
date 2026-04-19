@@ -89,6 +89,11 @@
   padding: .6rem .8rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.coverage__table tbody th[scope="row"],
+.coverage__table tbody .coverage__notes {
   vertical-align: top;
 }
 
@@ -110,11 +115,14 @@
 }
 
 .coverage__jurisdiction {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.coverage__jurisdiction-inner {
   display: flex;
   flex-direction: column;
   gap: .2rem;
-  font-weight: 500;
-  white-space: nowrap;
 }
 
 .coverage__code {

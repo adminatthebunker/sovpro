@@ -192,9 +192,6 @@
   display: grid;
   place-items: center;
   background: var(--panel-2);
-  font-weight: 700;
-  font-size: 1.1rem;
-  color: var(--ink);
   flex-shrink: 0;
 }
 .pol-social-card__body { flex: 1; min-width: 0; }

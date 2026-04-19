@@ -1,0 +1,273 @@
+/* ── Search dashboard ────────────────────────────────────────────
+ * Tile grid rendered below the filters on /search. Aggregates the
+ * top-200 result set into four charts. Reuses CSS tokens from
+ * global.css; party colors come from PartyFilter.tsx.
+ */
+
+.dashboard {
+  margin: 0 0 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dashboard__summary {
+  list-style: none;
+  padding: .75rem 1rem;
+  cursor: pointer;
+  background: var(--panel);
+  user-select: none;
+  transition: background .1s;
+}
+
+.dashboard__summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard__summary:hover {
+  background: var(--panel-2);
+}
+
+.dashboard__headline {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  flex-wrap: wrap;
+  font-size: .9rem;
+  color: var(--ink-muted);
+}
+
+.dashboard__headline-main {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.dashboard__headline-lang {
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard__headline-toggle {
+  margin-left: auto;
+  color: var(--ink-muted);
+  font-size: 1rem;
+  transition: transform .15s;
+}
+
+.dashboard[open] .dashboard__headline-toggle {
+  transform: rotate(180deg);
+}
+
+/* ── Loading / error states ─────────────────────────────────── */
+
+.dashboard--loading,
+.dashboard--error {
+  padding: .85rem 1rem;
+}
+
+.dashboard__hint {
+  color: var(--ink-muted);
+  font-size: .9rem;
+}
+
+/* ── Tile grid ──────────────────────────────────────────────── */
+
+.dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+}
+
+.dashboard__tile {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.dashboard__tile-title {
+  margin: 0;
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--ink-muted);
+  font-weight: 700;
+}
+
+.dashboard__tile-foot {
+  margin: 0;
+  font-size: .8rem;
+  color: var(--ink-muted);
+  line-height: 1.4;
+}
+
+/* ── Pie layout with legend ─────────────────────────────────── */
+
+.dashboard__pie-row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.dashboard__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.dashboard__legend-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .85rem;
+  color: var(--ink);
+}
+
+.dashboard__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.dashboard__legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard__legend-value {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: .85rem;
+}
+
+/* ── Pie SVG ────────────────────────────────────────────────── */
+
+.pie {
+  flex: 0 0 auto;
+}
+
+.pie__segment {
+  transition: opacity .1s;
+}
+
+.pie__segment:hover {
+  opacity: .78;
+}
+
+/* ── Bar list ───────────────────────────────────────────────── */
+
+.barlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+
+.barlist__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: .5rem;
+  align-items: center;
+  font-size: .85rem;
+}
+
+.barlist__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.barlist__track {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.barlist__fill {
+  height: 100%;
+  border-radius: 4px;
+  opacity: .85;
+  transition: width .2s;
+}
+
+.barlist__value {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: .8rem;
+  text-align: right;
+}
+
+.barlist__meta {
+  color: var(--ink-muted);
+}
+
+/* Speaker link inside the bar list */
+
+.dashboard__speaker-link {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.dashboard__speaker-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.dashboard__speaker-unresolved {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* ── Year histogram ─────────────────────────────────────────── */
+
+.year-hist {
+  display: block;
+}
+
+.year-hist__empty {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: .85rem;
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+/* ── Narrow screens ─────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .dashboard {
+    /* default-collapsed on mobile: consume less space-above-fold */
+  }
+
+  .dashboard__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard__pie-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard__pie-row .pie {
+    align-self: center;
+  }
+}

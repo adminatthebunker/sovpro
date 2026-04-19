@@ -162,6 +162,9 @@ async def attach_socials(
     db: Database,
     politician_id: str,
     socials: dict[str, str],
+    *,
+    source: str = "gap_filler",
+    evidence_url: Optional[str] = None,
 ) -> int:
     """Upsert each {platform_hint: url} into politician_socials.
 
@@ -173,7 +176,11 @@ async def attach_socials(
     saved = 0
     for platform_hint, url in socials.items():
         try:
-            canon = await upsert_social(db, politician_id, platform_hint, url)
+            canon = await upsert_social(
+                db, politician_id, platform_hint, url,
+                source=source,
+                evidence_url=evidence_url,
+            )
             if canon is not None:
                 saved += 1
         except Exception as exc:

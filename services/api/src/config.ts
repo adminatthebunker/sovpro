@@ -14,6 +14,7 @@ const schema = z.object({
   // will simply reject all callers with 503 until set), but NODE_ENV
   // === "production" without ADMIN_TOKEN is a boot-time warning.
   ADMIN_TOKEN: z.string().min(32).optional(),
+  TEI_URL: z.string().default("http://tei:80"),
 });
 
 export const config = (() => {
@@ -32,6 +33,7 @@ export const config = (() => {
     databaseUrl: env.DATABASE_URL,
     webhookSecret: env.CHANGE_WEBHOOK_SECRET ?? env.WEBHOOK_SECRET ?? "",
     adminToken: env.ADMIN_TOKEN ?? "",
+    teiUrl: env.TEI_URL.replace(/\/$/, ""),
   };
 })();
 

@@ -1,7 +1,7 @@
 -- Legislative activity — layer 1: sessions + bills.
 --
 -- First piece of the provincial legislative-activity pipeline (see
--- docs/plans/provincial-legislature-research.md). Starts with Nova Scotia,
+-- docs/research/overview.md). Starts with Nova Scotia,
 -- whose bills are available via the Socrata API at data.novascotia.ca
 -- (dataset iz5x-dzyf) — the lowest-friction ingestion path in the country.
 --

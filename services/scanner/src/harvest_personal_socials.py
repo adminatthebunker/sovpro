@@ -147,6 +147,8 @@ async def _attach_socials_counted(
     politician_id: str,
     socials: dict[str, str],
     per_platform: Counter[str],
+    *,
+    evidence_url: Optional[str] = None,
 ) -> int:
     """Upsert each discovered social. Returns count *newly* inserted.
 
@@ -173,7 +175,11 @@ async def _attach_socials_counted(
                 """,
                 politician_id, canon.platform, canon.handle,
             )
-            result = await upsert_social(db, politician_id, platform_hint, url)
+            result = await upsert_social(
+                db, politician_id, platform_hint, url,
+                source="personal_site",
+                evidence_url=evidence_url,
+            )
             if result is not None and existing is None:
                 saved += 1
                 per_platform[result.platform] += 1
@@ -295,6 +301,7 @@ async def harvest_all_personal_socials(
                             return
                         added = await _attach_socials_counted(
                             db, str(row["id"]), socials, per_platform,
+                            evidence_url=url,
                         )
                         socials_added += added
                         if added:
