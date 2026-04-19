@@ -2,7 +2,7 @@
 title: "From months to hours: rebuilding the embedding pipeline"
 slug: "faster-embeddings-months-to-hours"
 date: "2026-04-19"
-excerpt: "We were about to spend weeks embedding a million Hansard chunks. A rigorous three-way model bake-off plus a serving-layer rewrite cut that to a single weekend. Here's how — including what we gave up to get there."
+excerpt: "I was about to spend weeks embedding a million Hansard chunks. A rigorous three-way model bake-off plus a serving-layer rewrite cut that to a single weekend. Here's how — including what I gave up to get there."
 author: "adminatthebunker"
 tags: ["semantic-search", "infrastructure", "embeddings"]
 draft: false
@@ -10,7 +10,7 @@ draft: false
 
 SovereignWatch's search layer runs on vector embeddings — every speech chunk in the corpus is transformed into a 1,024-number fingerprint that lives in a mathematical space where similar meanings cluster together. Ask "housing affordability" and you get back chunks that never use the phrase but argue about gatekeepers, missing middles, and supply-side vs demand-side — because the model understands what the words *mean*, not just what they *are*.
 
-Getting there wasn't free. This post is about what it cost, what we found along the way, and what it unlocks.
+Getting there wasn't free. This post is about what it cost, what I found along the way, and what it unlocks.
 
 ## The pipeline before
 
@@ -18,21 +18,21 @@ The incumbent stack was BGE-M3 running on a laptop GPU (an NVIDIA RTX 4050 Mobil
 
 It worked. It was slow.
 
-The baseline throughput was **4.7 chunks per second** end-to-end. For the 44th Parliament alone — roughly 242,000 chunks — that was a 7-to-8-hour run each time we re-indexed. For the historical backfill we were about to launch (38th through 43rd Parliaments, roughly 1 million more chunks), naive math said **59 hours of continuous GPU**. In practice, split across partial runs and retries, that's weeks of wall time.
+The baseline throughput was **4.7 chunks per second** end-to-end. For the 44th Parliament alone — roughly 242,000 chunks — that was a 7-to-8-hour run each time I re-indexed. For the historical backfill I was about to launch (38th through 43rd Parliaments, roughly 1 million more chunks), naive math said **59 hours of continuous GPU**. In practice, split across partial runs and retries, that's weeks of wall time.
 
-Before committing that much GPU, we wanted to know: is BGE-M3 still the right model? And if not, can we switch without re-embedding the corpus twice?
+Before committing that much GPU, I wanted to know: is BGE-M3 still the right model? And if not, can I switch without re-embedding the corpus twice?
 
 ## The bake-off
 
-We built a proper evaluation harness. Forty queries across six categories: topic-search with euphemisms ("carbon pricing" vs "pollution pricing" vs "carbon tax"), cross-lingual retrieval (English query, French results), stance matching, bill-number discussion, and edge cases like short queries and procedural debates. A stratified 5,000-chunk sample was drawn from the real corpus — 3,800 English and 1,200 French, matching the corpus distribution and balanced across years and parties.
+I built a proper evaluation harness. Forty queries across six categories: topic-search with euphemisms ("carbon pricing" vs "pollution pricing" vs "carbon tax"), cross-lingual retrieval (English query, French results), stance matching, bill-number discussion, and edge cases like short queries and procedural debates. A stratified 5,000-chunk sample was drawn from the real corpus — 3,800 English and 1,200 French, matching the corpus distribution and balanced across years and parties.
 
 Three candidate models, all self-hosted, all running on the same 6 GiB card:
 
 - **BGE-M3** — the incumbent. 568M parameters, MIT-licensed, 1024-dim output.
 - **Qwen3-Embedding-0.6B** — Alibaba's newer model. 639M parameters, Apache 2.0, also 1024-dim. Instruction-aware: you prefix queries with a task description and quality jumps.
-- **Qwen3-Embedding-4B** — the same family at 4 billion parameters. Too big for 6 GiB at normal precision; ran it in INT8 quantization, which fit (5.5 GiB peak) at a small quality cost.
+- **Qwen3-Embedding-4B** — the same family at 4 billion parameters. Too big for 6 GiB at normal precision; I ran it in INT8 quantization, which fit (5.5 GiB peak) at a small quality cost.
 
-We scored each on NDCG@10 (how good are the top 10 results), Recall@20, and cross-lingual recall. The headline:
+I scored each on NDCG@10 (how good are the top 10 results), Recall@20, and cross-lingual recall. The headline:
 
 | Model | NDCG@10 | vs BGE-M3 |
 |---|---:|---:|
@@ -42,17 +42,17 @@ We scored each on NDCG@10 (how good are the top 10 results), Recall@20, and cros
 | Qwen3-4B-int8 (vanilla) | 0.236 | −30% |
 | Qwen3-4B-int8 (instruct) | **0.395** | **+18%** |
 
-Two clean findings. First, **instruction prompting is load-bearing** — the same 0.6B model goes from "below BGE-M3" to "beats BGE-M3 by 13%" based on whether you wrap the query with `"Instruct: Given a parliamentary search query...\nQuery: {q}"`. Second, **4B at INT8 wins overall** but 0.6B at full precision is close on quality and far faster at inference.
+Two clean findings. First, **instruction prompting is load-bearing** — the same 0.6B model goes from "below BGE-M3" to "beats BGE-M3 by 13%" based on whether I wrap the query with `"Instruct: Given a parliamentary search query...\nQuery: {q}"`. Second, **4B at INT8 wins overall** but 0.6B at full precision is close on quality and far faster at inference.
 
-## What we gave up
+## What I gave up
 
-One number didn't move the direction we hoped: **cross-lingual recall**. BGE-M3 scored 0.081 on cross-language retrieval; Qwen3-0.6B scored 0.063 — a 22% regression. We tried adding a cross-encoder reranker on top; it lifted overall NDCG to 0.435 but *didn't close the cross-lingual gap*. The diagnosis: the first-stage encoder simply doesn't surface enough cross-lingual candidates for the reranker to work with. That's a recall-stage weakness, not a ranking-stage one.
+One number didn't move the direction I hoped: **cross-lingual recall**. BGE-M3 scored 0.081 on cross-language retrieval; Qwen3-0.6B scored 0.063 — a 22% regression. I tried adding a cross-encoder reranker on top; it lifted overall NDCG to 0.435 but *didn't close the cross-lingual gap*. The diagnosis: the first-stage encoder simply doesn't surface enough cross-lingual candidates for the reranker to work with. That's a recall-stage weakness, not a ranking-stage one.
 
-The decision: accept the cross-lingual loss for now. Users of Canadian Hansard search tend to search in one language at a time. For a bilingual Parliament, this is a real tradeoff and we're being explicit about it rather than burying it. The existing Postgres full-text index (which handles English and French as separate languages) is still there as a fallback for keyword-specific cross-language cases.
+The decision: accept the cross-lingual loss for now. Users of Canadian Hansard search tend to search in one language at a time. For a bilingual Parliament, this is a real tradeoff and I'm being explicit about it rather than burying it. The existing Postgres full-text index (which handles English and French as separate languages) is still there as a fallback for keyword-specific cross-language cases.
 
 ## The serving-layer rewrite
 
-Picking Qwen3-0.6B let us rebuild the serving layer from scratch without re-embedding the corpus twice.
+Picking Qwen3-0.6B let me rebuild the serving layer from scratch without re-embedding the corpus twice.
 
 The old path was FastAPI wrapping FlagEmbedding — fine for a prototype, slow in production. The new path is **Hugging Face's Text Embeddings Inference (TEI)**, a purpose-built embedding server that does length-sorted dynamic batching and unpadded attention. A 5,000-chunk throughput test showed TEI at ~75 chunks/sec on the same hardware — almost exactly 2× vanilla sentence-transformers at the same model and quality.
 
@@ -72,18 +72,18 @@ Put together:
 
 The point of all this is the question at the top of this post: can you ask for what you mean and get it back?
 
-We ran a dozen test queries through the full production path (TEI encode → pgvector HNSW search → result hydration). A few examples, with p50 latency:
+I ran a dozen test queries through the full production path (TEI encode → pgvector HNSW search → result hydration). A few examples, with p50 latency:
 
 - *"speeches arguing for carbon pricing"* → Environment Minister defending carbon pricing against Conservative critique. Top 10 results all topical, mixed party positions. **34 ms**.
 - *"Bill C-18 Online News Act"* → The literal bill introduction by the minister, plus every second-reading debate and committee report. **12 ms**.
 - *"la crise climatique au Québec"* (French query) → 10 of 10 French results, BQ voices dominating. **18 ms**.
 
-The second one is the cleanest signal: asking by bill number surfaces the exact parliamentary moments that bill was discussed, across months of debate, without us indexing anything special about bill numbers.
+The second one is the cleanest signal: asking by bill number surfaces the exact parliamentary moments that bill was discussed, across months of debate, without anything special being indexed about bill numbers.
 
 ## What's running now
 
-Writing this while the historical backfill runs. 43rd Parliament Session 2 (September 2020 through the 2021 election) is in-flight: 850,000 speeches landed, 1.4 million chunks created, ~600,000 vectors already written, ~800,000 to go. A transient network timeout on the first pass killed the initial run; a retry-with-backoff patch went in and a second pass is queued to fill the tail. The 42nd and 41st and 40th and earlier Parliaments are next.
+I'm writing this while the historical backfill runs. 43rd Parliament Session 2 (September 2020 through the 2021 election) is in-flight: 850,000 speeches landed, 1.4 million chunks created, ~600,000 vectors already written, ~800,000 to go. A transient network timeout on the first pass killed the initial run; I patched the ingester with retry-with-backoff and queued a second pass to fill the tail. The 42nd and 41st and 40th and earlier Parliaments are next.
 
 At the current rate, the full historical corpus — every speech ever indexed on openparliament.ca from 2004 onward — will be searchable by early next week.
 
-This is what we built it for.
+This is what I built it for.
