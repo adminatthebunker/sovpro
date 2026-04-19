@@ -201,6 +201,55 @@ def content_hash(text: str) -> str:
 
 # ── API client ───────────────────────────────────────────────────────
 
+# Transient HTTP errors we retry with exponential backoff. openparliament.ca
+# occasionally returns 5xx, times out under load, or drops a connection
+# mid-response. Before the retry wrapper, a single ReadTimeout mid-session
+# would kill the whole ingest (observed 2026-04-18 on P43-S2 at T+1h30m,
+# after 850 k speeches had landed).
+RETRYABLE_EXC = (
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+    httpx.PoolTimeout,
+    httpx.ReadError,
+    httpx.WriteError,
+    httpx.ConnectError,
+    httpx.RemoteProtocolError,
+)
+RETRY_BACKOFF_SECONDS = (2, 4, 8, 16, 32)
+RETRY_ON_STATUS = (500, 502, 503, 504)
+
+
+async def _get_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """httpx GET with exponential-backoff retry on transient failures.
+
+    Retries on network-layer exceptions (timeouts, pool exhaustion,
+    dropped connections) and 5xx responses. 4xx responses are surfaced
+    immediately — those are real errors.
+    """
+    last_exc: Optional[BaseException] = None
+    for attempt, delay in enumerate((0,) + RETRY_BACKOFF_SECONDS):
+        if delay:
+            log.warning(
+                "openparliament retry %d/%d after %ds — last error: %s",
+                attempt, len(RETRY_BACKOFF_SECONDS), delay, last_exc,
+            )
+            await asyncio.sleep(delay)
+        try:
+            r = await client.get(url)
+            if r.status_code in RETRY_ON_STATUS:
+                last_exc = httpx.HTTPStatusError(
+                    f"upstream {r.status_code}", request=r.request, response=r
+                )
+                continue
+            return r
+        except RETRYABLE_EXC as exc:
+            last_exc = exc
+            continue
+    # Exhausted retries — re-raise the last exception so the caller gets
+    # a traceable failure at the original call site.
+    assert last_exc is not None
+    raise last_exc
+
 
 async def _iter_json(
     client: httpx.AsyncClient, path: str
@@ -209,7 +258,7 @@ async def _iter_json(
     next_path: Optional[str] = path
     while next_path:
         url = next_path if next_path.startswith("http") else f"{API_ROOT}{next_path}"
-        r = await client.get(url)
+        r = await _get_with_retry(client, url)
         r.raise_for_status()
         data = r.json()
         for obj in data.get("objects", []):
