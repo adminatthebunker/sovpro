@@ -48,9 +48,27 @@ async def main() -> None:
                 "AND lims_member_id IS NOT NULL"
             )
         }
-        print(f"LIMS members={len(members)}, existing linked={len(existing_lims)}")
+        # Name-indexed existing BC rows WITHOUT a lims_member_id. These are
+        # the rows the bills-ingest pipeline created from the current-MLA
+        # roster; when LIMS `allMembers` returns the same person, we must
+        # UPDATE this row to attach lims_member_id, not INSERT a duplicate.
+        # Duplicate rows poison the speaker-resolution initial_last lookup
+        # (two matching rows → ambiguous → unresolved).
+        existing_by_name: dict[str, str] = {}
+        for row in await db.fetch(
+            "SELECT id::text AS id, name FROM politicians "
+            "WHERE level='provincial' AND province_territory='BC' "
+            "AND lims_member_id IS NULL"
+        ):
+            key = (row["name"] or "").strip().lower()
+            if key:
+                existing_by_name[key] = row["id"]
+        print(
+            f"LIMS members={len(members)}, existing linked={len(existing_lims)}, "
+            f"existing unlinked-by-name={len(existing_by_name)}"
+        )
 
-        inserted = skipped = 0
+        inserted = skipped = updated = 0
         for m in members:
             lims_id = int(m["id"])
             if lims_id in existing_lims:
@@ -61,6 +79,24 @@ async def main() -> None:
             if not last:
                 continue
             name = f"{first} {last}".strip()
+            name_key = name.lower()
+            existing_id = existing_by_name.get(name_key)
+            if existing_id is not None:
+                await db.execute(
+                    """
+                    UPDATE politicians
+                       SET lims_member_id = $1,
+                           updated_at = now()
+                     WHERE id = $2::uuid
+                    """,
+                    lims_id, existing_id,
+                )
+                updated += 1
+                # Avoid double-processing if LIMS returns two nodes sharing
+                # the same display name (rare but possible).
+                existing_by_name.pop(name_key, None)
+                existing_lims.add(lims_id)
+                continue
             await db.execute(
                 """
                 INSERT INTO politicians (
@@ -79,7 +115,7 @@ async def main() -> None:
             )
             inserted += 1
 
-        print(f"inserted={inserted} skipped={skipped}")
+        print(f"inserted={inserted} updated={updated} skipped={skipped}")
     finally:
         await db.close()
 

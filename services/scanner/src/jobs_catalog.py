@@ -136,6 +136,18 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap candidate speeches scanned (smoke-test aid)."},
         ],
     },
+    "resolve-presiding-speakers": {
+        "description": "Tie 'The Speaker' speeches to the sitting Speaker by date. Seeds politicians + politician_terms for the jurisdiction's Speaker roster, then updates NULL-politician_id rows. Province defaults to AB; pass BC to run for British Columbia.",
+        "cli": "resolve-presiding-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "province", "type": "enum", "required": False, "default": "AB",
+             "choices": ["AB", "BC"],
+             "help": "Which province's Speaker roster to resolve."},
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap candidate speeches scanned (smoke-test aid)."},
+        ],
+    },
     "refresh-coverage-stats": {
         "description": "Recompute jurisdiction_sources counts (speeches, politicians, bills) and flip Hansard status from live data. Drives /coverage.",
         "cli": "refresh-coverage-stats",

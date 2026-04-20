@@ -1714,6 +1714,45 @@ def cmd_refresh_coverage_stats(ctx: click.Context) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("resolve-presiding-speakers")
+@click.option("--province", type=click.Choice(["AB", "BC"]), default="AB",
+              help="Jurisdiction whose Speaker roster to seed + resolve.")
+@click.option("--limit", type=int, default=None,
+              help="Cap candidate speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_presiding_speakers(
+    ctx: click.Context, province: str, limit: Optional[int],
+) -> None:
+    """Link 'The Speaker' speeches to the sitting Speaker by date.
+
+    Three-step idempotent pipeline:
+      1. Ensure every roster Speaker exists in `politicians` (inserts
+         retired Speakers as minimal rows when missing).
+      2. Upsert `politician_terms` rows with office='Speaker' and the
+         exact start/end dates for each Speaker's tenure.
+      3. Resolve NULL-politician_id speeches whose speaker_role / raw
+         name indicates 'The Speaker' by looking up the term that
+         contains the speech's spoken_at date. Updates speech_chunks
+         in the same pass.
+
+    Safe to re-run. If you add a new Speaker to SPEAKER_ROSTER in
+    `presiding_officer_resolver.py`, re-running this command picks up
+    any new speeches falling in that Speaker's window.
+    """
+    from .legislative.presiding_officer_resolver import seed_and_resolve
+
+    async def _wrap(db: Database) -> None:
+        stats = await seed_and_resolve(db, province, limit=limit)
+        console.print(
+            f"[green]resolve-presiding-speakers[/green] ({stats['province']}): "
+            f"roster={stats['roster']} terms={stats['terms']} "
+            f"scanned={stats['scanned']} resolved={stats['resolved']} "
+            f"no_term_match={stats['no_term_match']} "
+            f"chunks_updated={stats['chunks_updated']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("resolve-acting-speakers")
 @click.option("--limit", type=int, default=None,
               help="Cap candidate speeches scanned (smoke-test aid).")

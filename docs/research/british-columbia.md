@@ -4,7 +4,7 @@
 
 **Legislature:** Legislative Assembly of British Columbia | **Website:** https://www.leg.bc.ca | **Seats:** 93 | **Next election:** 2028-10-21
 
-**Status snapshot (2026-04-19):** ✅ **Bills live** via LIMS PDMS JSON. ✅ **Hansard live** via LIMS HDMS debates JSON + HTML — full 23-session backfill P38-S4 → P43-S2 (2008-2026), **197,888 speeches** / 87.4% politician-linked, 464 distinct speakers. Historical MLA roster enriched (376 rows) from LIMS GraphQL. Both re-rated down from initial difficulty — Bills 5→2, Hansard 3→2. Votes / committees not yet built.
+**Status snapshot (2026-04-20):** ✅ **Bills live** via LIMS PDMS JSON. ✅ **Hansard live** via LIMS HDMS debates JSON + HTML — full 23-session backfill P38-S4 → P43-S2 (2008-2026), **197,888 speeches** / **90.56% politician-linked** (up from 87.4% after two resolver bug fixes + Tier 1 Speaker seeding on 2026-04-20). Historical MLA roster enriched (376 rows) from LIMS GraphQL. Both re-rated down from initial difficulty — Bills 5→2, Hansard 3→2. Votes / committees not yet built.
 
 ---
 
@@ -99,12 +99,51 @@ python -m src ingest-bc-hansard --parliament 43 --session 2 \
 
 # Post-pass resolver (after expanding BC MLA roster or fixing name-normalisation)
 python -m src resolve-bc-speakers
+
+# Tier 1 presiding-officer seeder + resolver (idempotent)
+python -m src resolve-presiding-speakers --province BC
 ```
 
 **Module layout:**
 
 - `services/scanner/src/legislative/bc_hansard.py` — discovery, fetch, upsert orchestrator, speaker lookup, post-pass resolver
 - `services/scanner/src/legislative/bc_hansard_parse.py` — pure-offline HTML parser (stdlib `re` + `html`), handles Blues + Final variants
+- `services/scanner/src/legislative/presiding_officer_resolver.py` — shared Tier 1 Speaker seeder + date-ranged resolver (used by both BC and AB)
+
+## ★ Speaker resolver — two bugs fixed 2026-04-20
+
+Post-ingest audit surfaced two resolver bugs that caused ~6,300 named-MLA speeches to resolve as ambiguous/unmatched. Both now fixed; document here so we recognise the shape if a future province imports the same code.
+
+**Bug 1 — compound-surname initial-last parse.** `bc_hansard.py` `SpeakerLookup.resolve()` required exactly 2 tokens after normalisation for the initial-last branch (`"p milobar"`). Compound surnames like "M. de Jong" normalise to 3 tokens (`"m de jong"`), fell through to the surname-only branch, and were then flagged ambiguous because the `by_surname` index held both Michael and Harry de Jong under `"jong"`. The index was already built correctly — keyed on `"{initial} {last_token_of_surname}"`, so `"m jong"` would have matched Michael uniquely. Fix: accept 3+ tokens when `tokens[0]` is a single letter and look up `f"{tokens[0]} {tokens[-1]}"`. Recovered ~4,724 Michael de Jong rows plus similar patterns. Applies to any future "van Dongen", "de la Cruz", etc.
+
+**Bug 2 — duplicate politicians row from enrichment script.** `scripts/bc-enrich-historical-mlas.py` deduped on `lims_member_id` alone. The bills-ingest roster pipeline creates `politicians` rows with `lims_member_id IS NULL` for current MLAs; the enrichment script then saw no existing LIMS-61 row for Lana Popham and inserted a second row, poisoning the `by_initial_last["l popham"]` lookup (two candidates → ambiguous → unresolved). Fix: enrichment script now name-lookups any existing unlinked BC row and UPDATEs it to attach `lims_member_id`, rather than INSERTing a duplicate. One-time DB merge collapsed the existing Popham duplicate (transferred `lims_member_id=61` to the active row, deleted the historical row — zero FK references so the merge was trivial). Recovered ~1,589 Popham rows.
+
+**Where the same pattern could bite future provinces:**
+- Any province that adopts the "LIMS GraphQL historical-roster enrichment" pattern (BC-specific for now) inherits the duplicate-row risk if the enrichment script doesn't UPSERT on name for rows missing the canonical ID.
+- The compound-surname fix now lives in `bc_hansard.py`; if we clone that resolver for another legislature, copy the 3+-token branch too.
+
+## ★ Presiding-officer resolution — Tier 1 live 2026-04-20
+
+BC "The Speaker" attributions were already resolved at ingest time by `bc_hansard.py`'s `BC_PARLIAMENT_SPEAKER` dict + `sitting_speaker_name` fallback. As of 2026-04-20 this is **backstopped** (not replaced) by shared `presiding_officer_resolver.py` which seeds BC's Speaker roster into `politician_terms` for schema consistency with AB and any future province.
+
+**Why seed terms even though BC Hansard already resolves Speaker at ingest:**
+1. Single source of truth — `politician_terms` is the canonical place for "who held office X between dates Y–Z". Keeping BC out of it creates a weird asymmetry with AB.
+2. The in-code dict is keyed on `parliament` only — it silently gets the 41st Parliament wrong because that parliament had three Speakers (Reid → Thomson → Plecas). Term-based lookup handles the mid-parliament switch; dict lookup doesn't. Post-pass `resolve-presiding-speakers --province BC` can catch any drift the ingest-time path misses.
+3. Future `bc_hansard.py` cleanup can retire `BC_PARLIAMENT_SPEAKER` entirely once we confirm the term-based path covers every existing case.
+
+**BC Speaker roster (seeded into `politician_terms`, `source='presiding_officer_seed'`):**
+
+| Speaker | Start | End | Parliament |
+|---|---|---|---:|
+| Bill Barisoff | 2005-05-17 | 2013-05-14 | 38, 39 |
+| Linda Reid | 2013-05-14 | 2017-06-22 | 40 |
+| Steve Thomson | 2017-06-22 | 2017-06-29 | 41 (7 days) |
+| Darryl Plecas | 2017-09-08 | 2020-12-07 | 41 |
+| Raj Chouhan | 2020-12-07 | — | 42, 43 |
+
+Gap between Thomson (ends June 29, 2017) and Plecas (starts Sept 8, 2017) = summer recess; no Hansard falls in that window so no attribution is lost. Sources: Wikipedia "Speaker of the Legislative Assembly of British Columbia" + "41st Parliament of British Columbia".
+
+**Out of scope (Tier 2/3):** Deputy Speaker (4,952 rows), The Chair (7,749), various Clerk / Law-Clerk / Lt.-Governor ceremonial roles (~60). Tier 2 needs a per-parliament Deputy Speaker roster (no clean public source; would need Journals scrape). Tier 3 (Committee of the Whole Chair) is parser-level — `bc_hansard_parse.py` would need to capture `<Proceedings-Heading>` text like "R. Leonard in the chair" and attribute subsequent `The Chair` lines within that block to the captured person.
 
 ## Voting Records / Divisions
 
@@ -166,10 +205,14 @@ curl -s -X POST -H "Content-Type: application/json" \
 - [x] Schema drafted — shared schema applies; no new migration needed beyond `0011_politician_lims_member_id.sql`
 - [x] Ingestion prototyped (LIMS PDMS pipeline)
 - [x] Production ingestion live (bills: 43-2 current, 36 bills / 92 events / 36 sponsors / 36 FK-linked)
-- [x] Production ingestion live (Hansard: 43-2 current, 40 sittings / 4,800 speeches / 89.5% politician-linked)
-- [ ] Historical backfill — bills (PDMS serves every session back to 1872) + Hansard (HDMS archives from 1970)
+- [x] Production ingestion live (Hansard: full P38-S4 → P43-S2 backfill, 197,888 speeches / 90.56% politician-linked as of 2026-04-20)
+- [x] Historical MLA roster enrichment (376 MLAs via LIMS GraphQL `allMembers` — `scripts/bc-enrich-historical-mlas.py`)
+- [x] Resolver bug fixes (compound-surname initial-last + duplicate-Popham merge, 2026-04-20)
+- [x] Tier 1 presiding-officer (Speaker) terms seeded into `politician_terms` (2026-04-20)
+- [ ] Historical backfill — bills (PDMS serves every session back to 1872); Hansard (HDMS archives from 1970, pre-P38 not yet ingested)
 - [ ] Hansard scheduler cron (Blues poller + Final sweep)
-- [ ] Deputy Speaker / Committee Chair resolution (~10% of role-only Hansard rows)
+- [ ] Tier 2 presiding officers — Deputy Speaker (4,952 rows) — needs per-parliament roster source
+- [ ] Tier 3 presiding officers — Committee of the Whole Chair (7,749 rows) — needs parser-level extraction of "X in the chair" proceedings headers
 - [ ] Committee transcripts (`CommitteeA-Blues.htm` / `CommitteeC-Blues.htm` — skipped in v1)
 - [ ] Votes
 - [ ] LIMS GraphQL member-enrichment workstream (optional, independent of bills)

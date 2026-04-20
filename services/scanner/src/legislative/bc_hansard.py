@@ -475,15 +475,19 @@ class SpeakerLookup:
             if hits and len(hits) > 1:
                 return None, "ambiguous"
 
-        # Initial-last pass (pre-P43 Hansard style: "P. Milobar", "K. Conroy")
-        # Normalise to "p milobar" and look up against the initial+last index.
+        # Initial-last pass (pre-P43 Hansard style: "P. Milobar", "K. Conroy",
+        # "M. de Jong"). The by_initial_last index is keyed on
+        # "{initial} {last_token_of_surname}" (see load_bc_speaker_lookup),
+        # so compound surnames that normalise to 3+ tokens ("m de jong")
+        # must be reduced to "m jong" for the lookup to hit.
         for c in candidates:
             key = _norm(c)
             if not key or " " not in key:
                 continue
             tokens = key.split()
-            if len(tokens) == 2 and len(tokens[0]) == 1:
-                hits = self.by_initial_last.get(key)
+            if len(tokens) >= 2 and len(tokens[0]) == 1:
+                lookup_key = f"{tokens[0]} {tokens[-1]}"
+                hits = self.by_initial_last.get(lookup_key)
                 if hits and len(hits) == 1:
                     return hits[0], "resolved"
                 if hits and len(hits) > 1:
