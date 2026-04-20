@@ -87,6 +87,15 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
         SpeakerTerm("Darryl Plecas",   "Darryl",  "Plecas",   date(2017, 9,  8), date(2020, 12, 7)),
         SpeakerTerm("Raj Chouhan",     "Raj",     "Chouhan",  date(2020, 12, 7), None),
     ],
+    # Quebec: Presidents of the Assemblée nationale covering the 42nd
+    # + 43rd legislatures (current Hansard ingest scope). "Le Président"
+    # / "La Présidente" is the QC equivalent of "The Speaker".
+    # Source: Wikipedia "Président de l'Assemblée nationale du Québec"
+    # + assnat.qc.ca historical records.
+    "QC": [
+        SpeakerTerm("François Paradis", "François", "Paradis", date(2018, 11, 28), date(2022, 11, 29)),
+        SpeakerTerm("Nathalie Roy",     "Nathalie", "Roy",     date(2022, 11, 29), None),
+    ],
 }
 
 
@@ -219,17 +228,37 @@ class ResolveStats:
     chunks_updated: int = 0
 
 
-# Which roles/raw-names indicate a "The Speaker" attribution. We only
-# resolve this one role here — Deputy/Acting/Chair are NOT covered.
-_SPEAKER_ROLE_VALUES = ("The Speaker", "Speaker")
+# Which `speeches.speaker_role` values indicate the presiding Speaker for
+# each jurisdiction. Tier 1 only — Deputy Speaker / Chair are NOT covered.
+# Parser modules must emit these exact strings; if you add a new
+# jurisdiction, check which canonical role(s) its parser emits for the
+# main Speaker chair and add them here.
+_SPEAKER_ROLE_BY_PROVINCE: dict[str, tuple[str, ...]] = {
+    "AB": ("The Speaker", "Speaker"),
+    "BC": ("The Speaker", "Speaker"),
+    # Quebec: Journal des débats labels the Speaker "Le Président" /
+    # "La Présidente"; the qc_hansard parser normalises both to
+    # "Le Président". "Le Vice-Président" (Deputy) is Tier 2 and
+    # intentionally excluded.
+    "QC": ("Le Président",),
+}
 
-# Speaker_name_raw fallbacks for rows that lack a speaker_role. AB Hansard
-# occasionally stores "Mr. Speaker" directly in speaker_name_raw for
-# older eras (~40 rows observed); we match those too.
+# Back-compat default for any province without an explicit mapping.
+_DEFAULT_SPEAKER_ROLE_VALUES: tuple[str, ...] = ("The Speaker", "Speaker")
+
+# Speaker_name_raw fallbacks for rows where `speaker_role` is NULL but the
+# raw attribution line clearly indicates the Speaker. AB Hansard occasionally
+# stores "Mr. Speaker" directly in speaker_name_raw for older eras
+# (~40 rows observed). These are added to the OR-match regardless of
+# province — they're English-only and harmless on QC rows.
 _SPEAKER_NAME_PATTERNS = (
     "Mr. Speaker", "Madam Speaker", "Madame Speaker",
     "The Speaker",
 )
+
+
+def _speaker_role_values(province: str) -> tuple[str, ...]:
+    return _SPEAKER_ROLE_BY_PROVINCE.get(province, _DEFAULT_SPEAKER_ROLE_VALUES)
 
 
 async def resolve_speakers(
@@ -262,7 +291,7 @@ async def resolve_speakers(
           FROM speeches s
          WHERE {where}
     """
-    params: list = [province, list(_SPEAKER_ROLE_VALUES), list(_SPEAKER_NAME_PATTERNS)]
+    params: list = [province, list(_speaker_role_values(province)), list(_SPEAKER_NAME_PATTERNS)]
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
 
@@ -359,7 +388,7 @@ async def resolve_speakers(
            AND s.politician_id IS NOT NULL
            AND sc.politician_id IS DISTINCT FROM s.politician_id
         """,
-        province, list(_SPEAKER_ROLE_VALUES),
+        province, list(_speaker_role_values(province)),
     )
     try:
         stats.chunks_updated += int(reconcile.split()[-1])

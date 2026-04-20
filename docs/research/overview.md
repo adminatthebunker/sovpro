@@ -2,8 +2,8 @@
 
 > Shared methodology, schema log, and progress tracking for the Canadian Political Data legislative-data effort. Per-jurisdiction dossiers (federal + 13 provinces/territories) are siblings of this file in `docs/research/`. See [`README.md`](./README.md) for the index.
 
-**Status:** Active — federal Hansard + NS + ON + BC + QC + AB + NB + NL + **NT + NU** bills layer in production (10 of 14 Canadian legislatures including federal); MB and SK deferred (PDF-only pair); PEI and YT deferred (CAPTCHA / Cloudflare).
-**Last updated:** 2026-04-16
+**Status:** Active — federal Hansard + NS + ON + BC + QC + AB + NB + NL + **NT + NU** bills layer in production (10 of 14 Canadian legislatures including federal); **QC Hansard live** for session 43-2 (2026-04-20, third provincial Hansard pipeline after AB + BC); MB and SK deferred (PDF-only pair); PEI and YT deferred (CAPTCHA / Cloudflare).
+**Last updated:** 2026-04-20
 
 ## Implementation Log
 

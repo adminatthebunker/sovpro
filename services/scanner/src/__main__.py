@@ -1546,6 +1546,88 @@ def cmd_resolve_bc_speakers(ctx: click.Context, limit: Optional[int]) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("ingest-qc-hansard")
+@click.option("--parliament", type=int, required=True,
+              help="QC parliament (législature) number (e.g. 43).")
+@click.option("--session", type=int, required=True,
+              help="Session within the parliament (e.g. 2).")
+@click.option("--since", type=str, default=None,
+              help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only fetch sittings on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-sittings", type=int, default=None,
+              help="Cap on sittings processed (newest-first when capped).")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.option("--url", "one_off_url", type=str, default=None,
+              help="Bypass discovery and ingest a single transcript URL directly.")
+@click.pass_context
+def cmd_ingest_qc_hansard(
+    ctx: click.Context, parliament, session, since, until,
+    limit_sittings, limit_speeches, one_off_url,
+) -> None:
+    """Ingest Quebec Journal des débats (HTML) → speeches table.
+
+    Discovery: ASP.NET WebForms listing at assnat.qc.ca, paginated via
+    ViewState postbacks with the session filter set (e.g. 1617 = 43-2).
+
+    Parser: QC markup uses <p><b>Honorific Surname :</b> speech…</p>.
+    Speaker resolution uses politicians.qc_assnat_id (enrich-qc-mna-ids
+    populates this). Presiding-officer ("Le Président") rows are left
+    NULL here and resolved in a post-pass via resolve-presiding-speakers.
+
+    Idempotent via UNIQUE (source_system, source_url, sequence).
+    """
+    from datetime import date as _date
+    from .legislative.qc_hansard import ingest as _ingest
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        stats = await _ingest(
+            db,
+            parliament=parliament,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_sittings=limit_sittings,
+            limit_speeches=limit_speeches,
+            one_off_url=one_off_url,
+        )
+        console.print(
+            f"[green]ingest-qc-hansard[/green]: "
+            f"sittings={stats.sittings_scanned} seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} parse_errors={stats.parse_errors} "
+            f"resolved={stats.speeches_resolved} role_only={stats.speeches_role_only} "
+            f"ambiguous={stats.speeches_ambiguous} unresolved={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-qc-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_qc_speakers(ctx: click.Context, limit: Optional[int]) -> None:
+    """Re-resolve politician_id on QC speeches with NULL politician_id.
+
+    Run after expanding the QC MNA roster or fixing name normalization.
+    Idempotent.
+    """
+    from .legislative.qc_hansard import resolve_qc_speakers as _resolve
+
+    async def _wrap(db: Database) -> None:
+        stats = await _resolve(db, limit=limit)
+        console.print(
+            f"[green]resolve-qc-speakers[/green]: "
+            f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
+            f"still_unresolved={stats.still_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("backfill-politicians-openparliament")
 @click.option("--limit", type=int, default=None,
               help="Cap slugs fetched (smoke-test aid). Omit for full backfill.")
@@ -1728,7 +1810,7 @@ def cmd_refresh_coverage_stats(ctx: click.Context) -> None:
 
 
 @cli.command("resolve-presiding-speakers")
-@click.option("--province", type=click.Choice(["AB", "BC"]), default="AB",
+@click.option("--province", type=click.Choice(["AB", "BC", "QC"]), default="AB",
               help="Jurisdiction whose Speaker roster to seed + resolve.")
 @click.option("--limit", type=int, default=None,
               help="Cap candidate speeches scanned (smoke-test aid).")

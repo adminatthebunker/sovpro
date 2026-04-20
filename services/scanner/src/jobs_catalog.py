@@ -107,6 +107,34 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap speeches scanned (smoke-test aid)."},
         ],
     },
+    "ingest-qc-hansard": {
+        "description": "Pull Quebec Journal des débats (HTML) into `speeches`. Bilingual source, French primary.",
+        "cli": "ingest-qc-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "parliament", "type": "int", "required": True,
+             "help": "QC parliament (législature) number (e.g. 43)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the parliament (e.g. 2)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed this run (newest-first when capped)."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-qc-speakers": {
+        "description": "Re-resolve politician_id on QC speeches with NULL politician_id.",
+        "cli": "resolve-qc-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
     "chunk-speeches": {
         "description": "Split speeches.text into retrievable `speech_chunks` rows (idempotent).",
         "cli": "chunk-speeches",
@@ -142,7 +170,7 @@ COMMANDS: dict[str, dict[str, Any]] = {
         "category": "hansard",
         "args": [
             {"name": "province", "type": "enum", "required": False, "default": "AB",
-             "choices": ["AB", "BC"],
+             "choices": ["AB", "BC", "QC"],
              "help": "Which province's Speaker roster to resolve."},
             {"name": "limit", "type": "int", "required": False,
              "help": "Cap candidate speeches scanned (smoke-test aid)."},
