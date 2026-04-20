@@ -18,20 +18,19 @@ Read `docs/goals.md` and `docs/plans/semantic-layer.md` first — those are the 
 - **Bilingual**: 76% English (184,221), 24% French (57,793).
 - **Speaker-resolved** to the `politicians` FK on 69.9% of chunks (the rest are Speakers/Chairs/procedural staff — intentional).
 - Chunks have denormalised filter columns already: `level`, `province_territory`, `spoken_at`, `party_at_time`, `session_id`, `politician_id`. Indexed.
-- Historical Parliaments 38-43 (~1M additional chunks) are the next ingest. Will stream into `embedding_next` when they land.
+- Historical Parliaments 38-43 are now ingested — the full federal corpus sits at **1,716,550 speeches / 2,144,232 chunks** (2026-04-19) with 2,067,709 (96.4%) embedded.
 
-### Two vector columns live in parallel
+### One vector column
 
-Read `db/migrations/0023_embedding_next.sql`.
+The blue-green migration completed on 2026-04-18 and the legacy column was dropped in migration 0025.
 
 | Column | Model | Dim | Status |
 |---|---|---:|---|
-| `embedding` | BGE-M3 fp16 | 1024 | populated on 242,014 chunks |
-| `embedding_next` | Qwen3-Embedding-0.6B fp16 (Matryoshka 1024) | 1024 | **currently backfilling, ETA ~1.5h from 2026-04-18 20:00 UTC** |
+| `embedding` | Qwen3-Embedding-0.6B fp16 | 1024 | 2,067,709 / 2,144,232 chunks populated (96.4%) |
 
-Both have HNSW indexes (`vector_cosine_ops`, `m=16, ef_construction=64`). This is a blue-green migration: `embedding` is the fallback, `embedding_next` is the target. Once you've validated the search API against `embedding_next` for a few weeks, we drop the old column in a follow-up migration.
+HNSW index `idx_chunks_embedding` (`vector_cosine_ops`, `m=16, ef_construction=64`). The model tag is stored on each row in `embedding_model` (`qwen3-embedding-0.6b`); check it before mixing vectors across any future model swap. **Do not reintroduce `_next` suffixed columns** — one canonical column, one HNSW index going forward.
 
-**Dim is 1024 for both.** Qwen3-Embedding-0.6B is natively 1024-dim; no Matryoshka truncation is being applied.
+**Dim is 1024.** Qwen3-Embedding-0.6B is natively 1024-dim; no Matryoshka truncation is being applied.
 
 ### Eval results that drove the model choice
 
@@ -52,9 +51,9 @@ Documents are NOT prefixed — indexing already wrote them unwrapped. This is th
 
 ### Embedding serving
 
-- **`tei` service** in docker-compose (profile `embedding-qwen3`) serves Qwen3-Embedding-0.6B via HuggingFace Text Embeddings Inference. Reachable at `http://tei:80/embed`. Body: `{"inputs": [...], "normalize": true}` → returns a bare JSON array of float arrays.
-- Measured at ~75 chunks/sec on an RTX 4050 Mobile. For query-time usage you'll be encoding one query at a time — ~20 ms latency.
-- The old `embed` service (BGE-M3 + BGE-reranker-v2-m3) stays in the tree for rollback + for reranker access. Only one of them should run at a time on the 6 GiB card.
+- **`tei` service** in docker-compose serves Qwen3-Embedding-0.6B via HuggingFace Text Embeddings Inference. Reachable at `http://tei:80/embed` (TEI-native) or `http://tei:80/v1/embeddings` (OpenAI-compatible). TEI-native body: `{"inputs": [...], "normalize": true}` → returns a bare JSON array of float arrays.
+- Measured at 50.9 chunks/sec end-to-end (75 chunks/sec pure GPU) on an RTX 4050 Mobile. For query-time usage you'll be encoding one query at a time — ~20 ms latency.
+- The legacy custom embed service (BGE-M3 + BGE-reranker-v2-m3) stays in the tree at `services/embed/` for rollback but has **no compose service** — it won't start accidentally. If you need the reranker back, stand it up as its own compose service rather than co-tenanting with `tei` on the 6 GiB card.
 
 ### Postgres full-text search is also populated
 
@@ -110,9 +109,9 @@ Pure HNSW gets you reasonable quality; BM25+HNSW union is the usual upgrade. Opt
 
 - **Simple union:** HNSW top-50 ∪ BM25 top-50 → dedupe → rerank-by-score.
 - **RRF (Reciprocal Rank Fusion):** score = Σ 1/(k + rank). Known-good for this pattern.
-- **Staged:** HNSW top-50 → BGE-reranker-v2-m3 → return top-10. Requires `sw-embed` up alongside `tei`, which competes for GPU — deal-breaker unless you switch between them per request (slow) or stand up a second GPU.
+- **Staged:** HNSW top-50 → cross-encoder rerank → return top-10. The legacy BGE-reranker-v2-m3 wrapper was retired on 2026-04-19; there is no reranker service running. If a future eval justifies putting one back, stand it up as a distinct compose service — don't co-tenant with `tei` on the 6 GiB card.
 
-Start with pure HNSW on `embedding_next`, ship it, measure, then layer hybrid in once you have real query patterns.
+Start with pure HNSW on `embedding`, ship it, measure, then layer hybrid in once you have real query patterns.
 
 ### 3. Query highlighting / snippet extraction
 
@@ -146,7 +145,7 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 3. `docs/plans/semantic-layer.md` — schema of record for everything you're querying.
 4. `docs/plans/embedding-model-comparison.md` — why Qwen3-0.6B, known quality deltas, decisions log.
 5. `services/embed/eval/REPORT.md` — measured retrieval numbers to regress against.
-6. `db/migrations/0017_speech_chunks.sql` + `0023_embedding_next.sql` — the actual columns + indexes you'll query.
+6. `db/migrations/0017_speech_chunks.sql` + `0023_embedding_next.sql` + `0025_drop_legacy_embedding_column.sql` — the final shape of the vector column you'll query (blue-green migration finished in 0025).
 7. `services/api/src/routes/admin.ts` — Fastify + zod pattern match for a new route.
 8. `services/scanner/src/legislative/speech_embedder.py` — the TEI call pattern (`_embed_batch_tei`) and the `Instruct: … Query: …` prompt handling, mirror it client-side for queries.
 9. `services/frontend/src/pages/` — existing page patterns if you're building the search UI too.
@@ -156,7 +155,7 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 ## Known open questions that need a product call
 
 1. **Politician-scoped search vs corpus-wide search** — same UI with a filter, or a dedicated "speeches by MP X" sub-view?
-2. **Saved searches / alerts** — "email me when a new speech matching 'X' is indexed." Schema ready (`scanner_schedules` precedent); product decision.
+2. **Saved searches / alerts** — ✅ **shipped 2026-04-20.** Users can save a search (same filter payload `/search/speeches` accepts) and opt into daily or weekly email digests of new matches. Magic-link passwordless accounts gate the feature; alerts run out of a new `alerts-worker` compose service. Schema: `0027_users_and_saved_searches.sql`. Full details: CLAUDE.md § User accounts.
 3. **Permalinks for individual chunks** — we have `source_url` + `source_anchor` back to the Hansard source. Should the result card deep-link to the Hansard page, or to an internal `/chunk/<uuid>` page?
 4. **Cross-lingual UX** — since Qwen3 is weaker here, should we default `lang=any` (one result list, mixed quality on bilingual queries) or default to user's language + offer a "search in both" toggle?
 5. **Result context expansion** — click a chunk to see its parent speech? The surrounding chunks in the same speech?
@@ -166,8 +165,8 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 ## Getting started checklist
 
 - [ ] Read the eight files above.
-- [ ] Confirm `embedding_next` is populated (`SELECT count(*) FILTER (WHERE embedding_next IS NOT NULL) FROM speech_chunks;` — should be 242,014 by the time you start).
-- [ ] Confirm `tei` service is up (`docker compose --profile embedding-qwen3 up -d tei; curl http://localhost:18080/health` — you may need to expose the port).
+- [ ] Confirm `embedding` is populated (`SELECT count(*) FILTER (WHERE embedding IS NOT NULL) FROM speech_chunks;` — ~2.07 M out of 2.14 M as of 2026-04-19).
+- [ ] Confirm `tei` service is up (`docker compose up -d tei`, then `docker exec sw-tei curl -s http://localhost:80/health`).
 - [ ] Prototype the query-encoding path: POST one query to `tei:80/embed` with the instruct wrapper, make sure you get back a 1024-dim vector.
 - [ ] Write the first `/search/speeches` endpoint with zod schema + a basic HNSW query. Ship it, then iterate.
 - [ ] Wire up `run_eval_search.py` against your new endpoint. Drop the numbers into `services/embed/eval/REPORT.md` as the third row.

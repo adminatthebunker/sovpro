@@ -15,6 +15,19 @@ const schema = z.object({
   // === "production" without ADMIN_TOKEN is a boot-time warning.
   ADMIN_TOKEN: z.string().min(32).optional(),
   TEI_URL: z.string().default("http://tei:80"),
+  // End-user auth (phase 1 magic-link). Unset → /api/v1/auth/* and
+  // /api/v1/me/* respond 503 (feature disabled), same ergonomics as
+  // ADMIN_TOKEN.
+  JWT_SECRET: z.string().min(32).optional(),
+  // SMTP (Proton submission in prod). Unset → email.ts runs in
+  // dev-stub mode and logs would-be links to server logs.
+  SMTP_HOST: z.string().default("smtp.protonmail.ch"),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USERNAME: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  // Used when building magic-link URLs in outgoing emails.
+  PUBLIC_SITE_URL: z.string().url().default("http://localhost:5173"),
 });
 
 export const config = (() => {
@@ -34,12 +47,33 @@ export const config = (() => {
     webhookSecret: env.CHANGE_WEBHOOK_SECRET ?? env.WEBHOOK_SECRET ?? "",
     adminToken: env.ADMIN_TOKEN ?? "",
     teiUrl: env.TEI_URL.replace(/\/$/, ""),
+    jwtSecret: env.JWT_SECRET ?? "",
+    smtp: {
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      username: env.SMTP_USERNAME ?? "",
+      password: env.SMTP_PASSWORD ?? "",
+      from: env.SMTP_FROM ?? "",
+    },
+    publicSiteUrl: env.PUBLIC_SITE_URL.replace(/\/$/, ""),
   };
 })();
 
 if (config.env === "production" && !config.adminToken) {
   console.warn(
     "[config] ADMIN_TOKEN is unset in production; /api/v1/admin/* routes will reject all callers."
+  );
+}
+
+if (config.env === "production" && !config.jwtSecret) {
+  console.warn(
+    "[config] JWT_SECRET is unset in production; /api/v1/auth/* + /api/v1/me/* will reject all callers."
+  );
+}
+
+if (config.env === "production" && (!config.smtp.password || !config.smtp.username)) {
+  console.warn(
+    "[config] SMTP credentials unset in production; magic-link emails will be logged to stdout instead of sent."
   );
 }
 

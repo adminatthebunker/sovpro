@@ -1,10 +1,12 @@
-# CLAUDE.md — SovereignWatch
+# CLAUDE.md — SovereignWatch / Canadian Political Data
 
 Project-level instructions for any AI agent working in this repo. Read before writing code.
 
 ## One-line purpose
 
-SovereignWatch is becoming **the definitive source of Canadian political data** — who represents whom, what they've said, how they've voted, where their infrastructure lives. See `docs/goals.md` for the full product framing. It is **not apolitical**; it takes progressive and democratic stances rooted in access-to-information principles.
+**SovereignWatch** is the internal / codebase name. **Canadian Political Data** (domain: `canadianpoliticaldata.ca`) is the public-facing brand — use CPD in blog posts, LinkedIn, and external copy, and in commit messages, migrations, and internal docs.
+
+The project is becoming **the definitive source of Canadian political data** — who represents whom, what they've said, how they've voted, where their infrastructure lives. See `docs/goals.md` for the full product framing. It is **not apolitical**; it takes progressive and democratic stances rooted in access-to-information principles.
 
 ## Architectural docs — read in this order
 
@@ -25,11 +27,13 @@ If you find yourself guessing at product direction, the goals doc is the authori
 - **API:** Node 20 + Fastify, zod validation, `services/api/`.
 - **Frontend:** React 18 + Vite + Leaflet + React Router 6, `services/frontend/`.
 - **Scanner:** Python 3.13 + asyncio + Click, `services/scanner/`.
-- **Embed service:** Python + FastAPI + FlagEmbedding (BGE-M3 + BGE-reranker-v2-m3), **CUDA fp16 inference**, `services/embed/`. Exposes `POST /embed` (1024-dim dense) and `POST /rerank` (cross-encoder scores). Model cache on `embedmodels` named volume. Service hostname on the `sw` network is `embed:8000`.
-  - **Base image:** `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. GPU attached via `deploy.resources.reservations.devices` (driver `nvidia`, capabilities `[gpu]`). `/health` reports `device`, `device_name`, and `fp16` so the mode is introspectable.
-  - **Override to CPU mode** (for hosts without a GPU): swap the Dockerfile base back to `python:3.11-slim`, flip `use_fp16=False` at the top of `server.py`, remove the `reservations.devices` block in compose. The CPU variant lives in git history at commit `ef26d03` for reference.
-  - **Host memory cap** defaults to 6 GiB (`EMBED_MEMORY` in `.env`). VRAM usage is ~3 GiB at batch=64, well under the RTX 4050's 6 GiB. `docker compose stop embed` releases the card cleanly if you need it for something else.
-  - Benchmark on RTX 4050 Mobile (2026-04-16): ~68 texts/sec at batch=32, ~125 at batch=64, ~205 at batch=128. 50k speeches in ~4 min at peak. 1M speeches (all federal Hansard 1994+) ≈ 80 min of continuous compute. Cross-precision cosine similarity between CPU fp32 and GPU fp16 vectors measured at 0.999999 — existing vectors are compatible with future GPU-embedded queries.
+- **Embed service:** HuggingFace **Text Embeddings Inference (TEI)** serving **Qwen3-Embedding-0.6B** (1024-dim, fp16 on GPU). Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9`, compose service `tei`, reachable inside compose at `http://tei:80` (OpenAI-compatible `POST /v1/embeddings` + TEI-native `POST /embed`).
+  - **Switched from BGE-M3 on 2026-04-19.** The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) lives on disk at `services/embed/` for rollback only; no compose service references it. The legacy `embedding` column on `speech_chunks` was dropped in migration 0025 after the 1.48 M-chunk corpus was re-embedded with Qwen3 (see `docs/linkedin-embedding-rebuild-post.md` and `memory/project_embed_regression.md` for the incident that preceded the migration).
+  - **GPU attach:** `deploy.resources.reservations.devices` (driver `nvidia`, capabilities `[gpu]`). `TEI_MEMORY` caps host memory at 6 GiB; VRAM sits well under the RTX 4050's 6 GiB at `--max-batch-tokens=16384`. `docker compose stop tei` releases the card cleanly.
+  - **Model cache:** `embedmodels` named volume mounted at `/data` (TEI expects HF_HOME-style layout there). First boot pulls ~1.3 GB from HuggingFace; subsequent boots are seconds. Volume is shared with the legacy embed layout so a rollback wouldn't re-download.
+  - **Reranker:** **gone** from the critical path. Qwen3 retrieval quality on multilingual Hansard proved strong enough that the cross-encoder rerank stage was removed. If you re-introduce reranking, do it as a separate service — don't resurrect the FlagEmbedding wrapper just for it.
+  - **Throughput (2026-04-18 re-embed, RTX 4050 Mobile):** 242 k chunks in 1 h 19 m = **50.9 chunks/sec** end-to-end through the scanner's batched-UNNEST write path; pure GPU throughput ~75 chunks/sec. The end-to-end number is the one that matters for capacity planning; pure-GPU figures ignore DB write contention.
+  - **Env the scanner reads:** `EMBED_URL` (default `http://tei:80`), `EMBED_MODEL_TAG` (default `qwen3-embedding-0.6b`, stored in `speech_chunks.embedding_model`), `EMBED_BATCH` (default 32).
 - **Orchestration:** Docker Compose, single host, Pangolin tunnel to public.
 - **Public edge:** nginx → api / frontend / uptime-kuma.
 
@@ -46,7 +50,7 @@ Every upstream legislature that ships a stable integer or slug ID for its member
 - Quebec: `qc_assnat_id` (int)
 - Alberta: `ab_assembly_mid` (zero-padded text)
 
-When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. Sponsor resolution currently stands at 99.7% (360/361) because of this pattern.
+When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. Current state: 840 of 13,633 `bill_sponsors` rows are FK-linked to politicians — the raw percentage is low because sub-national legislatures with sparse structured rosters (QC, NB, NL, NT, NU) dominate the denominator, while federal + NS + BC + ON + AB sponsor resolution remains >99% where the canonical-ID pattern is in place. Closing the gap means adding ID columns for the remaining legislatures, not rewriting the resolver.
 
 ### 2. Discriminated tables, not per-jurisdiction tables
 
@@ -70,7 +74,7 @@ Before building any new ingestion pipeline, check in order:
 
 **Before starting any new provincial pipeline, pause and ask the user for their research pass.** No probing, no migration, no code until the user has either shared their findings or explicitly said "probe yourself."
 
-As of 2026-04-16 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* Hansard / votes / committees pipeline on top of the 9 live bills pipelines.
+As of 2026-04-19 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* provincial Hansard / votes / committees pipeline on top of the 9 live bills pipelines. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
 
 Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
 
@@ -101,7 +105,7 @@ Schedules table (`scanner_schedules`) is expanded by the same worker — enabled
 
 ### Curated command whitelist
 
-The admin UI exposes a subset of the ~70 scanner commands. Catalog lives in **two places that must stay in sync**:
+The admin UI exposes a subset of the 95 scanner commands. Catalog lives in **two places that must stay in sync**:
 
 - `services/scanner/src/jobs_catalog.py` (authoritative for the worker, maps `key` → `{cli, args}`)
 - The `COMMAND_CATALOG` constant near the top of `services/api/src/routes/admin.ts` (served to the frontend form generator verbatim)
@@ -128,6 +132,74 @@ If they diverge the worker refuses the command with `unknown command` — the UI
 - **Do not mount `/var/run/docker.sock` anywhere.** The worker executes via subprocess in the same container — socket mounting is root-equivalent.
 - **Do not allow arbitrary commands.** Every admin-submitted command goes through the whitelist. `jobs_catalog.build_cli_args` validates args against schema before any subprocess spawn.
 - **Do not log tokens.** Fastify's default logger doesn't log headers; if you enable request-body logging add a redact rule for `headers.authorization`.
+
+## User accounts
+
+Public passwordless auth surface, **completely orthogonal to the admin token**. A request can carry admin bearer, user session cookie, or neither — they're independent trust boundaries.
+
+### Auth model
+
+Magic-link only (no passwords). Email → one-time nonce → httpOnly `sw_session` JWT cookie + non-httpOnly `sw_csrf` cookie (double-submit CSRF on mutating routes). 30-day session TTL. Rotating `JWT_SECRET` is the phase-1 "force logout everyone" button.
+
+The `services/api/src/lib/auth-token.ts` module is the designated IdP-swap seam: `signSessionToken()` / `verifySessionToken()` today emit/verify HS256 JWTs; a future Keycloak/Zitadel/Logto swap replaces those two functions with a JWKS verifier and every route that calls `requireUser` keeps working. Keep the swap surface *there* — do not spread JWT parsing across route handlers.
+
+### Env vars (feature-disabled ergonomics)
+
+| Var | Purpose | Unset behaviour |
+|---|---|---|
+| `JWT_SECRET` | HS256 session-cookie signing key. `openssl rand -hex 32`. | `/api/v1/auth/*` + `/api/v1/me/*` return **503**. |
+| `SMTP_HOST` / `SMTP_PORT` | Proton submission (`smtp.protonmail.ch:587`). | Defaults applied. |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | Proton per-address submission token. | Emails logged to server stdout instead of sent (dev-stub mode). Auth flow still returns 202 so local smoke-tests work. |
+| `SMTP_FROM` | Friendly `From:` header. | As above. |
+| `PUBLIC_SITE_URL` | Used to build magic-link + digest URLs. | Defaults to `http://localhost:5173`. |
+
+### Execution pipeline
+
+1. User submits email on `/login` → `POST /api/v1/auth/request-link`. Rate-limited 5/hr/IP + 3/hr/email.
+2. API generates a 256-bit nonce, stores SHA-256 hash in `login_tokens` (15-min TTL), emails the plaintext nonce in a link. **Plaintext nonce is never stored.** DB leak cannot leak working links.
+3. User clicks link → `/auth/verify?token=…` → `POST /api/v1/auth/verify`. API redeems token (marks `consumed_at`, no re-use), upserts `users` row, mints JWT, sets session + CSRF cookies.
+4. `/api/v1/me/*` routes use `requireUser` preHandler. Mutating routes additionally require `X-CSRF-Token: <value>` matching the `sw_csrf` cookie.
+
+### Saved searches
+
+`saved_searches` stores `filter_payload` (the same 12-field struct `/search/speeches` validates) plus a cached `query_embedding VECTOR(1024)` computed once at save time from TEI. The alerts worker reads the cached vector directly — **TEI is never called by the worker.**
+
+The create-endpoint reuses `baseFilterSchema` exported from `services/api/src/routes/search.ts` — single source of truth for "what's a valid search." Do not fork the shape.
+
+### Alerts worker
+
+Separate compose service `alerts-worker` (Python, same scanner image). Poll interval `ALERTS_POLL_INTERVAL` (default 300s). Every tick: fetch `saved_searches` due by cadence (`alert_cadence != 'none'` and `last_checked_at` older than the cadence), re-run the HNSW query constrained to `spoken_at > last_checked_at`, send digest if matches, advance watermarks. Digest renders both text/plain and text/html.
+
+Complexity ceiling: O(users × saved-searches) HNSW queries per day. At 1000 × 3 = 3000 queries/day, trivial on the existing DB.
+
+### Files involved
+
+| Concern | Path |
+|---|---|
+| Migration | `db/migrations/0027_users_and_saved_searches.sql` |
+| Token sign/verify (IdP-swap seam) | `services/api/src/lib/auth-token.ts` |
+| Email adapter (nodemailer SMTP) | `services/api/src/lib/email.ts` |
+| CSRF double-submit helper | `services/api/src/lib/csrf.ts` |
+| User-auth preHandlers | `services/api/src/middleware/user-auth.ts` |
+| Auth routes | `services/api/src/routes/auth.ts` |
+| `/me` routes + saved-searches CRUD | `services/api/src/routes/me.ts` |
+| Frontend auth hook | `services/frontend/src/hooks/useUserAuth.ts` |
+| Frontend pages | `LoginPage`, `VerifyPage`, `AccountPage`, `SavedSearchesPage` under `services/frontend/src/pages/` |
+| `SaveSearchButton` (in `/search`) | `services/frontend/src/components/SaveSearchButton.tsx` |
+| Header sign-in indicator | `AuthIndicator` in `services/frontend/src/components/Layout.tsx` |
+| User-auth CSS | `services/frontend/src/styles/user-auth.css` |
+| Alerts worker + digest renderer | `services/scanner/src/alerts_worker.py` |
+| Alerts compose service | `alerts-worker` in `docker-compose.yml` |
+
+### What not to do
+
+- **Do not merge admin and user auth.** Two trust boundaries, deliberately. Admin routes use `ADMIN_TOKEN` bearer header; user routes use the session cookie.
+- **Do not bypass CSRF on new `/me/*` mutations.** Every POST/PATCH/DELETE on `/me/*` runs `requireCsrf` alongside `requireUser`.
+- **Do not store plaintext magic-link nonces** — only `sha256(nonce)` in `login_tokens.token_hash`.
+- **Do not log session cookies or CSRF tokens.** Fastify's default logger skips `Cookie`; add redact rules if custom logging is introduced.
+- **Do not call TEI from the alerts worker.** The query embedding is cached on `saved_searches.query_embedding` at save time; re-embedding at alert time would scale poorly and can drift from the user's original query.
+- **Do not add social login** (Google/Meta/GitHub). Wrong trust model for civic research — leaks user intent to ad platforms.
+- **Do not bump to Keycloak casually.** Revisit only when a concrete need surfaces (partner newsroom SSO, OAuth clients). The `verifyToken` seam is specifically designed so the swap is mechanical.
 
 ## Blog (MDX-in-repo)
 
@@ -174,22 +246,28 @@ Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `d
 
 ### Core tables
 
-- `politicians` — 1,815 rows, per-jurisdiction slug columns (see convention #1).
-- `politician_terms` — role / party / level / constituency over time (expand use in phase 0).
-- `politician_socials` — platform handles, no content.
+- `politicians` — 3,086 rows, per-jurisdiction slug columns (see convention #1).
+- `politician_terms` — role / party / level / constituency over time.
+- `politician_socials` — platform handles, no content. Provenance columns added in 0026.
 - `politician_committees`, `politician_offices` — supporting detail.
+- `politician_changes` — audit trail of mutations to the politicians table.
 - `organizations` — referendum orgs, advocacy, media (20 seeded).
 - `websites`, `infrastructure_scans`, `scan_changes` — the hosting-sovereignty layer.
-- `constituency_boundaries` — current only; phase-0 extends with `effective_from` / `effective_to`.
+- `constituency_boundaries` — temporal (`effective_from` / `effective_to`) as of 0021.
 
-### Legislative tables
+### Legislative tables (current row counts, 2026-04-19)
 
 - `legislative_sessions` — jurisdiction + parliament + session.
-- `bills` / `bill_events` / `bill_sponsors` — shipped for NS / AB / BC / ON / QC / NB / NL / NT / NU (9 jurisdictions, ~3,945 bills, 393/394 sponsors FK-linked).
-- `speeches` / `speech_chunks` / `speech_references` — tables exist (0015–0017 applied). Zero rows yet; ingesters are the next implementation step.
-- `votes` / `vote_positions` — `0018_votes.sql` drafted but **not applied**. Wait for real NT/NU consensus-gov't data before landing.
-- `jurisdiction_sources` — coverage + blockers (seeded with all 14 jurisdictions). Feeds the public coverage dashboard.
+- `bills` / `bill_events` / `bill_sponsors` — **18,782 bills** across NS (3,522) / AB (11,133) / BC (2,276) / ON (104) / QC (497) / NB (33) / NL (1,193) / NT (20) / NU (4). 13,633 sponsor rows; 840 FK-linked to politicians (see convention #1 for why that ratio is not a regression).
+- `speeches` / `speech_chunks` / `speech_references` — **1,716,550 speeches, 2,144,232 chunks**, of which **2,067,709 (96.4%) carry Qwen3-Embedding-0.6B vectors** in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal Hansard is fully ingested; provincial Hansard ingesters are the next build-out.
+- `votes` / `vote_positions` — **still does not exist.** `0018_votes.sql` remains on disk and intentionally unapplied pending real NT/NU consensus-gov't data.
+- `jurisdiction_sources` — coverage + blockers (seeded with all 14 jurisdictions). Feeds the public coverage dashboard. Refreshed by `refresh-coverage-stats` scanner command.
 - `correction_submissions` — corrections inbox (web + email sources).
+- `scanner_jobs` / `scanner_schedules` — admin queue + cron (see Admin panel section).
+
+### Embedding column naming
+
+`speech_chunks` currently has a single vector column named `embedding` (plus `embedding_model` / `embedded_at`). The earlier blue-green `embedding_next` column from the Qwen3 migration (0023) was renamed back to `embedding` in 0025 once the BGE-M3 column was dropped. Do **not** reintroduce `_next` suffixes — one canonical column, one HNSW index.
 
 ### Materialized views
 
@@ -203,22 +281,31 @@ Numbered sequentially under `db/migrations/`. No automated runner — apply manu
 docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrations/<file>.sql
 ```
 
-**Latest is `0021_constituency_boundary_temporal.sql`.** `0018_votes.sql` sits on disk but is intentionally unapplied pending real NT/NU consensus-gov't data. See `docs/plans/semantic-layer.md` for the rationale per file.
+**Latest applied migrations (2026-04-19):**
+- `0022_scanner_jobs_and_schedules.sql` — admin queue + cron table.
+- `0023_embedding_next.sql` — parallel Qwen3 vector column for blue-green re-embed.
+- `0024_fix_federal_session_tagging.sql` — retag federal speeches into correct parliaments.
+- `0025_drop_legacy_embedding_column.sql` — drop BGE-M3 column, rename `embedding_next` → `embedding`.
+- `0026_politician_photo_local.sql` and `0026_politician_socials_provenance.sql` — two files share the `0026` number (accidental collision; both applied). When adding the next migration bump to `0027` regardless; do not back-renumber.
+
+**Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
 
 ## Command reference
+
+Operator CLI lives at `cli/sovpro` (bash wrapper over `docker compose`).
 
 ```bash
 sovpro up                 # docker compose up -d --build
 sovpro logs <service>     # tail a service
 sovpro db psql            # interactive psql as sw on sovereignwatch
 sovpro db backup          # writes backups/<timestamp>.sql.gz
-sovpro ingest all         # re-ingest all Open North reps
-sovpro scan full          # re-scan every tracked website
+sovpro ingest all         # seed-orgs + ingest-mps + ingest-mlas + ingest-councils + ingest-ab-extras
+sovpro scan full          # scan --stale-hours 0 (re-scan everything, ignore staleness)
 sovpro doctor             # sanity-check all services
-docker compose run --rm scanner python -m scanner <subcommand>
+docker compose run --rm scanner python -m src <subcommand>
 ```
 
-Every scanner Click subcommand is in `services/scanner/src/__main__.py` — grep there for the full list (70+ commands).
+The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **95 `@cli.command` decorators** as of 2026-04-19. Grep there for the full list.
 
 ## Development workflow
 
@@ -240,7 +327,7 @@ Every scanner Click subcommand is in `services/scanner/src/__main__.py` — grep
 ## What not to do
 
 - **Do not make this apolitical.** It is civic transparency rooted in democratic values and progressive stances. Non-neutrality is a feature.
-- **Do not add hosted API dependencies** (OpenAI, Cohere, etc.) in the critical path. Self-hosted first; hosted only with user sign-off.
+- **Do not add hosted API dependencies** (OpenAI, Cohere, etc.) in the critical path. Self-hosted first; hosted only with user sign-off. The one sanctioned exception is the Anthropic API behind `ANTHROPIC_API_KEY`, used only by `agent-missing-socials` (Tier-3 socials backfill) and gated to abort cleanly when unset.
 - **Do not build per-jurisdiction UI variants** for the same data type. One speeches view, filterable.
 - **Do not redact non-politician names from source text.** Don't surface them as first-class entities either — the distinction lives in retrieval UX, not at ingest.
 - **Do not adopt OpenCivicData `ocd-person/*` IDs.** Per-jurisdiction slug columns + `politician_terms` covers the Canadian context.

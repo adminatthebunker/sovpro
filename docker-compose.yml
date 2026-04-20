@@ -51,6 +51,13 @@ services:
       DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
       CHANGE_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:5173}
+      SMTP_HOST: ${SMTP_HOST:-smtp.protonmail.ch}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     restart: unless-stopped
     networks: [sw]
 
@@ -181,6 +188,40 @@ services:
       - ./services/scanner/src:/app/src
       - assets:/assets
     entrypoint: ["python", "-m", "src", "jobs-worker"]
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Alerts worker (saved-searches digest sender) ──────────────────
+  # Polls saved_searches for due rows (alert_cadence != 'none') and
+  # sends a digest email when new matches land in the corpus. Uses the
+  # same Proton SMTP relay as the API. Idle cost: one query every
+  # ALERTS_POLL_INTERVAL seconds (default 300s); actual email sends are
+  # gated by the per-search cadence (daily / weekly).
+  alerts-worker:
+    build:
+      context: ./services/scanner
+      dockerfile: Dockerfile
+    container_name: sw-alerts-worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      ALERTS_POLL_INTERVAL: ${ALERTS_POLL_INTERVAL:-300}
+      ALERTS_DIGEST_LIMIT: ${ALERTS_DIGEST_LIMIT:-10}
+      SMTP_HOST: ${SMTP_HOST:-smtp.protonmail.ch}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:5173}
+      # Used to HMAC-sign one-click unsubscribe tokens in digest emails
+      # (shared secret with the api service). Unset → digests ship without
+      # List-Unsubscribe headers; deliverability degrades but nothing breaks.
+      JWT_SECRET: ${JWT_SECRET:-}
+    volumes:
+      - ./services/scanner/src:/app/src
+    entrypoint: ["python", "-m", "src", "alerts-worker"]
     restart: unless-stopped
     networks: [sw]
 

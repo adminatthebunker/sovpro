@@ -9,11 +9,24 @@ import {
 import { SpeechFilters } from "../components/SpeechFilters";
 import { SpeechResultCard } from "../components/SpeechResultCard";
 import { SearchDashboard } from "../components/SearchDashboard";
+import { SaveSearchButton } from "../components/SaveSearchButton";
+import { PoliticianResultGroup } from "../components/PoliticianResultGroup";
+import { PoliticianQuickNav } from "../components/PoliticianQuickNav";
 import "../styles/hansard-search.css";
+
+type ViewMode = "timeline" | "politician" | "analysis";
+
+function readView(params: URLSearchParams): ViewMode {
+  const v = params.get("view");
+  if (v === "politician") return "politician";
+  if (v === "analysis") return "analysis";
+  return "timeline";
+}
 
 function readFilter(params: URLSearchParams): SpeechSearchFilter {
   const lang = params.get("lang");
   const level = params.get("level");
+  const view = readView(params);
   return {
     q: params.get("q") ?? "",
     lang: (lang === "en" || lang === "fr" || lang === "any" ? lang : "any") as SpeechSearchFilter["lang"],
@@ -26,10 +39,12 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
     to: params.get("to") ?? undefined,
     page: Number(params.get("page")) || 1,
     limit: 20,
+    group_by: view === "politician" ? "politician" : "timeline",
+    per_group_limit: view === "politician" ? 5 : undefined,
   };
 }
 
-function writeFilter(f: SpeechSearchFilter): URLSearchParams {
+function writeFilter(f: SpeechSearchFilter, view: ViewMode): URLSearchParams {
   const p = new URLSearchParams();
   if (f.q) p.set("q", f.q);
   if (f.lang && f.lang !== "any") p.set("lang", f.lang);
@@ -39,12 +54,15 @@ function writeFilter(f: SpeechSearchFilter): URLSearchParams {
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
   if (f.page && f.page > 1) p.set("page", String(f.page));
+  if (view === "politician") p.set("view", "politician");
+  if (view === "analysis") p.set("view", "analysis");
   return p;
 }
 
 export default function HansardSearchPage() {
   useDocumentTitle("Hansard Search");
   const [searchParams, setSearchParams] = useSearchParams();
+  const view = useMemo(() => readView(searchParams), [searchParams]);
   const filter = useMemo(() => readFilter(searchParams), [searchParams]);
 
   // Local, immediate text value so typing feels instant; the URL +
@@ -59,7 +77,16 @@ export default function HansardSearchPage() {
 
   const applyPatch = (patch: Partial<SpeechSearchFilter>) => {
     const next = { ...filter, ...patch };
-    setSearchParams(writeFilter(next), { replace: false });
+    setSearchParams(writeFilter(next, view), { replace: false });
+  };
+
+  const setView = (next: ViewMode) => {
+    if (next === view) return;
+    // Reset to page 1 on view change so users don't land on a p>1 that
+    // happens to be empty in the other view.
+    const nextFilter = { ...filter, page: 1 };
+    const params = writeFilter(nextFilter, next);
+    setSearchParams(params, { replace: false });
   };
 
   const onQChange = (next: string) => {
@@ -79,21 +106,31 @@ export default function HansardSearchPage() {
   const hasAnyFilter = Boolean(
     filter.level || filter.province_territory || filter.party || filter.from || filter.to,
   );
-  const enabled = Boolean(filter.q && filter.q.trim()) || hasAnyFilter;
+  const hasQuery = Boolean(filter.q && filter.q.trim());
+  // Grouped mode is semantic-only (the API 400s on a q-less grouped call).
+  // Timeline still allows filter-only searches.
+  const enabled = view === "politician" ? hasQuery : (hasQuery || hasAnyFilter);
   const { data, loading, error } = useSpeechSearch(filter, enabled);
   const meta = useSpeechSearchMeta();
 
   const page = filter.page ?? 1;
-  const pages = data?.pages ?? 1;
-  const total = data?.total ?? 0;
+  const timeline = data && data.mode !== "grouped" ? data : null;
+  const grouped = data && data.mode === "grouped" ? data : null;
+  const pages = timeline?.pages ?? 1;
+  const total = timeline?.total ?? 0;
+  const dashboardTotal =
+    timeline?.total ?? (grouped ? grouped.total_politicians : undefined);
 
   return (
     <section className="hansard-search">
       <header className="hansard-search__header">
-        <h2 className="hansard-search__title">Hansard Search</h2>
+        <h2 className="hansard-search__title">
+          <abbr title="The official transcript of what was said in Parliament">Hansard</abbr>{" "}
+          Search
+        </h2>
         <p className="hansard-search__subtitle">
-          Semantic search over Canadian parliamentary speeches. Find what MPs said, not just the
-          words they used.
+          Search Canadian parliamentary speeches by meaning, not just exact words. Try{" "}
+          <em>"rising cost of groceries"</em> — you'll find speeches that say "food prices" too.
         </p>
         {meta.data && meta.data.coverage < 0.99 && (
           <p className="hansard-search__banner" role="status">
@@ -106,25 +143,90 @@ export default function HansardSearchPage() {
       </header>
 
       <form className="hansard-search__form" onSubmit={onQSubmit} role="search">
+        <label className="hansard-search__label" htmlFor="hansard-search-input">
+          Search speeches
+        </label>
         <input
+          id="hansard-search-input"
           type="search"
           className="hansard-search__input"
           placeholder='e.g. "carbon pricing policy"'
           value={qDraft}
           onChange={(e) => onQChange(e.target.value)}
           autoFocus
-          aria-label="Search speeches"
         />
       </form>
 
       <SpeechFilters value={filter} onChange={applyPatch} />
 
-      <SearchDashboard filter={filter} enabled={enabled} totalMatches={data?.total} />
+      {enabled && <SaveSearchButton filter={filter} />}
+
+      <div
+        className="hansard-search__view-tabs"
+        role="tablist"
+        aria-label="Result view"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "timeline"}
+          className={
+            "hansard-search__view-tab" +
+            (view === "timeline" ? " hansard-search__view-tab--active" : "")
+          }
+          onClick={() => setView("timeline")}
+        >
+          Timeline
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "politician"}
+          className={
+            "hansard-search__view-tab" +
+            (view === "politician" ? " hansard-search__view-tab--active" : "")
+          }
+          onClick={() => setView("politician")}
+          title="Group results by politician to see each speaker's statements on the topic side-by-side"
+        >
+          By politician
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "analysis"}
+          className={
+            "hansard-search__view-tab" +
+            (view === "analysis" ? " hansard-search__view-tab--active" : "")
+          }
+          onClick={() => setView("analysis")}
+          title="See charts summarising who, what, and when for this search"
+        >
+          Analysis
+        </button>
+      </div>
+
+      {view === "analysis" && (
+        <SearchDashboard
+          filter={filter}
+          enabled={enabled}
+          totalMatches={dashboardTotal}
+          defaultOpen
+        />
+      )}
 
       <div className="hansard-search__results">
-        {!enabled && (
+        {!enabled && view !== "analysis" && (
           <p className="hansard-search__hint">
-            Type a phrase above or set a filter to start searching.
+            {view === "politician"
+              ? "Type a search query above to group results by politician."
+              : "Type a phrase above or set a filter to start searching."}
+          </p>
+        )}
+
+        {view === "analysis" && !enabled && (
+          <p className="hansard-search__hint">
+            Type a search query above to see analysis charts.
           </p>
         )}
 
@@ -136,19 +238,33 @@ export default function HansardSearchPage() {
           </p>
         )}
 
-        {enabled && data && data.items.length === 0 && !loading && (
+        {enabled && view === "timeline" && timeline && timeline.items.length === 0 && !loading && (
           <p className="hansard-search__hint">No speeches match these filters.</p>
         )}
 
-        {data && data.items.length > 0 && (
+        {enabled && view === "politician" && grouped && grouped.groups.length === 0 && !loading && (
+          <p className="hansard-search__hint">
+            No politicians matched this query.{" "}
+            <button
+              type="button"
+              className="hansard-search__link-button"
+              onClick={() => setView("timeline")}
+            >
+              Switch to Timeline
+            </button>{" "}
+            to see individual results, including unresolved speakers.
+          </p>
+        )}
+
+        {view === "timeline" && timeline && timeline.items.length > 0 && (
           <>
             <div className="hansard-search__summary">
-              {data.totalCapped ? `1,000+ matches` : `${total.toLocaleString()} ${total === 1 ? "match" : "matches"}`}
-              {data.mode === "semantic" ? " · ranked by similarity" : " · most recent first"}
+              {timeline.totalCapped ? `1,000+ matches` : `${total.toLocaleString()} ${total === 1 ? "match" : "matches"}`}
+              {timeline.mode === "semantic" ? " · ranked by similarity" : " · most recent first"}
             </div>
 
             <ol className="hansard-search__list" aria-label="Search results">
-              {data.items.map((item) => (
+              {timeline.items.map((item) => (
                 <li key={item.chunk_id} className="hansard-search__item">
                   <SpeechResultCard item={item} />
                 </li>
@@ -166,7 +282,7 @@ export default function HansardSearchPage() {
                 </button>
                 <span className="hansard-search__pager-label">
                   Page {page} of {pages}
-                  {data.totalCapped ? "+" : ""}
+                  {timeline.totalCapped ? "+" : ""}
                 </span>
                 <button
                   type="button"
@@ -177,6 +293,43 @@ export default function HansardSearchPage() {
                 </button>
               </nav>
             )}
+          </>
+        )}
+
+        {view === "politician" && grouped && grouped.groups.length > 0 && (
+          <>
+            <PoliticianQuickNav groups={grouped.groups} />
+
+            <div className="hansard-search__summary">
+              {grouped.total_politicians} {grouped.total_politicians === 1 ? "politician" : "politicians"}
+              {" · ranked by their strongest match · oldest quote first within each card"}
+            </div>
+
+            <ol className="hansard-search__groups" aria-label="Politicians with matching speeches">
+              {grouped.groups.map((g) => (
+                <li key={g.politician.id} className="hansard-search__group-item">
+                  <PoliticianResultGroup group={g} />
+                </li>
+              ))}
+            </ol>
+
+            <nav className="hansard-search__pager" aria-label="Pagination">
+              <button
+                type="button"
+                disabled={page <= 1}
+                onClick={() => applyPatch({ page: Math.max(1, page - 1) })}
+              >
+                ← Previous
+              </button>
+              <span className="hansard-search__pager-label">Page {page}</span>
+              <button
+                type="button"
+                disabled={grouped.groups.length < grouped.limit}
+                onClick={() => applyPatch({ page: page + 1 })}
+              >
+                Next →
+              </button>
+            </nav>
           </>
         )}
       </div>

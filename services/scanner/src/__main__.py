@@ -1635,6 +1635,19 @@ def cmd_jobs_worker(ctx: click.Context) -> None:
     asyncio.run(_jw.main())
 
 
+@cli.command("alerts-worker")
+@click.pass_context
+def cmd_alerts_worker(ctx: click.Context) -> None:
+    """Run the saved-searches alerts daemon.
+
+    Intended as the entrypoint of the `alerts-worker` compose service.
+    Polls saved_searches for due alerts, runs HNSW matching against the
+    cached query_embedding, and emails digests via Proton SMTP.
+    """
+    from . import alerts_worker as _aw
+    asyncio.run(_aw.main())
+
+
 @cli.command("chunk-speeches")
 @click.option("--limit", type=int, default=None,
               help="Max speeches to chunk this run (default: all pending).")

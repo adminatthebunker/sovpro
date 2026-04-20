@@ -550,4 +550,103 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!row) return reply.notFound();
     return reply.code(204).send();
   });
+
+  // ── Corrections review ──────────────────────────────────────────
+  // List / triage / resolve user-submitted corrections. Deep-linking
+  // to the subject is the frontend's responsibility (see
+  // AdminCorrections.tsx) — we just surface the foreign-key fields.
+
+  const correctionListQuery = z.object({
+    status: z.enum(["pending", "triaged", "applied", "rejected", "duplicate", "spam", "all"])
+      .optional()
+      .default("pending"),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    offset: z.coerce.number().int().min(0).default(0),
+  });
+
+  const correctionPatchBody = z.object({
+    status: z.enum(["pending", "triaged", "applied", "rejected", "duplicate", "spam"]),
+    reviewer_notes: z.string().trim().max(2000).optional().nullable(),
+  });
+
+  const TERMINAL_STATUSES = new Set(["applied", "rejected", "duplicate", "spam"]);
+
+  app.get("/corrections", async (req, reply) => {
+    const parsed = correctionListQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid query" });
+    }
+    const { status, limit, offset } = parsed.data;
+    const whereSql = status === "all" ? "" : "WHERE cs.status = $1";
+    const params: unknown[] = status === "all" ? [] : [status];
+
+    const rows = await query(
+      `
+      SELECT cs.id, cs.subject_type, cs.subject_id, cs.issue, cs.proposed_fix,
+             cs.evidence_url, cs.status, cs.reviewer_notes, cs.reviewed_by,
+             cs.submitter_name, cs.submitter_email, cs.user_id, cs.source,
+             cs.received_at, cs.resolved_at,
+             u.email AS user_email, u.display_name AS user_display_name,
+             p.name  AS politician_name
+        FROM correction_submissions cs
+        LEFT JOIN users u ON u.id = cs.user_id
+        LEFT JOIN politicians p
+               ON cs.subject_type = 'politician' AND p.id = cs.subject_id
+      ${whereSql}
+      ORDER BY cs.received_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+      `,
+      params as any,
+    );
+    return { corrections: rows };
+  });
+
+  app.get("/corrections/stats", async () => {
+    const rows = await query<{ status: string; n: string }>(
+      `SELECT status, count(*)::text AS n
+         FROM correction_submissions
+        GROUP BY status`,
+    );
+    const out: Record<string, number> = {
+      pending: 0, triaged: 0, applied: 0, rejected: 0, duplicate: 0, spam: 0,
+    };
+    for (const r of rows) out[r.status] = Number(r.n);
+    return out;
+  });
+
+  app.patch("/corrections/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+
+    const parsed = correctionPatchBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid body" });
+    }
+    const { status, reviewer_notes } = parsed.data;
+
+    // Single UPDATE keeps status + notes + reviewed_by + resolved_at
+    // in sync. resolved_at is set only when transitioning into a
+    // terminal state, and cleared if we ever walk backwards.
+    const resolvedExpr = TERMINAL_STATUSES.has(status)
+      ? "now()"
+      : "NULL";
+    const actor = (req as { adminActor?: string }).adminActor ?? "admin";
+
+    const row = await queryOne(
+      `
+      UPDATE correction_submissions
+         SET status         = $1,
+             reviewer_notes = $2,
+             reviewed_by    = $3,
+             resolved_at    = ${resolvedExpr}
+       WHERE id = $4
+       RETURNING id, subject_type, subject_id, issue, proposed_fix,
+                 evidence_url, status, reviewer_notes, reviewed_by,
+                 received_at, resolved_at
+      `,
+      [status, reviewer_notes ?? null, actor, id] as any,
+    );
+    if (!row) return reply.notFound();
+    return row;
+  });
 }

@@ -13,7 +13,9 @@ const INSTRUCT_PREFIX =
 
 // Shared filter fields for /speeches and /facets. Both handlers accept
 // the same shape; /speeches adds page+limit on top.
-const baseFilterSchema = z.object({
+// Exported so /me/saved-searches can reuse the exact validation shape —
+// single source of truth for "what's a valid search".
+export const baseFilterSchema = z.object({
   q: z.string().trim().max(500).default(""),
   lang: z.enum(["en", "fr", "any"]).default("any"),
   level: z.enum(["federal", "provincial", "municipal"]).optional(),
@@ -27,6 +29,12 @@ const baseFilterSchema = z.object({
 const searchQuery = baseFilterSchema.extend({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(20),
+  // Rendering mode: flat chunk list (default) or one politician per card
+  // with their top-N matching chunks underneath. Grouped mode requires
+  // `q` because grouping only makes sense when ranked by semantic
+  // relevance — a q-less grouped call is a 400.
+  group_by: z.enum(["timeline", "politician"]).default("timeline"),
+  per_group_limit: z.coerce.number().int().min(1).max(10).default(5),
 });
 
 type BaseFilter = z.infer<typeof baseFilterSchema>;
@@ -57,7 +65,7 @@ interface SpeechSearchRow {
   session_number: number | null;
 }
 
-async function encodeQuery(text: string): Promise<number[]> {
+export async function encodeQuery(text: string): Promise<number[]> {
   const wrapped = `${INSTRUCT_PREFIX}${text}`;
   const res = await fetch(`${config.teiUrl}/embed`, {
     method: "POST",
@@ -80,7 +88,7 @@ async function encodeQuery(text: string): Promise<number[]> {
   throw new Error("Unexpected TEI /embed response shape");
 }
 
-function toPgVector(vec: number[]): string {
+export function toPgVector(vec: number[]): string {
   // pgvector literal: '[0.1,0.2,...]'. join with "," no spaces for tightness.
   return `[${vec.join(",")}]`;
 }
@@ -108,11 +116,237 @@ function hasAnyStructuralFilter(f: BaseFilter): boolean {
   return Boolean(f.politician_id || f.party || f.level || f.province_territory || f.from || f.to);
 }
 
+type SearchInput = z.infer<typeof searchQuery>;
+
+/** Grouped-by-politician search: return top-K politicians, each with their
+ *  top-M chunks on the query, so readers can see one politician's statements
+ *  on a topic side-by-side. The core bet: seeing a politician's quotes across
+ *  parliaments makes contradictions or evolution visible without any AI
+ *  claim. Requires `q` — grouping a recency-ordered result would just be
+ *  "whichever politicians spoke most recently", which isn't interesting. */
+async function handleGroupedByPolitician(
+  app: FastifyInstance,
+  reply: import("fastify").FastifyReply,
+  input: SearchInput,
+) {
+  const { q, page, limit, per_group_limit } = input;
+  if (!q) {
+    return reply.badRequest("group_by=politician requires a semantic query (`q`)");
+  }
+
+  const { whereSql, filterParams } = buildFilterWhere(input);
+  const vec = await encodeQuery(q);
+  const vecLiteral = toPgVector(vec);
+
+  // Cap politicians per page at 20 regardless of user-supplied limit — the
+  // UI renders one card per politician and larger pages get unusable.
+  const politicianLimit = Math.min(limit, 20);
+  const politicianOffset = (page - 1) * politicianLimit;
+  // Pulling 500 chunk candidates gives the per-politician top-N window
+  // something to work with; on skinny queries we may still return fewer
+  // than `politicianLimit` groups, which is correct.
+  const CANDIDATE_POOL = 500;
+
+  const params: unknown[] = [
+    ...filterParams,
+    vecLiteral,          // $vIdx
+    q,                   // $qIdx (ts_headline)
+    CANDIDATE_POOL,      // $poolIdx
+    politicianLimit,     // $plIdx
+    politicianOffset,    // $poIdx
+    per_group_limit,     // $pglIdx
+  ];
+  const base = filterParams.length;
+  const vIdx = base + 1;
+  const qIdx = base + 2;
+  const poolIdx = base + 3;
+  const plIdx = base + 4;
+  const poIdx = base + 5;
+  const pglIdx = base + 6;
+
+  const sql = `
+    WITH candidates AS (
+      SELECT sc.id AS chunk_id, sc.speech_id, sc.chunk_index, sc.text,
+             sc.spoken_at, sc.language, sc.level, sc.province_territory,
+             sc.party_at_time, sc.politician_id, sc.session_id, sc.tsv_config,
+             (sc.embedding <=> $${vIdx}::vector)::float AS distance
+        FROM speech_chunks sc
+       WHERE ${whereSql}
+       ORDER BY sc.embedding <=> $${vIdx}::vector
+       LIMIT $${poolIdx}
+    ),
+    top_pols AS (
+      SELECT politician_id, MIN(distance) AS best_dist
+        FROM candidates
+       WHERE politician_id IS NOT NULL
+       GROUP BY politician_id
+       ORDER BY best_dist
+       LIMIT $${plIdx} OFFSET $${poIdx}
+    ),
+    ranked AS (
+      SELECT c.*, tp.best_dist,
+             ROW_NUMBER() OVER (PARTITION BY c.politician_id ORDER BY c.distance) AS rn_in_pol
+        FROM candidates c
+        JOIN top_pols tp ON tp.politician_id = c.politician_id
+    )
+    SELECT r.chunk_id, r.speech_id, r.chunk_index, r.text,
+           ts_headline(
+             COALESCE(r.tsv_config, 'simple')::regconfig,
+             r.text,
+             websearch_to_tsquery(COALESCE(r.tsv_config, 'simple')::regconfig, $${qIdx}),
+             'MaxWords=35, MinWords=15, ShortWord=3, MaxFragments=2, FragmentDelimiter=" … ", HighlightAll=FALSE'
+           ) AS snippet_html,
+           r.distance, r.spoken_at, r.language, r.level, r.province_territory,
+           r.party_at_time, r.politician_id, r.best_dist, r.rn_in_pol,
+           p.name                        AS politician_name,
+           p.openparliament_slug         AS politician_slug,
+           p.photo_url                   AS politician_photo_url,
+           p.photo_path                  AS politician_photo_path,
+           p.party                       AS politician_party,
+           socials.items                 AS politician_socials,
+           s.speaker_name_raw            AS speech_speaker_name_raw,
+           s.source_url                  AS speech_source_url,
+           s.source_anchor               AS speech_source_anchor,
+           ls.parliament_number,
+           ls.session_number
+      FROM ranked r
+      LEFT JOIN politicians p           ON p.id  = r.politician_id
+      LEFT JOIN speeches s              ON s.id  = r.speech_id
+      LEFT JOIN legislative_sessions ls ON ls.id = s.session_id
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(
+                 jsonb_build_object('platform', ps.platform, 'url', ps.url, 'handle', ps.handle)
+                 ORDER BY ps.platform
+               ) AS items
+          FROM politician_socials ps
+         WHERE ps.politician_id = p.id
+           AND COALESCE(ps.is_live, true)
+      ) socials ON true
+     WHERE r.rn_in_pol <= $${pglIdx}
+     ORDER BY r.best_dist, r.politician_id, r.spoken_at ASC NULLS FIRST
+  `;
+
+  // HNSW: ef_search must be ≥ the LIMIT for the index to actually return
+  // that many rows; facets uses 300 for LIMIT 200, so 600 for LIMIT 500.
+  // SET LOCAL inside a transaction scopes it so pooled connections don't
+  // carry the bump elsewhere.
+  const client = await pool.connect();
+  let rows: SpeechSearchRow[] = [];
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL hnsw.ef_search = 600");
+    const res = await client.query(sql, params as unknown as unknown[]);
+    rows = res.rows as SpeechSearchRow[];
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    app.log.error({ err, q }, "grouped search failed");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Walk the pre-sorted rows (best_dist, politician_id, spoken_at) and
+  // bucket consecutive same-politician rows into one group.
+  interface ChunkItem {
+    chunk_id: string;
+    speech_id: string;
+    chunk_index: number;
+    text: string;
+    snippet_html: string | null;
+    similarity: number | null;
+    spoken_at: string | null;
+    language: "en" | "fr";
+    level: string | null;
+    province_territory: string | null;
+    party_at_time: string | null;
+    speech: {
+      speaker_name_raw: string;
+      source_url: string | null;
+      source_anchor: string | null;
+      session: { parliament_number: number; session_number: number } | null;
+    };
+  }
+  interface PoliticianGroup {
+    politician: {
+      id: string;
+      name: string | null;
+      slug: string | null;
+      photo_url: string | null;
+      party: string | null;
+      socials: Array<{ platform: string; url: string; handle: string | null }>;
+    };
+    best_similarity: number | null;
+    chunks: ChunkItem[];
+  }
+
+  const groups: PoliticianGroup[] = [];
+  let current: PoliticianGroup | null = null;
+  for (const r of rows) {
+    if (!r.politician_id) continue;
+    if (!current || current.politician.id !== r.politician_id) {
+      current = {
+        politician: {
+          id: r.politician_id,
+          name: r.politician_name,
+          slug: r.politician_slug,
+          photo_url: resolvePhotoUrl({
+            photo_path: r.politician_photo_path,
+            photo_url: r.politician_photo_url,
+          }),
+          party: r.politician_party,
+          socials: r.politician_socials ?? [],
+        },
+        best_similarity: r.distance !== null ? 1 - r.distance : null,
+        chunks: [],
+      };
+      groups.push(current);
+    }
+    current.chunks.push({
+      chunk_id: r.chunk_id,
+      speech_id: r.speech_id,
+      chunk_index: r.chunk_index,
+      text: r.text,
+      snippet_html: r.snippet_html,
+      similarity: r.distance !== null ? 1 - r.distance : null,
+      spoken_at: r.spoken_at,
+      language: r.language,
+      level: r.level,
+      province_territory: r.province_territory,
+      party_at_time: r.party_at_time,
+      speech: {
+        speaker_name_raw: r.speech_speaker_name_raw,
+        source_url: r.speech_source_url,
+        source_anchor: r.speech_source_anchor,
+        session:
+          r.parliament_number !== null && r.session_number !== null
+            ? { parliament_number: r.parliament_number, session_number: r.session_number }
+            : null,
+      },
+    });
+  }
+
+  return {
+    mode: "grouped",
+    group_by: "politician" as const,
+    page,
+    limit: politicianLimit,
+    per_group_limit,
+    groups,
+    total_politicians: groups.length,
+  };
+}
+
 export default async function searchRoutes(app: FastifyInstance) {
   app.get("/speeches", async (req, reply) => {
     const parsed = searchQuery.safeParse(req.query);
     if (!parsed.success) return reply.badRequest(parsed.error.message);
-    const { q, page, limit } = parsed.data;
+    const { q, page, limit, group_by, per_group_limit } = parsed.data;
+
+    if (group_by === "politician") {
+      return handleGroupedByPolitician(app, reply, parsed.data);
+    }
+
     const offset = (page - 1) * limit;
 
     if (!q && !hasAnyStructuralFilter(parsed.data)) {
@@ -194,7 +428,7 @@ export default async function searchRoutes(app: FastifyInstance) {
       FROM speech_chunks sc
       LEFT JOIN politicians p           ON p.id  = sc.politician_id
       LEFT JOIN speeches   s            ON s.id  = sc.speech_id
-      LEFT JOIN legislative_sessions ls ON ls.id = sc.session_id
+      LEFT JOIN legislative_sessions ls ON ls.id = s.session_id
       LEFT JOIN LATERAL (
         SELECT jsonb_agg(
                  jsonb_build_object('platform', ps.platform, 'url', ps.url, 'handle', ps.handle)

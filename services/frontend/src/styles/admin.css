@@ -333,3 +333,126 @@
   .admin { padding: 1rem 0 3rem; }
   .admin__kv { grid-template-columns: 110px 1fr; }
 }
+
+/* Admin corrections review */
+.admin__tab {
+  padding: .35rem .75rem;
+  background: var(--panel-2, #242a38);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.admin__tab.active {
+  background: rgba(74, 158, 255, .15);
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.admin__status {
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  border: 1px solid;
+  text-transform: capitalize;
+  display: inline-block;
+}
+
+.admin__status--pending { color: #e0a74a; border-color: #e0a74a; }
+.admin__status--triaged { color: #4a9eff; border-color: #4a9eff; }
+.admin__status--applied { color: #79d48d; border-color: #79d48d; }
+.admin__status--rejected,
+.admin__status--spam { color: #ff7a7a; border-color: #ff7a7a; }
+.admin__status--duplicate { color: var(--ink-muted); border-color: #3a4658; }
+
+.admin__issue {
+  max-width: 24rem;
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
+.admin__row-toggle {
+  padding: .25rem .7rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 5px;
+  font: inherit;
+  font-size: .8rem;
+  cursor: pointer;
+}
+
+.admin__row-toggle:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.admin__row--open td { background: rgba(74, 158, 255, .04); }
+
+.admin__review {
+  padding: .85rem 1rem;
+  background: var(--panel-2, #242a38);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.admin__review-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .25rem .85rem;
+  margin: 0;
+  font-size: .9rem;
+}
+
+.admin__review-meta dt { color: var(--ink-muted); }
+.admin__review-meta dd { margin: 0; white-space: pre-wrap; }
+
+.admin__review label {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
+.admin__review textarea {
+  padding: .55rem .7rem;
+  background: var(--panel);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+}
+
+.admin__review-actions {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.admin__review-actions button {
+  padding: .4rem .9rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 5px;
+  font: inherit;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.admin__review-actions button:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.admin__review-actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}

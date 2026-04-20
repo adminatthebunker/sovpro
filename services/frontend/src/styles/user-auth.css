@@ -1,0 +1,528 @@
+/* User accounts — sign in, verify, account, saved searches.
+   Uses the project's existing CSS custom properties (--panel, --ink,
+   --ink-muted, --accent) set by global.css. */
+
+.cpd-auth {
+  max-width: 32rem;
+  margin: 3rem auto;
+  padding: 1.75rem 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-2, #2a3142);
+  border-radius: 10px;
+  color: var(--ink);
+}
+
+.cpd-auth--account { max-width: 46rem; }
+
+.cpd-auth h2 {
+  margin: 0 0 .75rem;
+  font-size: 1.4rem;
+}
+
+.cpd-auth__lead {
+  color: var(--ink-muted);
+  margin: 0 0 1.25rem;
+}
+
+.cpd-auth__form {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+  margin-bottom: 1rem;
+}
+
+.cpd-auth__form label {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .85rem;
+}
+
+.cpd-auth__form label span {
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.cpd-auth__form input[type="email"],
+.cpd-auth__form input[type="text"],
+.cpd-auth__form select {
+  padding: .55rem .7rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.cpd-auth__form button[type="submit"] {
+  align-self: flex-start;
+  padding: .55rem 1rem;
+  background: var(--accent, #4a9eff);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cpd-auth__form button[type="submit"]:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.cpd-auth__error {
+  color: #ff7a7a;
+  margin: 0;
+  font-size: .9rem;
+}
+
+.cpd-auth__ok {
+  color: #79d48d;
+  margin: 0;
+  font-size: .9rem;
+}
+
+.cpd-auth__muted {
+  color: var(--ink-muted);
+  font-size: .9rem;
+}
+
+.cpd-auth__hint {
+  color: var(--ink-muted);
+  font-size: .8rem;
+  margin: 1rem 0 0;
+  border-top: 1px dashed #3a4658;
+  padding-top: .75rem;
+}
+
+.cpd-auth__meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .35rem .9rem;
+  margin: 0 0 1.25rem;
+  font-size: .9rem;
+}
+
+.cpd-auth__meta dt { color: var(--ink-muted); }
+.cpd-auth__meta dd { margin: 0; }
+
+.cpd-auth__actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #3a4658;
+}
+
+.cpd-auth__linklike,
+.cpd-auth__linkbtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent, #4a9eff);
+  text-decoration: underline;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Header sign-in indicator */
+.shell__account {
+  padding: .25rem .6rem;
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  font-size: .85rem;
+  color: var(--ink);
+  text-decoration: none;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shell__account--anon { color: var(--ink-muted); }
+.shell__account.active,
+.shell__account:hover { border-color: var(--accent, #4a9eff); color: var(--accent, #4a9eff); }
+
+/* Signed-in avatar badge — a small coloured circle with the user's
+   first initial. Colour is derived deterministically from the email
+   so each user sees a consistent badge across sessions without any
+   persisted avatar state. */
+.shell__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 1px solid;      /* colour set inline via style */
+  color: #fff;
+  font-weight: 600;
+  font-size: .9rem;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.shell__avatar:hover,
+.shell__avatar.active {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 2px rgba(74, 158, 255, .35);
+}
+.shell__avatar:focus-visible {
+  outline: 2px solid var(--accent, #4a9eff);
+  outline-offset: 2px;
+}
+
+/* Saved searches list */
+.cpd-saved-searches {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+
+.cpd-saved-search {
+  padding: .85rem 1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 8px;
+}
+
+.cpd-saved-search__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+
+.cpd-saved-search__meta {
+  color: var(--ink-muted);
+  font-size: .85rem;
+}
+
+.cpd-saved-search__meta code {
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+}
+
+.cpd-saved-search__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: center;
+  font-size: .85rem;
+}
+
+.cpd-saved-search__actions button {
+  padding: .3rem .7rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cpd-saved-search__actions button:hover {
+  border-color: var(--accent, #4a9eff);
+}
+
+.cpd-saved-search__actions label {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--ink-muted);
+}
+
+.cpd-saved-search__warn {
+  margin: .5rem 0 0;
+  color: #e0a74a;
+  font-size: .8rem;
+}
+
+@media (max-width: 640px) {
+  .cpd-auth { margin: 1.5rem .75rem; padding: 1.25rem 1rem; }
+  .cpd-auth__meta { grid-template-columns: 1fr; gap: .1rem; }
+  .cpd-auth__meta dt { margin-top: .5rem; }
+}
+
+/* Save-search button (inline form on the search page) */
+.cpd-save-search {
+  margin: .75rem 0;
+}
+
+.cpd-save-search--anon {
+  display: inline-block;
+  padding: .35rem .75rem;
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--ink-muted);
+  font-size: .85rem;
+}
+
+.cpd-save-search--anon:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-save-search__toggle {
+  padding: .4rem .85rem;
+  background: var(--panel-2, #242a38);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  font: inherit;
+  font-size: .9rem;
+  cursor: pointer;
+}
+
+.cpd-save-search__toggle:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-save-search__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  align-items: flex-end;
+  padding: .75rem 1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 8px;
+  margin: .5rem 0;
+}
+
+.cpd-save-search__form label {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .8rem;
+  color: var(--ink-muted);
+}
+
+.cpd-save-search__form input[type="text"],
+.cpd-save-search__form select {
+  padding: .45rem .6rem;
+  background: var(--panel);
+  border: 1px solid #3a4658;
+  border-radius: 5px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.cpd-save-search__actions {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+}
+
+.cpd-save-search__actions button[type="submit"] {
+  padding: .45rem 1rem;
+  background: var(--accent, #4a9eff);
+  color: #fff;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cpd-save-search__actions button[type="submit"]:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Follow-a-politician button (on /politicians/:id) */
+.pol-detail__actions {
+  margin-top: .75rem;
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cpd-follow {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .45rem .9rem;
+  background: var(--panel-2, #242a38);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  font: inherit;
+  font-size: .9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cpd-follow:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-follow--on {
+  background: rgba(74, 158, 255, .15);
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-follow--anon { color: var(--ink-muted); }
+
+.cpd-follow:disabled { opacity: .6; cursor: wait; }
+
+.cpd-follow__error {
+  color: #ff7a7a;
+  font-size: .8rem;
+}
+
+/* Save-search preview list */
+.cpd-save-search__preview {
+  margin: .5rem 0;
+  padding: .75rem 1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px dashed #3a4658;
+  border-radius: 8px;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.cpd-save-search__preview-head {
+  margin: 0 0 .5rem;
+  color: var(--ink-muted);
+  font-size: .85rem;
+  font-weight: 500;
+}
+
+.cpd-save-search__preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.cpd-save-search__preview-list li {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding-bottom: .55rem;
+  border-bottom: 1px dashed #2a3142;
+  font-size: .85rem;
+}
+
+.cpd-save-search__preview-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.cpd-save-search__preview-meta {
+  color: var(--ink-muted);
+  font-size: .78rem;
+}
+
+.cpd-save-search__preview-body {
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.cpd-save-search__preview-src {
+  color: var(--accent, #4a9eff);
+  font-size: .75rem;
+  text-decoration: none;
+  align-self: flex-start;
+}
+
+.cpd-save-search__preview-src:hover { text-decoration: underline; }
+
+/* "Report a correction" link on context pages (politician, speech) */
+.pol-detail__report {
+  display: inline-flex;
+  align-items: center;
+  padding: .4rem .85rem;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px dashed #3a4658;
+  border-radius: 6px;
+  font-size: .85rem;
+  text-decoration: none;
+}
+
+.pol-detail__report:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-auth__form textarea {
+  padding: .55rem .7rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  resize: vertical;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Account corrections list */
+.cpd-corrections {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+
+.cpd-correction {
+  padding: .85rem 1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 8px;
+}
+
+.cpd-correction__head {
+  display: flex;
+  gap: .75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: .85rem;
+  margin-bottom: .5rem;
+}
+
+.cpd-correction__status {
+  padding: .15rem .55rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  border: 1px solid;
+}
+
+.cpd-correction__status--pending { color: #e0a74a; border-color: #e0a74a; }
+.cpd-correction__status--triaged { color: #4a9eff; border-color: #4a9eff; }
+.cpd-correction__status--applied { color: #79d48d; border-color: #79d48d; }
+.cpd-correction__status--rejected,
+.cpd-correction__status--spam { color: #ff7a7a; border-color: #ff7a7a; }
+.cpd-correction__status--duplicate { color: var(--ink-muted); border-color: #3a4658; }
+
+.cpd-correction__date {
+  color: var(--ink-muted);
+  margin-left: auto;
+  font-size: .8rem;
+}
+
+.cpd-correction__issue,
+.cpd-correction__fix,
+.cpd-correction__note {
+  margin: .35rem 0 0;
+  font-size: .9rem;
+  line-height: 1.5;
+}
+
+.cpd-correction__fix,
+.cpd-correction__note { color: var(--ink-muted); }

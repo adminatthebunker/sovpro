@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import type { PoliticianCore } from "../hooks/usePolitician";
+import { FollowPoliticianButton } from "./FollowPoliticianButton";
 
 interface Props {
   politician: PoliticianCore;
@@ -51,6 +52,17 @@ export function PoliticianDetailHeader({ politician: p }: Props) {
             {p.email && (
               <a href={`mailto:${p.email}`}>Email</a>
             )}
+          </div>
+
+          <div className="pol-detail__actions">
+            <FollowPoliticianButton politicianId={p.id} politicianName={p.name} />
+            <Link
+              to={`/corrections?subject_type=politician&subject_id=${p.id}`}
+              className="pol-detail__report"
+              title="See a mistake in this politician's record? Let us know."
+            >
+              Report a correction
+            </Link>
           </div>
         </div>
       </div>

@@ -34,6 +34,9 @@ export function AdminLayout() {
           <NavLink to="/admin/socials" className={({ isActive }) => (isActive ? "active" : "")}>
             Socials
           </NavLink>
+          <NavLink to="/admin/corrections" className={({ isActive }) => (isActive ? "active" : "")}>
+            Corrections
+          </NavLink>
           <button className="admin__logout" onClick={logout}>Logout</button>
         </nav>
       </header>

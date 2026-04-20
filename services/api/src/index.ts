@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -22,6 +23,11 @@ import coverageRoutes from "./routes/coverage.js";
 import searchRoutes from "./routes/search.js";
 import speechRoutes from "./routes/speeches.js";
 import adminRoutes from "./routes/admin.js";
+import authRoutes from "./routes/auth.js";
+import meRoutes from "./routes/me.js";
+import alertRoutes from "./routes/alerts.js";
+import feedRoutes from "./routes/feeds.js";
+import correctionsRoutes, { meCorrectionsRoutes } from "./routes/corrections.js";
 
 const app = Fastify({
   logger: {
@@ -38,7 +44,8 @@ await app.register(helmet, {
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },
 });
-await app.register(cors, { origin: config.corsOrigin });
+await app.register(cors, { origin: config.corsOrigin, credentials: true });
+await app.register(cookie);
 await app.register(sensible);
 await app.register(rateLimit, {
   max: 300,
@@ -79,6 +86,12 @@ await app.register(coverageRoutes, { prefix: "/api/v1/coverage" });
 await app.register(searchRoutes, { prefix: "/api/v1/search" });
 await app.register(speechRoutes, { prefix: "/api/v1/speeches" });
 await app.register(adminRoutes, { prefix: "/api/v1/admin" });
+await app.register(authRoutes, { prefix: "/api/v1/auth" });
+await app.register(meRoutes, { prefix: "/api/v1/me" });
+await app.register(alertRoutes, { prefix: "/api/v1/alerts" });
+await app.register(feedRoutes, { prefix: "/api/v1/feeds" });
+await app.register(correctionsRoutes, { prefix: "/api/v1/corrections" });
+await app.register(meCorrectionsRoutes, { prefix: "/api/v1/me" });
 // Mounted under the same /politicians prefix so the final URL is
 // /api/v1/politicians/:id/openparliament (REST sub-resource pattern).
 await app.register(openparliamentRoutes, { prefix: "/api/v1/politicians" });
