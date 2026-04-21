@@ -179,24 +179,25 @@ export default function HansardSearchPage() {
         )}
       </header>
 
-      <form className="hansard-search__form" onSubmit={onQSubmit} role="search">
-        <label className="hansard-search__label" htmlFor="hansard-search-input">
-          Search speeches
-        </label>
-        <input
-          id="hansard-search-input"
-          type="search"
-          className="hansard-search__input"
-          placeholder='e.g. "carbon pricing policy"'
-          value={qDraft}
-          onChange={(e) => onQChange(e.target.value)}
-          autoFocus
-        />
-      </form>
+      <div className="hansard-search__search-row">
+        <form className="hansard-search__form" onSubmit={onQSubmit} role="search">
+          <label className="hansard-search__label" htmlFor="hansard-search-input">
+            Search speeches
+          </label>
+          <input
+            id="hansard-search-input"
+            type="search"
+            className="hansard-search__input"
+            placeholder='e.g. "carbon pricing policy"'
+            value={qDraft}
+            onChange={(e) => onQChange(e.target.value)}
+            autoFocus
+          />
+        </form>
+        {enabled && <SaveSearchButton filter={filter} />}
+      </div>
 
       <SpeechFilters value={filter} onChange={applyPatch} />
-
-      {enabled && <SaveSearchButton filter={filter} />}
 
       <div className="hansard-search__tab-row">
         <div

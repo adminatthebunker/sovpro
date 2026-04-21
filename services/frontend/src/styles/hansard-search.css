@@ -39,6 +39,27 @@
   line-height: 1.45;
 }
 
+/* Search input and Save-search button live on the same row. When the
+ * save-search form is expanded its extra width pushes it onto its own
+ * flex line automatically, so we don't need to manage "collapsed vs
+ * open" positioning. */
+.hansard-search__search-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: flex-end;
+  margin: 0 0 1rem;
+}
+
+.hansard-search__search-row .hansard-search__form {
+  flex: 1 1 320px;
+  margin: 0;
+}
+
+.hansard-search__search-row .cpd-save-search {
+  margin: 0;
+}
+
 .hansard-search__form {
   display: flex;
   flex-wrap: wrap;

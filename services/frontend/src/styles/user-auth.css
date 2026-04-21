@@ -255,35 +255,55 @@
   margin: .75rem 0;
 }
 
+/* Anon variant: same green CTA as the signed-in toggle so both auth
+ * states present the save affordance with equal visual weight. */
 .cpd-save-search--anon {
   display: inline-block;
-  padding: .35rem .75rem;
-  border: 1px solid #3a4658;
+  padding: .55rem 1rem;
+  background: #16a34a;
+  color: #f0fdf4;
+  border: 1px solid #22c55e;
   border-radius: 6px;
   text-decoration: none;
-  color: var(--ink-muted);
-  font-size: .85rem;
+  font-size: .9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  transition: background-color .15s, border-color .15s;
 }
 
-.cpd-save-search--anon:hover {
-  border-color: var(--accent, #4a9eff);
-  color: var(--accent, #4a9eff);
+.cpd-save-search--anon:hover,
+.cpd-save-search--anon:focus-visible {
+  background: #22c55e;
+  border-color: #4ade80;
+  color: #f0fdf4;
+  outline: none;
 }
 
+/* Primary CTA styling — green to stand out against the red/orange-heavy
+ * rest of the page and signal "this is a saving action". Shares the
+ * #22c55e hue with the orgs tile in global.css so it reads as part of
+ * the existing palette, not a one-off. */
 .cpd-save-search__toggle {
-  padding: .4rem .85rem;
-  background: var(--panel-2, #242a38);
-  color: var(--ink);
-  border: 1px solid #3a4658;
+  padding: .55rem 1rem;
+  background: #16a34a;
+  color: #f0fdf4;
+  border: 1px solid #22c55e;
   border-radius: 6px;
   font: inherit;
   font-size: .9rem;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+  transition: background-color .15s, border-color .15s;
 }
 
-.cpd-save-search__toggle:hover {
-  border-color: var(--accent, #4a9eff);
-  color: var(--accent, #4a9eff);
+.cpd-save-search__toggle:hover,
+.cpd-save-search__toggle:focus-visible {
+  background: #22c55e;
+  border-color: #4ade80;
+  outline: none;
 }
 
 .cpd-save-search__form {
