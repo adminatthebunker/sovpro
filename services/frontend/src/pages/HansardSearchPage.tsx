@@ -198,49 +198,78 @@ export default function HansardSearchPage() {
 
       {enabled && <SaveSearchButton filter={filter} />}
 
-      <div
-        className="hansard-search__view-tabs"
-        role="tablist"
-        aria-label="Result view"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "timeline"}
-          className={
-            "hansard-search__view-tab" +
-            (view === "timeline" ? " hansard-search__view-tab--active" : "")
-          }
-          onClick={() => setView("timeline")}
+      <div className="hansard-search__tab-row">
+        <div
+          className="hansard-search__view-tabs"
+          role="tablist"
+          aria-label="Result view"
         >
-          Timeline
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "politician"}
-          className={
-            "hansard-search__view-tab" +
-            (view === "politician" ? " hansard-search__view-tab--active" : "")
-          }
-          onClick={() => setView("politician")}
-          title="Group results by politician to see each speaker's statements on the topic side-by-side"
-        >
-          By politician
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "analysis"}
-          className={
-            "hansard-search__view-tab" +
-            (view === "analysis" ? " hansard-search__view-tab--active" : "")
-          }
-          onClick={() => setView("analysis")}
-          title="See charts summarising who, what, and when for this search"
-        >
-          Analysis
-        </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "timeline"}
+            className={
+              "hansard-search__view-tab" +
+              (view === "timeline" ? " hansard-search__view-tab--active" : "")
+            }
+            onClick={() => setView("timeline")}
+          >
+            Timeline
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "politician"}
+            className={
+              "hansard-search__view-tab" +
+              (view === "politician" ? " hansard-search__view-tab--active" : "")
+            }
+            onClick={() => setView("politician")}
+            title="Group results by politician to see each speaker's statements on the topic side-by-side"
+          >
+            By politician
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "analysis"}
+            className={
+              "hansard-search__view-tab" +
+              (view === "analysis" ? " hansard-search__view-tab--active" : "")
+            }
+            onClick={() => setView("analysis")}
+            title="See charts summarising who, what, and when for this search"
+          >
+            Analysis
+          </button>
+        </div>
+
+        {view === "politician" && (
+          <div
+            className="politician-sort-chips"
+            role="tablist"
+            aria-label="Sort politicians by"
+          >
+            {POLITICIAN_SORTS.map((s) => {
+              const active = (filter.sort ?? "mentions") === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={
+                    "politician-sort-chips__chip" +
+                    (active ? " politician-sort-chips__chip--active" : "")
+                  }
+                  onClick={() => applyPatch({ sort: s, page: 1 })}
+                >
+                  {SORT_LABELS[s]}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {view === "analysis" && (
@@ -335,31 +364,6 @@ export default function HansardSearchPage() {
 
         {view === "politician" && grouped && grouped.groups.length > 0 && (
           <>
-            <div
-              className="politician-sort-chips"
-              role="tablist"
-              aria-label="Sort politicians by"
-            >
-              {POLITICIAN_SORTS.map((s) => {
-                const active = (filter.sort ?? "mentions") === s;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    className={
-                      "politician-sort-chips__chip" +
-                      (active ? " politician-sort-chips__chip--active" : "")
-                    }
-                    onClick={() => applyPatch({ sort: s, page: 1 })}
-                  >
-                    {SORT_LABELS[s]}
-                  </button>
-                );
-              })}
-            </div>
-
             <PoliticianQuickNav
               groups={grouped.groups}
               sort={filter.sort ?? "mentions"}

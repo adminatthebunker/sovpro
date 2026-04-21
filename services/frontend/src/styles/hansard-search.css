@@ -560,6 +560,17 @@
 
 /* ── View tabs: Timeline / By politician ─────────────────────────── */
 
+/* Tab row packs the view tabs and the (politician-only) sort chips into
+ * a single inline strip so the user sees the whole "what view · how
+ * sorted" switchboard at once. Wraps to the next line on narrow
+ * viewports via flex-wrap. */
+.hansard-search__tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+}
+
 .hansard-search__view-tabs {
   display: flex;
   gap: .25rem;
@@ -608,7 +619,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: .35rem;
-  margin: 0 0 .75rem;
 }
 
 .politician-sort-chips__chip {
