@@ -41,15 +41,55 @@ export interface SpeechSearchItem {
   };
 }
 
-export interface SpeechSearchResponse {
+export interface TimelineSearchResponse {
+  mode: "semantic" | "recent";
   items: SpeechSearchItem[];
   page: number;
   limit: number;
   total: number;
   totalCapped: boolean;
   pages: number;
-  mode: "semantic" | "recent";
 }
+
+/** A chunk inside a PoliticianGroup — identical to SpeechSearchItem but
+ *  with the `politician` hoisted to the group header, so we omit it here. */
+export interface GroupedSearchChunk {
+  chunk_id: string;
+  speech_id: string;
+  chunk_index: number;
+  text: string;
+  snippet_html: string | null;
+  similarity: number | null;
+  spoken_at: string | null;
+  language: "en" | "fr";
+  level: string | null;
+  province_territory: string | null;
+  party_at_time: string | null;
+  speech: SpeechSearchItem["speech"];
+}
+
+export type PoliticianSort = "mentions" | "best_match" | "avg_match" | "keyword_hits";
+
+export interface PoliticianSearchGroup {
+  politician: SpeechSearchPolitician;
+  best_similarity: number | null;
+  avg_similarity: number | null;
+  mention_count: number;
+  keyword_hits: number;
+  chunks: GroupedSearchChunk[];
+}
+
+export interface GroupedSearchResponse {
+  mode: "grouped";
+  group_by: "politician";
+  page: number;
+  limit: number;
+  per_group_limit: number;
+  groups: PoliticianSearchGroup[];
+  total_politicians: number;
+}
+
+export type SpeechSearchResponse = TimelineSearchResponse | GroupedSearchResponse;
 
 export interface SpeechSearchFilter {
   q?: string;
@@ -62,6 +102,10 @@ export interface SpeechSearchFilter {
   to?: string;
   page?: number;
   limit?: number;
+  group_by?: "timeline" | "politician";
+  per_group_limit?: number;
+  // Only meaningful when group_by === "politician".
+  sort?: PoliticianSort;
 }
 
 export interface SpeechSearchMeta {
@@ -88,6 +132,9 @@ export function buildSpeechSearchQuery(f: SpeechSearchFilter): string {
   if (f.to) p.set("to", f.to);
   p.set("page", String(f.page ?? 1));
   p.set("limit", String(f.limit ?? 20));
+  if (f.group_by && f.group_by !== "timeline") p.set("group_by", f.group_by);
+  if (f.per_group_limit) p.set("per_group_limit", String(f.per_group_limit));
+  if (f.group_by === "politician" && f.sort) p.set("sort", f.sort);
   return p.toString();
 }
 

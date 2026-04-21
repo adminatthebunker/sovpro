@@ -41,23 +41,34 @@
 
 .hansard-search__form {
   display: flex;
-  gap: .5rem;
+  flex-wrap: wrap;
+  gap: .35rem .5rem;
   margin: 0 0 1rem;
 }
 
+.hansard-search__label {
+  flex: 1 1 100%;
+  font-size: .72rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
 .hansard-search__input {
-  flex: 1;
+  flex: 1 1 100%;
   padding: .75rem 1rem;
   font-size: 1.05rem;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--ink);
-  outline: none;
-  transition: border-color .15s;
+  transition: border-color .15s, outline-color .15s;
 }
 
 .hansard-search__input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   border-color: var(--accent);
 }
 
@@ -545,4 +556,777 @@
 .pol-speeches__pager-label {
   color: var(--ink-muted);
   font-size: .9rem;
+}
+
+/* ── View tabs: Timeline / By politician ─────────────────────────── */
+
+.hansard-search__view-tabs {
+  display: flex;
+  gap: .25rem;
+  padding: .25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.hansard-search__view-tab {
+  padding: .45rem .9rem;
+  font-size: .9rem;
+  color: var(--ink-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hansard-search__view-tab:hover:not(.hansard-search__view-tab--active) {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+.hansard-search__view-tab--active {
+  color: var(--ink);
+  background: var(--panel-2);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+.hansard-search__link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
+/* ── Sort chips (grouped view) ───────────────────────────────────── */
+
+.politician-sort-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+  margin: 0 0 .75rem;
+}
+
+.politician-sort-chips__chip {
+  padding: .35rem .7rem;
+  font-size: .82rem;
+  color: var(--ink-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.politician-sort-chips__chip:hover {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+.politician-sort-chips__chip--active {
+  color: var(--ink);
+  background: var(--panel-2);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Grid-nav: dense grid of politician jump cards ───────────────── */
+
+.politician-nav-grid {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .5rem;
+  margin-bottom: .75rem;
+}
+
+.politician-nav-grid__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: .4rem;
+}
+
+.politician-nav-grid__item {
+  margin: 0;
+  min-width: 0;
+}
+
+.politician-nav-grid__card {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .35rem .5rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.politician-nav-grid__card:hover,
+.politician-nav-grid__card:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.politician-nav-grid__photo {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--panel);
+}
+
+.politician-nav-grid__photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-muted);
+  font-weight: 600;
+  font-size: .85rem;
+}
+
+.politician-nav-grid__meta {
+  display: flex;
+  flex-direction: column;
+  gap: .05rem;
+  min-width: 0;
+  line-height: 1.15;
+  flex: 1 1 auto;
+}
+
+.politician-nav-grid__name {
+  font-size: .82rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.politician-nav-grid__metric {
+  font-size: .72rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 480px) {
+  .politician-nav-grid__list {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+}
+
+/* Brief highlight after a quick-nav jump so users see where they landed. */
+.politician-group--flash {
+  animation: pg-flash 1.4s ease-out;
+}
+
+@keyframes pg-flash {
+  0%   { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── Grouped results ─────────────────────────────────────────────── */
+
+.hansard-search__groups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.hansard-search__group-item {
+  margin: 0;
+}
+
+.politician-group {
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.politician-group__header {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.politician-group__photo {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--panel-2);
+}
+
+.politician-group__photo--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.4rem;
+  color: var(--ink-muted);
+}
+
+.politician-group__meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  min-width: 0;
+}
+
+.politician-group__name {
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.politician-group__name:hover {
+  text-decoration: underline;
+}
+
+.politician-group__sub {
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
+.politician-group__count {
+  color: var(--ink-muted);
+}
+
+.politician-group__secondary-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .2rem;
+  font-size: .75rem;
+  color: var(--ink-muted);
+}
+
+.politician-group__secondary-metric {
+  padding: .08rem .45rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.politician-group__similarity {
+  flex: 0 0 auto;
+  font-size: .8rem;
+  color: var(--ink-muted);
+  padding: .2rem .5rem;
+  background: var(--panel-2);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.politician-group__chunks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.politician-group__chunk {
+  margin: 0;
+}
+
+/* Parliament divider: a horizontal rule with the parliament label in the
+ * middle, shown between chunks whose parliament_number differs from the
+ * previous chunk. The only visual cue the grouped view gives for "this
+ * politician crossed a parliament boundary" — small but load-bearing. */
+.politician-group__parl-divider {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin: .5rem 0;
+  color: var(--ink-muted);
+  font-size: .8rem;
+  font-variant: small-caps;
+  letter-spacing: .02em;
+}
+
+.politician-group__parl-divider::before,
+.politician-group__parl-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.politician-group__parl-divider span {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .politician-group {
+    padding: .75rem;
+  }
+  .politician-group__header {
+    flex-wrap: wrap;
+  }
+  .politician-group__similarity {
+    order: 3;
+    margin-left: auto;
+  }
+}
+
+/* ── AI contradictions analysis ─────────────────────────────── */
+
+.politician-group__footer {
+  margin-top: .75rem;
+  padding-top: .75rem;
+  border-top: 1px dashed var(--border);
+}
+
+.politician-group__ai-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.ai-analysis__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+.ai-analysis__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .45rem .8rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--ink);
+  font-size: .85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, opacity .15s ease;
+}
+
+.ai-analysis__trigger::before {
+  content: "✦";
+  color: var(--accent);
+}
+
+.ai-analysis__trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel-2));
+  border-color: var(--accent);
+}
+
+.ai-analysis__trigger:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.ai-analysis__settings {
+  font-size: .75rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  padding: .3rem .5rem;
+  border-radius: 4px;
+}
+
+.ai-analysis__settings:hover {
+  color: var(--ink);
+  border-color: var(--border);
+}
+
+.ai-analysis__disabled-hint {
+  margin: 0;
+  font-size: .8rem;
+  color: var(--ink-muted);
+}
+
+.ai-analysis__error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+  padding: .6rem .75rem;
+  background: color-mix(in srgb, #f59e0b 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, #f59e0b 60%, var(--border));
+  color: var(--ink);
+  border-radius: 6px;
+  font-size: .85rem;
+}
+
+.ai-analysis__retry {
+  margin-left: auto;
+  padding: .3rem .6rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .8rem;
+}
+
+.ai-analysis__retry:hover {
+  border-color: var(--accent);
+}
+
+.ai-analysis__result {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  padding: .75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ai-analysis__result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.ai-analysis__result-label {
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-muted);
+}
+
+.ai-analysis__result-model {
+  font-size: .72rem;
+  color: var(--ink-muted);
+  background: var(--panel);
+  padding: .15rem .4rem;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ai-analysis__summary {
+  margin: 0;
+  font-size: .9rem;
+  color: var(--ink);
+  font-style: italic;
+}
+
+.ai-analysis__empty {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
+.ai-analysis__pairs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.ai-pair {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .6rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  border-left: 3px solid var(--border);
+}
+
+.ai-pair--contradiction {
+  border-left-color: #ef4444;
+}
+
+.ai-pair--evolution {
+  border-left-color: #f59e0b;
+}
+
+.ai-pair--consistent {
+  border-left-color: #10b981;
+}
+
+.ai-pair__header {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.ai-kind-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: .15rem .5rem;
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-radius: 999px;
+  color: #fff;
+}
+
+.ai-kind-badge--contradiction {
+  background: #ef4444;
+}
+
+.ai-kind-badge--evolution {
+  background: #f59e0b;
+  color: #1f2937;
+}
+
+.ai-kind-badge--consistent {
+  background: #10b981;
+  color: #052e22;
+}
+
+.ai-pair__quotes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+}
+
+.ai-pair__quote {
+  margin: 0;
+  padding: .5rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: .82rem;
+}
+
+.ai-pair__quote-meta {
+  font-size: .7rem;
+  color: var(--ink-muted);
+  margin-bottom: .3rem;
+}
+
+.ai-pair__quote-text {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.ai-pair__rationale {
+  margin: 0;
+  padding: .4rem .55rem;
+  font-size: .85rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.ai-analysis__foot {
+  font-size: .72rem;
+  color: var(--ink-muted);
+  font-style: italic;
+  padding-top: .25rem;
+  border-top: 1px dashed var(--border);
+}
+
+@media (max-width: 640px) {
+  .ai-pair__quotes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Consent modal ──────────────────────────────────────────── */
+
+.ai-consent-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(2, 6, 23, .78);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: ai-consent-fade-in .12s ease-out;
+}
+
+@keyframes ai-consent-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.ai-consent-modal__card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 1.25rem 1.4rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+
+.ai-consent-modal__close {
+  position: absolute;
+  top: .4rem;
+  right: .5rem;
+  background: transparent;
+  border: none;
+  color: var(--ink-muted);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: .25rem .45rem;
+  border-radius: 4px;
+}
+
+.ai-consent-modal__close:hover {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+.ai-consent-modal__title {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--ink);
+  padding-right: 1.5rem;
+}
+
+.ai-consent-modal__body {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  font-size: .88rem;
+  color: var(--ink);
+  line-height: 1.45;
+}
+
+.ai-consent-modal__body p {
+  margin: 0;
+}
+
+.ai-consent-modal__model-row {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  padding: .6rem .75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.ai-consent-modal__model-label {
+  font-size: .7rem;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.ai-consent-modal__model-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .85rem;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.ai-consent-modal__model-sub {
+  font-size: .7rem;
+  color: var(--ink-muted);
+}
+
+.ai-consent-modal__disclosures {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  font-size: .82rem;
+  color: var(--ink-muted);
+}
+
+.ai-consent-modal__disclosures li {
+  line-height: 1.4;
+}
+
+.ai-consent-modal__remember {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .82rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.ai-consent-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.ai-consent-modal__button {
+  padding: .5rem 1rem;
+  border-radius: 6px;
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.ai-consent-modal__button--secondary {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.ai-consent-modal__button--secondary:hover {
+  border-color: var(--ink-muted);
+}
+
+.ai-consent-modal__button--primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.ai-consent-modal__button--primary:hover {
+  filter: brightness(1.1);
+}
+
+@media (max-width: 480px) {
+  .ai-consent-modal__card {
+    padding: 1rem;
+  }
+  .ai-consent-modal__actions {
+    flex-direction: column-reverse;
+  }
+  .ai-consent-modal__button {
+    width: 100%;
+  }
 }

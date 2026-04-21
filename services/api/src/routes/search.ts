@@ -35,6 +35,11 @@ const searchQuery = baseFilterSchema.extend({
   // relevance — a q-less grouped call is a 400.
   group_by: z.enum(["timeline", "politician"]).default("timeline"),
   per_group_limit: z.coerce.number().int().min(1).max(10).default(5),
+  // Grouped-mode-only: which per-politician metric decides the top-20.
+  // Ignored for group_by=timeline. Default `mentions` answers "who talks
+  // about this topic the most" — matches user intuition and the Analysis
+  // tab's TOP SPEAKERS list.
+  sort: z.enum(["mentions", "best_match", "avg_match", "keyword_hits"]).default("mentions"),
 });
 
 type BaseFilter = z.infer<typeof baseFilterSchema>;
@@ -63,6 +68,13 @@ interface SpeechSearchRow {
   speech_source_anchor: string | null;
   parliament_number: number | null;
   session_number: number | null;
+  // Per-politician aggregates repeated on every chunk row of a group —
+  // the grouping walker just reads them off the first row it sees for
+  // each politician_id.
+  mention_count?: number;
+  best_dist?: number | null;
+  avg_dist?: number | null;
+  keyword_hits?: number;
 }
 
 export async function encodeQuery(text: string): Promise<number[]> {
@@ -129,7 +141,7 @@ async function handleGroupedByPolitician(
   reply: import("fastify").FastifyReply,
   input: SearchInput,
 ) {
-  const { q, page, limit, per_group_limit } = input;
+  const { q, page, limit, per_group_limit, sort } = input;
   if (!q) {
     return reply.badRequest("group_by=politician requires a semantic query (`q`)");
   }
@@ -142,19 +154,27 @@ async function handleGroupedByPolitician(
   // UI renders one card per politician and larger pages get unusable.
   const politicianLimit = Math.min(limit, 20);
   const politicianOffset = (page - 1) * politicianLimit;
-  // Pulling 500 chunk candidates gives the per-politician top-N window
-  // something to work with; on skinny queries we may still return fewer
-  // than `politicianLimit` groups, which is correct.
-  const CANDIDATE_POOL = 500;
+  // Pulling 1000 chunk candidates so `mentions`/`keyword_hits` counts are
+  // meaningful, not just a function of a too-tight top-500 window.
+  // pgvector 0.8.2 caps hnsw.ef_search at 1000; CANDIDATE_POOL tracks
+  // that ceiling — exceeding it would silently truncate recall anyway.
+  const CANDIDATE_POOL = 1000;
+  // Distance threshold for counting a chunk as a "mention" — below this
+  // similarity (0.45) Qwen3 results start drifting off-topic for the
+  // civic-Hansard corpus. Tuned by eye; revisit if recall complaints.
+  const MIN_SIMILARITY = 0.45;
+  const MAX_DISTANCE = 1 - MIN_SIMILARITY;
 
   const params: unknown[] = [
     ...filterParams,
     vecLiteral,          // $vIdx
-    q,                   // $qIdx (ts_headline)
+    q,                   // $qIdx (ts_headline + kw_hit tsquery)
     CANDIDATE_POOL,      // $poolIdx
     politicianLimit,     // $plIdx
     politicianOffset,    // $poIdx
     per_group_limit,     // $pglIdx
+    MAX_DISTANCE,        // $mdIdx
+    sort,                // $sortIdx
   ];
   const base = filterParams.length;
   const vIdx = base + 1;
@@ -163,31 +183,50 @@ async function handleGroupedByPolitician(
   const plIdx = base + 4;
   const poIdx = base + 5;
   const pglIdx = base + 6;
+  const mdIdx = base + 7;
+  const sortIdx = base + 8;
 
   const sql = `
     WITH candidates AS (
-      SELECT sc.id AS chunk_id, sc.speech_id, sc.chunk_index, sc.text,
+      SELECT sc.id AS chunk_id, sc.speech_id, sc.chunk_index, sc.text, sc.tsv,
              sc.spoken_at, sc.language, sc.level, sc.province_territory,
              sc.party_at_time, sc.politician_id, sc.session_id, sc.tsv_config,
-             (sc.embedding <=> $${vIdx}::vector)::float AS distance
+             (sc.embedding <=> $${vIdx}::vector)::float AS distance,
+             (sc.tsv @@ websearch_to_tsquery(COALESCE(sc.tsv_config, 'simple')::regconfig, $${qIdx}))::int AS kw_hit
         FROM speech_chunks sc
        WHERE ${whereSql}
        ORDER BY sc.embedding <=> $${vIdx}::vector
        LIMIT $${poolIdx}
     ),
-    top_pols AS (
-      SELECT politician_id, MIN(distance) AS best_dist
-        FROM candidates
+    qualified AS (
+      SELECT * FROM candidates
        WHERE politician_id IS NOT NULL
+         AND distance <= $${mdIdx}
+    ),
+    pol_stats AS (
+      SELECT politician_id,
+             COUNT(*)::int         AS mention_count,
+             MIN(distance)::float  AS best_dist,
+             AVG(distance)::float  AS avg_dist,
+             SUM(kw_hit)::int      AS keyword_hits
+        FROM qualified
        GROUP BY politician_id
-       ORDER BY best_dist
+    ),
+    top_pols AS (
+      SELECT * FROM pol_stats
+       ORDER BY
+         CASE WHEN $${sortIdx} = 'mentions'     THEN -mention_count END ASC,
+         CASE WHEN $${sortIdx} = 'keyword_hits' THEN -keyword_hits  END ASC,
+         CASE WHEN $${sortIdx} = 'avg_match'    THEN  avg_dist      END ASC,
+         CASE WHEN $${sortIdx} = 'best_match'   THEN  best_dist     END ASC,
+         best_dist
        LIMIT $${plIdx} OFFSET $${poIdx}
     ),
     ranked AS (
-      SELECT c.*, tp.best_dist,
-             ROW_NUMBER() OVER (PARTITION BY c.politician_id ORDER BY c.distance) AS rn_in_pol
-        FROM candidates c
-        JOIN top_pols tp ON tp.politician_id = c.politician_id
+      SELECT q.*, tp.best_dist, tp.avg_dist, tp.mention_count, tp.keyword_hits,
+             ROW_NUMBER() OVER (PARTITION BY q.politician_id ORDER BY q.distance) AS rn_in_pol
+        FROM qualified q
+        JOIN top_pols tp ON tp.politician_id = q.politician_id
     )
     SELECT r.chunk_id, r.speech_id, r.chunk_index, r.text,
            ts_headline(
@@ -197,7 +236,9 @@ async function handleGroupedByPolitician(
              'MaxWords=35, MinWords=15, ShortWord=3, MaxFragments=2, FragmentDelimiter=" … ", HighlightAll=FALSE'
            ) AS snippet_html,
            r.distance, r.spoken_at, r.language, r.level, r.province_territory,
-           r.party_at_time, r.politician_id, r.best_dist, r.rn_in_pol,
+           r.party_at_time, r.politician_id,
+           r.best_dist, r.avg_dist, r.mention_count, r.keyword_hits,
+           r.rn_in_pol,
            p.name                        AS politician_name,
            p.openparliament_slug         AS politician_slug,
            p.photo_url                   AS politician_photo_url,
@@ -223,24 +264,29 @@ async function handleGroupedByPolitician(
            AND COALESCE(ps.is_live, true)
       ) socials ON true
      WHERE r.rn_in_pol <= $${pglIdx}
-     ORDER BY r.best_dist, r.politician_id, r.spoken_at ASC NULLS FIRST
+     ORDER BY
+       CASE WHEN $${sortIdx} = 'mentions'     THEN -r.mention_count END ASC,
+       CASE WHEN $${sortIdx} = 'keyword_hits' THEN -r.keyword_hits  END ASC,
+       CASE WHEN $${sortIdx} = 'avg_match'    THEN  r.avg_dist      END ASC,
+       CASE WHEN $${sortIdx} = 'best_match'   THEN  r.best_dist     END ASC,
+       r.best_dist, r.politician_id, r.spoken_at ASC NULLS FIRST
   `;
 
   // HNSW: ef_search must be ≥ the LIMIT for the index to actually return
-  // that many rows; facets uses 300 for LIMIT 200, so 600 for LIMIT 500.
-  // SET LOCAL inside a transaction scopes it so pooled connections don't
-  // carry the bump elsewhere.
+  // that many rows; 1000 is the pgvector 0.8.2 maximum. SET LOCAL inside
+  // a transaction scopes it so pooled connections don't carry the bump
+  // elsewhere.
   const client = await pool.connect();
   let rows: SpeechSearchRow[] = [];
   try {
     await client.query("BEGIN");
-    await client.query("SET LOCAL hnsw.ef_search = 600");
+    await client.query("SET LOCAL hnsw.ef_search = 1000");
     const res = await client.query(sql, params as unknown as unknown[]);
     rows = res.rows as SpeechSearchRow[];
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
-    app.log.error({ err, q }, "grouped search failed");
+    app.log.error({ err, q, sort }, "grouped search failed");
     throw err;
   } finally {
     client.release();
@@ -277,6 +323,9 @@ async function handleGroupedByPolitician(
       socials: Array<{ platform: string; url: string; handle: string | null }>;
     };
     best_similarity: number | null;
+    avg_similarity: number | null;
+    mention_count: number;
+    keyword_hits: number;
     chunks: ChunkItem[];
   }
 
@@ -297,7 +346,10 @@ async function handleGroupedByPolitician(
           party: r.politician_party,
           socials: r.politician_socials ?? [],
         },
-        best_similarity: r.distance !== null ? 1 - r.distance : null,
+        best_similarity: r.best_dist != null ? 1 - r.best_dist : null,
+        avg_similarity: r.avg_dist != null ? 1 - r.avg_dist : null,
+        mention_count: r.mention_count ?? 0,
+        keyword_hits: r.keyword_hits ?? 0,
         chunks: [],
       };
       groups.push(current);
@@ -341,7 +393,7 @@ export default async function searchRoutes(app: FastifyInstance) {
   app.get("/speeches", async (req, reply) => {
     const parsed = searchQuery.safeParse(req.query);
     if (!parsed.success) return reply.badRequest(parsed.error.message);
-    const { q, page, limit, group_by, per_group_limit } = parsed.data;
+    const { q, page, limit, group_by } = parsed.data;
 
     if (group_by === "politician") {
       return handleGroupedByPolitician(app, reply, parsed.data);

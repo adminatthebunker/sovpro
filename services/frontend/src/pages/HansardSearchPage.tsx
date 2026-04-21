@@ -4,6 +4,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   useSpeechSearch,
   useSpeechSearchMeta,
+  type PoliticianSort,
   type SpeechSearchFilter,
 } from "../hooks/useSpeechSearch";
 import { SpeechFilters } from "../components/SpeechFilters";
@@ -12,6 +13,8 @@ import { SearchDashboard } from "../components/SearchDashboard";
 import { SaveSearchButton } from "../components/SaveSearchButton";
 import { PoliticianResultGroup } from "../components/PoliticianResultGroup";
 import { PoliticianQuickNav } from "../components/PoliticianQuickNav";
+import { AIContradictionAnalysis } from "../components/AIContradictionAnalysis";
+import { useAIAnalyzeMeta } from "../hooks/useAIAnalyzeMeta";
 import "../styles/hansard-search.css";
 
 type ViewMode = "timeline" | "politician" | "analysis";
@@ -21,6 +24,20 @@ function readView(params: URLSearchParams): ViewMode {
   if (v === "politician") return "politician";
   if (v === "analysis") return "analysis";
   return "timeline";
+}
+
+const POLITICIAN_SORTS: readonly PoliticianSort[] = [
+  "mentions",
+  "best_match",
+  "avg_match",
+  "keyword_hits",
+] as const;
+
+function readSort(params: URLSearchParams): PoliticianSort {
+  const s = params.get("sort");
+  return (POLITICIAN_SORTS as readonly string[]).includes(s ?? "")
+    ? (s as PoliticianSort)
+    : "mentions";
 }
 
 function readFilter(params: URLSearchParams): SpeechSearchFilter {
@@ -41,6 +58,7 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
     limit: 20,
     group_by: view === "politician" ? "politician" : "timeline",
     per_group_limit: view === "politician" ? 5 : undefined,
+    sort: view === "politician" ? readSort(params) : undefined,
   };
 }
 
@@ -56,8 +74,23 @@ function writeFilter(f: SpeechSearchFilter, view: ViewMode): URLSearchParams {
   if (f.page && f.page > 1) p.set("page", String(f.page));
   if (view === "politician") p.set("view", "politician");
   if (view === "analysis") p.set("view", "analysis");
+  if (view === "politician" && f.sort && f.sort !== "mentions") p.set("sort", f.sort);
   return p;
 }
+
+const SORT_LABELS: Record<PoliticianSort, string> = {
+  mentions: "Most mentions",
+  best_match: "Strongest match",
+  avg_match: "Avg quality",
+  keyword_hits: "Keyword hits",
+};
+
+const SORT_DESCRIPTORS: Record<PoliticianSort, string> = {
+  mentions: "ranked by number of on-topic quotes",
+  best_match: "ranked by strongest single match",
+  avg_match: "ranked by average match quality",
+  keyword_hits: "ranked by exact keyword hits",
+};
 
 export default function HansardSearchPage() {
   useDocumentTitle("Hansard Search");
@@ -112,6 +145,10 @@ export default function HansardSearchPage() {
   const enabled = view === "politician" ? hasQuery : (hasQuery || hasAnyFilter);
   const { data, loading, error } = useSpeechSearch(filter, enabled);
   const meta = useSpeechSearchMeta();
+  // Single meta fetch for the whole page (cached module-level), so
+  // rendering 20 grouped cards doesn't produce 20 /contradictions/meta
+  // calls. Only gets used on the politician view.
+  const { meta: aiMeta } = useAIAnalyzeMeta();
 
   const page = filter.page ?? 1;
   const timeline = data && data.mode !== "grouped" ? data : null;
@@ -298,17 +335,58 @@ export default function HansardSearchPage() {
 
         {view === "politician" && grouped && grouped.groups.length > 0 && (
           <>
-            <PoliticianQuickNav groups={grouped.groups} />
+            <div
+              className="politician-sort-chips"
+              role="tablist"
+              aria-label="Sort politicians by"
+            >
+              {POLITICIAN_SORTS.map((s) => {
+                const active = (filter.sort ?? "mentions") === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={
+                      "politician-sort-chips__chip" +
+                      (active ? " politician-sort-chips__chip--active" : "")
+                    }
+                    onClick={() => applyPatch({ sort: s, page: 1 })}
+                  >
+                    {SORT_LABELS[s]}
+                  </button>
+                );
+              })}
+            </div>
+
+            <PoliticianQuickNav
+              groups={grouped.groups}
+              sort={filter.sort ?? "mentions"}
+            />
 
             <div className="hansard-search__summary">
               {grouped.total_politicians} {grouped.total_politicians === 1 ? "politician" : "politicians"}
-              {" · ranked by their strongest match · oldest quote first within each card"}
+              {" · "}
+              {SORT_DESCRIPTORS[filter.sort ?? "mentions"]}
+              {" · oldest quote first within each card"}
             </div>
 
             <ol className="hansard-search__groups" aria-label="Politicians with matching speeches">
               {grouped.groups.map((g) => (
                 <li key={g.politician.id} className="hansard-search__group-item">
-                  <PoliticianResultGroup group={g} />
+                  <PoliticianResultGroup
+                    group={g}
+                    footer={
+                      <AIContradictionAnalysis
+                        politicianId={g.politician.id}
+                        politicianName={g.politician.name ?? "this politician"}
+                        query={filter.q ?? ""}
+                        chunks={g.chunks}
+                        meta={aiMeta}
+                      />
+                    }
+                  />
                 </li>
               ))}
             </ol>
