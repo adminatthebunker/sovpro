@@ -4,7 +4,7 @@
 
 **Legislature:** National Assembly of Quebec (Assemblée nationale du Québec) | **Website:** https://www.assnat.qc.ca | **Seats:** 125 | **Next election:** 2026-10-05
 
-**Status snapshot (2026-04-20):** ✅ **Bills live** (102 / 115 / 95 — **94 / 95 sponsors FK-linked, 99%**) via donneesquebec.ca CSV + RSS + bill-detail HTML. ✅ **Hansard live** for 43-2 (current session) via Journal des débats HTML — ASP.NET ViewState-paginated discovery + per-sitting HTML scrape + surname-with-riding-disambiguation resolver. ✅ **Tier 1 Speaker resolution live** — "Le Président" rows tied to the sitting Speaker by date (Paradis 2018–2022, Roy 2022–present). Votes / committees not yet built. Private bills and votes registry deferred.
+**Status snapshot (2026-04-20):** ✅ **Bills live** (102 / 115 / 95 — **94 / 95 sponsors FK-linked, 99%**) via donneesquebec.ca CSV + RSS + bill-detail HTML. ✅ **Hansard live for 8 sessions** (39-1 → 43-2, Jan 2009 → April 2026, **17-year span, 313,345 speeches / 1,278 sittings**) via Journal des débats HTML + Wayback CDX fallback for historical URL discovery. ✅ **Tier 1 Speaker resolution live** — "Le Président" rows tied to the sitting Speaker by date across 5 Speakers (Bissonnet / Vallières / Chagnon / Paradis / Roy). Embedding queue has ~393 k chunks pending at pause time (GPU-wedge reboot required — see `docs/runbooks/resume-after-reboot-2026-04-20-qc-hansard.md`). Votes / committees not yet built. Private bills and votes registry deferred.
 
 ---
 
@@ -33,10 +33,29 @@ These URLs were the user's initial research handoff for QC and seeded the pipeli
 - **Results on first run:** 102 bills / 115 events / 95 sponsors (**94 / 95 FK-linked to politicians** = 99%).
 - **Outstanding probes:** Private-bill URL scheme; votes registry (see Voting Records below — registry page is ASP.NET postback, deferred).
 
-## Hansard / Debates ✅ LIVE (2026-04-20, session 43-2)
+## Hansard / Debates ✅ LIVE (2026-04-20, sessions 39-1 → 43-2)
 
-- **Primary source:** Journal des débats daily HTML transcripts at `https://www.assnat.qc.ca/fr/travaux-parlementaires/assemblee-nationale/{parl}-{sess}/journal-debats/{YYYYMMDD}/{doc_id}.html` — one per sitting day. French is primary; English versions often 500 and are not ingested.
-- **Discovery:** ASP.NET WebForms listing at `/fr/travaux-parlementaires/journaux-debats/`. Session filter `ddlSessionLegislature` (e.g. 1617 = 43-2, 1611 = 43-1) + page size `ddlNombreParPage=100` + debate-type `rblOptionTypeDebat=1` (Assemblée nationale only — committees excluded in v1). Pagination by `__EVENTTARGET=…lkbPageSuivante` POSTs carrying `__VIEWSTATE` / `__EVENTVALIDATION` / `__VIEWSTATEGENERATOR`. One initial GET + one filter POST + N page-next POSTs covers a full session (~20 POSTs for 43-2).
+**Final corpus (8 sessions, 2009-01-13 → 2026-04-02):**
+
+| Session | Speeches | Sittings | Politician-resolved | Date range |
+|---|---:|---:|---:|---|
+| 43-2 | 14,784 | 51 | 84.9 % | 2025-09-30 → 2026-04-02 |
+| 43-1 | 65,253 | 223 | 83.4 % | 2022-11-29 → 2025-06-06 |
+| 42-2 | 18,944 | 70 | 72.2 % | 2021-10-19 → 2022-06-10 |
+| 42-1 | 49,092 | 214 | 69.9 % | 2018-11-27 → 2021-10-07 |
+| 41-1 | 45,546 | 352 | 39.8 % | 2014-05-20 → 2018-06-15 |
+| 40-1 | 23,872 | 85 | 31.1 % | 2012-10-30 → 2014-02-20 |
+| 39-2 | 38,246 | 117 | 40.3 % | 2011-02-23 → 2012-06-15 |
+| 39-1 | 57,608 | 166 | 40.5 % | 2009-01-13 → 2011-02-21 |
+| **Total** | **313,345** | **1,278** | **57.2 %** | **17-year span** |
+
+Resolution drops on older sessions because retired MNAs aren't in `politicians` — same gap as AB historical backfills. Fixable later by enriching the politicians table with ca. 2009–2018 retired MNAs.
+
+- **Primary source:** Journal des débats daily HTML transcripts at `https://www.assnat.qc.ca/fr/travaux-parlementaires/assemblee-nationale/{parl}-{sess}/journal-debats/{YYYYMMDD}/{doc_id}.html` — one per sitting day. French is primary; English versions often 500 and are not ingested. **100% of content is fetched from the origin (assnat.qc.ca); Wayback is used only for URL discovery on historical sessions (see below).**
+- **Discovery — dual path:**
+  - **Current session (43-2):** ASP.NET WebForms listing at `/fr/travaux-parlementaires/journaux-debats/`. Session filter `ddlSessionLegislature` (e.g. 1617 = 43-2) + page size `ddlNombreParPage=100` + debate-type `rblOptionTypeDebat=1` + pagination via `__EVENTTARGET=…lkbPageSuivante` POSTs carrying `__VIEWSTATE` / `__EVENTVALIDATION` / `__VIEWSTATEGENERATOR`.
+  - **Historical sessions (43-1 and older):** the same form returns HTTP 500 for every non-current session (server-side bug, reproducible from multiple IPs and inside the container). Fallback path: the **Wayback Machine CDX API** at `https://web.archive.org/cdx/search/cdx?url=assnat.qc.ca/fr/travaux-parlementaires/assemblee-nationale/{parl}-{sess}/journal-debats/*&filter=statuscode:200&filter=mimetype:text/html` returns the set of transcript URLs Wayback has indexed for that session. We dedupe the CDX rows and build `SittingRef` objects pointed at the **origin URLs** — every actual transcript fetch still goes straight to assnat.qc.ca. Wayback is a URL-discovery crutch, never a content mirror.
+  - **Wayback coverage is a ceiling on discovery.** Per session (indexed transcripts): 43-1 = 223, 42-2 = 70, 42-1 = 215, 41-1 = 354, 40-1 = 107, 39-2 = 117, 39-1 = 166. Real sitting counts may be 5–15 % higher; can be backfilled later if/when the assnat form gets fixed.
 - **Parser markup:** Speaker turns are `<p style="text-align: justify"><b>Honorific Surname :</b> speech text…</p>` with continuation paragraphs in plain `<p>`s (no `SpeakerContinues` class). Heading-vs-speaker disambiguated by *trailing colon* inside the `<b>` — centered bold without a colon is a section heading. NBSP (`\xa0`) between tokens is common. The parse module lives at `services/scanner/src/legislative/qc_hansard_parse.py` — pure-offline, importable for fixture testing.
 - **Attribution shapes observed:**
   - Person: `M. Ciccone` / `Mme Charest` — honorific + surname only (no given name).
@@ -62,6 +81,9 @@ These URLs were the user's initial research handoff for QC and seeded the pipeli
 
 | Speaker | Start | End |
 |---|---|---|
+| Michel Bissonnet | 2003-05-13 | 2008-04-08 |
+| Yvon Vallières | 2008-04-08 | 2011-04-05 |
+| Jacques Chagnon | 2011-04-05 | 2018-10-01 |
 | François Paradis | 2018-11-28 | 2022-11-29 |
 | Nathalie Roy | 2022-11-29 | — |
 

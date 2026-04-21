@@ -87,14 +87,29 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
         SpeakerTerm("Darryl Plecas",   "Darryl",  "Plecas",   date(2017, 9,  8), date(2020, 12, 7)),
         SpeakerTerm("Raj Chouhan",     "Raj",     "Chouhan",  date(2020, 12, 7), None),
     ],
-    # Quebec: Presidents of the Assemblée nationale covering the 42nd
-    # + 43rd legislatures (current Hansard ingest scope). "Le Président"
-    # / "La Présidente" is the QC equivalent of "The Speaker".
+    # Quebec: Presidents of the Assemblée nationale. "Le Président" /
+    # "La Présidente" is the QC equivalent of "The Speaker". Roster
+    # covers current 43rd legislature plus historical sessions back to
+    # the 38th (2007+) — the range Wayback CDX surfaces transcript URLs
+    # for. Earlier sessions would need additional roster entries + a
+    # historical MNA backfill to be worth resolving.
     # Source: Wikipedia "Président de l'Assemblée nationale du Québec"
     # + assnat.qc.ca historical records.
     "QC": [
-        SpeakerTerm("François Paradis", "François", "Paradis", date(2018, 11, 28), date(2022, 11, 29)),
-        SpeakerTerm("Nathalie Roy",     "Nathalie", "Roy",     date(2022, 11, 29), None),
+        SpeakerTerm("Michel Bissonnet",  "Michel",   "Bissonnet", date(2003,  5, 13), date(2008,  4,  8)),
+        SpeakerTerm("Yvon Vallières",    "Yvon",     "Vallières", date(2008,  4,  8), date(2011,  4,  5)),
+        SpeakerTerm("Jacques Chagnon",   "Jacques",  "Chagnon",   date(2011,  4,  5), date(2018, 10,  1)),
+        SpeakerTerm("François Paradis",  "François", "Paradis",   date(2018, 11, 28), date(2022, 11, 29)),
+        SpeakerTerm("Nathalie Roy",      "Nathalie", "Roy",       date(2022, 11, 29), None),
+    ],
+    # Manitoba: covers the 43rd Legislature (2023-present) which is
+    # where the Hansard corpus currently lives. Earlier Speakers
+    # (Driedger, Reid, Hickes) will be added when we backfill
+    # pre-2023 sittings — not needed for the current-session ingest.
+    # Source: Wikipedia "Speaker of the Legislative Assembly of
+    # Manitoba" + gov.mb.ca/legislature/members.
+    "MB": [
+        SpeakerTerm("Tom Lindsey",    "Tom",    "Lindsey",  date(2023, 11, 21), None),
     ],
 }
 
@@ -241,6 +256,9 @@ _SPEAKER_ROLE_BY_PROVINCE: dict[str, tuple[str, ...]] = {
     # "Le Président". "Le Vice-Président" (Deputy) is Tier 2 and
     # intentionally excluded.
     "QC": ("Le Président",),
+    # Manitoba: the mb_hansard parser normalises "Madam Speaker",
+    # "Mister Speaker", and "The Speaker" all to "The Speaker".
+    "MB": ("The Speaker",),
 }
 
 # Back-compat default for any province without an explicit mapping.

@@ -65,6 +65,21 @@ TRANSCRIPT_URL_TEMPLATE = (
     "https://www.assnat.qc.ca/fr/travaux-parlementaires/"
     "assemblee-nationale/{parl}-{sess}/journal-debats/{date}/{doc}.html"
 )
+# Wayback CDX API — fallback discovery for historical sessions.
+# The assnat.qc.ca ASP.NET search form returns HTTP 500 for every session
+# except the current one (server-side bug, reproducible from multiple IPs),
+# so historical sessions need an alternative discovery path. Wayback has
+# indexed most transcript URLs; once we have the URL we fetch the
+# transcript straight from the origin (which *does* serve historical
+# content just fine — only the search form is broken).
+WAYBACK_CDX_URL = (
+    "https://web.archive.org/cdx/search/cdx"
+    "?url=assnat.qc.ca%2Ffr%2Ftravaux-parlementaires%2Fassemblee-nationale%2F"
+    "{parl}-{sess}%2Fjournal-debats%2F*"
+    "&output=txt&collapse=urlkey"
+    "&filter=statuscode:200&filter=mimetype:text/html"
+    "&limit=10000"
+)
 
 REQUEST_TIMEOUT = 60
 REQUEST_DELAY_SECONDS = 1.5  # Polite to assnat.qc.ca
@@ -240,6 +255,63 @@ def _extract_transcript_refs(html: str) -> list[SittingRef]:
     return out
 
 
+# Wayback CDX transcript-URL regex — matches valid daily-transcript shape only.
+_CDX_TRANSCRIPT_RE = re.compile(
+    r"/assemblee-nationale/(?P<parl>\d+)-(?P<sess>\d+)/"
+    r"journal-debats/(?P<date>\d{8})/(?P<doc>\d+)\.html",
+    re.IGNORECASE,
+)
+
+
+async def discover_via_wayback(
+    client: httpx.AsyncClient, *, parliament: int, session: int,
+) -> list[SittingRef]:
+    """Fallback discovery for historical sessions via Wayback Machine CDX.
+
+    The origin server serves historical transcripts fine — only the
+    listing/search form is broken. Wayback's CDX API reliably returns
+    the set of URLs it has indexed for our URL pattern, which is a
+    near-complete list of every sitting the assembly published.
+
+    For each CDX row we pluck (date, doc_id), dedupe, and return
+    SittingRefs pointed at the origin URL. The ingest orchestrator then
+    fetches each transcript straight from assnat.qc.ca.
+    """
+    url = WAYBACK_CDX_URL.format(parl=parliament, sess=session)
+    log.info("qc_hansard wayback CDX: querying %d-%d", parliament, session)
+    r = await _get_with_retry(client, url)
+    r.raise_for_status()
+
+    seen: set[tuple[str, str]] = set()
+    out: list[SittingRef] = []
+    for line in r.text.splitlines():
+        m = _CDX_TRANSCRIPT_RE.search(line)
+        if not m:
+            continue
+        if int(m.group("parl")) != parliament or int(m.group("sess")) != session:
+            continue
+        key = (m.group("date"), m.group("doc"))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(SittingRef(
+            sitting_date=datetime.strptime(m.group("date"), "%Y%m%d").date(),
+            parliament=parliament,
+            session=session,
+            document_id=m.group("doc"),
+            url=TRANSCRIPT_URL_TEMPLATE.format(
+                parl=parliament, sess=session,
+                date=m.group("date"), doc=m.group("doc"),
+            ),
+        ))
+    out.sort(key=lambda r: r.sitting_date)
+    log.info(
+        "qc_hansard wayback CDX: %d unique transcripts for %d-%d",
+        len(out), parliament, session,
+    )
+    return out
+
+
 async def discover_sitting_refs(
     client: httpx.AsyncClient, *, parliament: int, session: int,
 ) -> list[SittingRef]:
@@ -250,7 +322,35 @@ async def discover_sitting_refs(
       2. POST with ddlSessionLegislature=<id>, debate type = 1 (Assemblée nationale
          only — skip committees for v1), 100 per page, click Rechercher.
       3. Walk lkbPageSuivante postbacks until no new refs appear.
+
+    If the form returns HTTP 500 (historical sessions trigger a server-side
+    bug) or produces zero refs, we transparently fall back to the Wayback
+    Machine CDX API (`discover_via_wayback`) which has indexed most
+    transcript URLs historically. Once we have URLs from Wayback, fetches
+    go straight to the origin — Wayback is a URL-discovery crutch, not a
+    content mirror.
     """
+    try:
+        refs = await _discover_via_form(
+            client, parliament=parliament, session=session,
+        )
+        if refs:
+            return refs
+        log.info(
+            "qc_hansard form returned 0 refs for %d-%d — falling back to Wayback",
+            parliament, session,
+        )
+    except Exception as exc:
+        log.info(
+            "qc_hansard form discovery failed for %d-%d (%s) — falling back to Wayback",
+            parliament, session, exc,
+        )
+    return await discover_via_wayback(client, parliament=parliament, session=session)
+
+
+async def _discover_via_form(
+    client: httpx.AsyncClient, *, parliament: int, session: int,
+) -> list[SittingRef]:
     # Initial GET
     r = await _get_with_retry(client, LISTING_URL)
     r.raise_for_status()
@@ -678,7 +778,12 @@ async def _upsert_speech(
         ref.url,
         parsed.source_anchor,
         raw_json,
-        page_html,  # Full HTML on first row — diff-friendly; later rows rewrite.
+        # Store the full transcript HTML only on the *first* row of each
+        # sitting. Earlier versions stored it on every row (200 × 500 KB
+        # = ~100 MB write per sitting), which made TOAST + WAL the dominant
+        # cost of ingest (~10 speeches/sec). One copy per sitting keeps
+        # re-parse possible without 200× write amplification.
+        page_html if parsed.sequence == 1 else None,
         parsed.content_hash,
     )
     return "inserted" if result and result["inserted"] else "updated"
