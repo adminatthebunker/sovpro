@@ -12,39 +12,40 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 }
 
 /**
- * Admin-scoped fetch that auto-attaches Authorization: Bearer <token>.
+ * Admin-scoped fetch. Uses the same session cookie + CSRF token as
+ * userFetch — admin access is "signed-in user with is_admin=true"
+ * (enforced by requireAdmin on the server). The thin wrapper exists
+ * so callers can write `adminFetch("/jobs")` without the /admin
+ * prefix bookkeeping.
  *
- * 401 → throws AdminUnauthorizedError so callers (hooks, pages) can
- * decide whether to logout. 503 → "admin panel disabled on server"; we
- * surface that verbatim so the login page can tell the user ADMIN_TOKEN
- * isn't set instead of a generic "login failed".
+ * 401 → not signed in; UI should redirect to /login.
+ * 403 → signed in but not an admin (distinct from 401).
+ * 503 → JWT_SECRET unset on the server (feature disabled).
  */
-export const ADMIN_TOKEN_STORAGE_KEY = "sw_admin_token";
-
 export class AdminUnauthorizedError extends Error {
-  constructor() { super("admin session expired"); }
+  constructor() { super("not signed in"); }
+}
+export class AdminForbiddenError extends Error {
+  constructor() { super("admin access required"); }
 }
 export class AdminDisabledError extends Error {
-  constructor() { super("admin panel disabled on server (ADMIN_TOKEN not set)"); }
+  constructor() { super("user accounts disabled on server (JWT_SECRET not set)"); }
 }
 
 export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...(init?.headers as Record<string, string> ?? {}),
-  };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${BASE}/admin${path}`, { ...init, headers });
-  if (res.status === 401) throw new AdminUnauthorizedError();
-  if (res.status === 503) throw new AdminDisabledError();
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body || path}`);
+  try {
+    return await userFetch<T>(`/admin${path}`, init);
+  } catch (e) {
+    if (e instanceof UserUnauthorizedError) throw new AdminUnauthorizedError();
+    if (e instanceof UserAuthDisabledError) throw new AdminDisabledError();
+    // Fastify returns 403 for both "non-admin" and "CSRF fail". userFetch
+    // surfaces a plain Error for 403; re-type as AdminForbiddenError so
+    // UI can distinguish it from a generic failure.
+    if (e instanceof Error && /^403\b/.test(e.message)) {
+      throw new AdminForbiddenError();
+    }
+    throw e;
   }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
 }
 
 // ── End-user (magic-link) auth ──────────────────────────────────
@@ -100,6 +101,7 @@ export interface MeResponse {
   display_name: string | null;
   created_at: string;
   last_login_at: string | null;
+  is_admin: boolean;
 }
 
 export interface SavedSearch {
@@ -111,7 +113,9 @@ export interface SavedSearch {
     lang?: "en" | "fr" | "any";
     level?: "federal" | "provincial" | "municipal";
     province_territory?: string;
+    /** Legacy singular pin — read-side only; new writes use politician_ids. */
     politician_id?: string;
+    politician_ids?: string[];
     party?: string;
     from?: string;
     to?: string;
@@ -138,17 +142,3 @@ export interface CorrectionSubmission {
   resolved_at: string | null;
 }
 
-/** Verify a pasted token against /admin/login; resolves true on 200, false on 401. */
-export async function verifyAdminToken(token: string): Promise<boolean> {
-  const res = await fetch(`${BASE}/admin/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ token }),
-  });
-  if (res.status === 401) return false;
-  if (res.status === 503) throw new AdminDisabledError();
-  return res.ok;
-}

@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { queryOne } from "../db.js";
 import {
   SESSION_COOKIE,
   isConfigured as jwtIsConfigured,
@@ -28,6 +29,8 @@ import {
 
 export interface AuthedRequest extends FastifyRequest {
   user?: SessionClaims;
+  /** Set by requireAdmin after a successful DB lookup. */
+  adminEmail?: string;
 }
 
 function readSessionCookie(req: FastifyRequest): string | null {
@@ -65,4 +68,39 @@ export async function optionalUser(req: FastifyRequest, _reply: FastifyReply) {
 
 export function getUser(req: FastifyRequest): SessionClaims | null {
   return (req as AuthedRequest).user ?? null;
+}
+
+/**
+ * Admin gate. Runs requireUser first, then checks users.is_admin on
+ * every request. We re-read from the DB rather than embedding the
+ * flag in the session JWT so a psql demotion (UPDATE users SET
+ * is_admin = false) takes effect on the next request, not on next
+ * session expiry. Admin traffic volume makes this cheap.
+ *
+ * 403 on authenticated-but-not-admin is intentional: 401 would imply
+ * "try again with credentials," but the user is already signed in —
+ * they just don't have the role. Returning 404 is also defensible
+ * (hide the admin surface entirely) but would make legitimate "I
+ * should have access, what broke?" debugging harder, and the admin
+ * panel is already at a known URL.
+ */
+export async function requireAdmin(req: FastifyRequest, reply: FastifyReply) {
+  await requireUser(req, reply);
+  if (reply.sent) return;
+
+  const claims = (req as AuthedRequest).user;
+  if (!claims) return; // requireUser already replied
+
+  const row = await queryOne<{ is_admin: boolean; email: string }>(
+    `SELECT is_admin, email FROM users WHERE id = $1`,
+    [claims.sub]
+  );
+  if (!row || !row.is_admin) {
+    return reply.code(403).send({ error: "admin access required" });
+  }
+  (req as AuthedRequest).adminEmail = row.email;
+}
+
+export function getAdminEmail(req: FastifyRequest): string | null {
+  return (req as AuthedRequest).adminEmail ?? null;
 }

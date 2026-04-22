@@ -1,16 +1,19 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { query, queryOne } from "../db.js";
-import { requireAdminToken } from "../middleware/admin-auth.js";
+import { requireAdmin, getAdminEmail } from "../middleware/user-auth.js";
+import { requireCsrf } from "../lib/csrf.js";
 
 /**
  * Admin-panel API.
  *
- * All routes under /api/v1/admin require a Bearer token matching
- * config.adminToken (checked by requireAdminToken). The exception is
- * /login — that endpoint exists so the UI can verify the pasted token
- * before persisting it into localStorage, so it runs the same
- * middleware and just returns {ok:true} on success.
+ * All routes under /api/v1/admin require a signed-in user with
+ * users.is_admin=true (checked by requireAdmin, which composes
+ * requireUser + a per-request DB lookup). Mutating routes additionally
+ * require the double-submit CSRF token via a global preHandler below.
+ * Bearer-token auth was removed on 2026-04-20 — the old ADMIN_TOKEN
+ * flow put the credential in localStorage, readable by any XSS on the
+ * same origin.
  *
  * The command catalog the frontend uses to render forms is served
  * verbatim from /commands. To keep it in sync with the worker, the
@@ -229,8 +232,6 @@ const COMMAND_KEYS = new Set(COMMAND_CATALOG.map(c => c.key));
 
 // ── Zod schemas ────────────────────────────────────────────────────
 
-const loginBody = z.object({ token: z.string().min(1) });
-
 const jobsListQuery = z.object({
   status: z.enum(["queued", "running", "succeeded", "failed", "cancelled"]).optional(),
   schedule_id: z.string().uuid().optional(),
@@ -264,18 +265,17 @@ const schedulePatchBody = z.object({
 // ── Routes ─────────────────────────────────────────────────────────
 
 export default async function adminRoutes(app: FastifyInstance) {
-  // Gate every route with the bearer-token check.
-  app.addHook("preHandler", requireAdminToken);
-
-  // Symbolic endpoint the UI calls first to verify a pasted token.
-  app.post("/login", async (req, reply) => {
-    const parsed = loginBody.safeParse(req.body);
-    if (!parsed.success) return reply.badRequest(parsed.error.message);
-    // The real check already ran in requireAdminToken via the Authorization
-    // header. If we got here, we're good.
-    // We DO NOT compare parsed.data.token to anything — the handshake is
-    // "send it in the Authorization header you'll use going forward".
-    return { ok: true };
+  // Gate every route on "signed-in user with is_admin=true".
+  app.addHook("preHandler", requireAdmin);
+  // Mutating routes additionally require CSRF. Hook order matters —
+  // this runs after requireAdmin, so a non-admin caller gets 403
+  // (wrong role) rather than 403 (missing CSRF), which is the more
+  // useful error. GET/HEAD are safe methods per RFC 9110 §9.2.1;
+  // OPTIONS is handled by @fastify/cors before we see it.
+  app.addHook("preHandler", async (req: FastifyRequest, reply: FastifyReply) => {
+    const m = req.method.toUpperCase();
+    if (m === "GET" || m === "HEAD" || m === "OPTIONS") return;
+    return requireCsrf(req, reply);
   });
 
   app.get("/commands", async () => ({ commands: COMMAND_CATALOG }));
@@ -315,11 +315,12 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!COMMAND_KEYS.has(command)) {
       return reply.badRequest(`unknown command: ${command}`);
     }
+    const actor = getAdminEmail(req) ?? "admin";
     const row = await queryOne<{ id: string }>(
       `INSERT INTO scanner_jobs (command, args, status, priority, requested_by)
-       VALUES ($1, $2::jsonb, 'queued', $3, 'admin')
+       VALUES ($1, $2::jsonb, 'queued', $3, $4)
        RETURNING id`,
-      [command, JSON.stringify(args), priority] as any,
+      [command, JSON.stringify(args), priority, actor] as any,
     );
     return reply.code(201).send({ id: row?.id });
   });
@@ -373,11 +374,12 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!COMMAND_KEYS.has(command)) {
       return reply.badRequest(`unknown command: ${command}`);
     }
+    const actor = getAdminEmail(req) ?? "admin";
     const row = await queryOne<{ id: string }>(
       `INSERT INTO scanner_schedules (name, command, args, cron, enabled, created_by)
-       VALUES ($1, $2, $3::jsonb, $4, $5, 'admin')
+       VALUES ($1, $2, $3::jsonb, $4, $5, $6)
        RETURNING id`,
-      [name, command, JSON.stringify(args), cron.trim(), enabled] as any,
+      [name, command, JSON.stringify(args), cron.trim(), enabled, actor] as any,
     );
     return reply.code(201).send({ id: row?.id });
   });
@@ -647,7 +649,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     const resolvedExpr = TERMINAL_STATUSES.has(status)
       ? "now()"
       : "NULL";
-    const actor = (req as { adminActor?: string }).adminActor ?? "admin";
+    const actor = getAdminEmail(req) ?? "admin";
 
     const row = await queryOne(
       `

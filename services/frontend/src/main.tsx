@@ -22,7 +22,6 @@ import SavedSearchesPage from "./pages/SavedSearchesPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
 import AccountCorrectionsPage from "./pages/AccountCorrectionsPage";
 import { AdminLayout } from "./components/AdminLayout";
-import AdminLogin from "./pages/admin/AdminLogin";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminJobs from "./pages/admin/AdminJobs";
 import AdminJobDetail from "./pages/admin/AdminJobDetail";
@@ -60,7 +59,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="account/saved-searches" element={<SavedSearchesPage />} />
           <Route path="account/corrections" element={<AccountCorrectionsPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
-          <Route path="admin/login" element={<AdminLogin />} />
           <Route path="admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
             <Route path="jobs" element={<AdminJobs />} />
