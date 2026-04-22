@@ -356,6 +356,7 @@ async def _resolve_sponsor_id(
 async def _upsert_bill_and_events(
     db: Database, *, session_id: str, legislature: int, session: int,
     bill_number: str, slug: str, detail_url: str, parsed: dict,
+    raw_html: Optional[str] = None,
 ) -> tuple[str, int, int, int]:
     """Returns (bill_id, events_written, sponsors_written, sponsors_linked)."""
 
@@ -386,10 +387,13 @@ async def _upsert_bill_and_events(
         INSERT INTO bills (
             session_id, level, province_territory, bill_number,
             title, bill_type, status, status_changed_at, introduced_date,
-            source_id, source_system, source_url, raw, last_fetched_at
+            source_id, source_system, source_url, raw, last_fetched_at,
+            raw_html, html_fetched_at
         )
         VALUES ($1, 'provincial', 'NB', $2, $3, $4, $5, $6, $7,
-                $8, $9, $10, $11::jsonb, now())
+                $8, $9, $10, $11::jsonb, now(),
+                $12::text,
+                CASE WHEN $12::text IS NULL THEN NULL ELSE now() END)
         ON CONFLICT (source_id) DO UPDATE SET
             title             = EXCLUDED.title,
             bill_type         = COALESCE(EXCLUDED.bill_type, bills.bill_type),
@@ -404,6 +408,11 @@ async def _upsert_bill_and_events(
             introduced_date   = COALESCE(EXCLUDED.introduced_date, bills.introduced_date),
             source_url        = EXCLUDED.source_url,
             raw               = EXCLUDED.raw,
+            raw_html          = COALESCE(EXCLUDED.raw_html, bills.raw_html),
+            html_fetched_at   = CASE
+                WHEN EXCLUDED.raw_html IS NOT NULL THEN now()
+                ELSE bills.html_fetched_at
+            END,
             last_fetched_at   = now(),
             updated_at        = now()
         RETURNING id
@@ -418,6 +427,7 @@ async def _upsert_bill_and_events(
             "sponsor_party":   parsed.get("sponsor_party"),
             "sponsor_riding":  parsed.get("sponsor_riding"),
         }).decode(),
+        raw_html,
     )
     bill_id = str(row["id"])
 
@@ -512,6 +522,7 @@ async def _ingest_one_session(
             legislature=bill["legislature"], session=bill["session"],
             bill_number=bill["bill_number"], slug=bill["slug"],
             detail_url=bill["detail_url"], parsed=parsed,
+            raw_html=dr.text,
         )
         stats["bills"] += 1
         stats["events"] += ev_w
@@ -539,14 +550,35 @@ async def ingest_nb_bills(
         targets: list[tuple[int, int]] = []
         if legislature is not None and session is not None:
             targets = [(legislature, session)]
+        elif all_sessions_in_legislature is not None:
+            # The index page's bill-detail links only cover the CURRENT
+            # session — historical backfill needs per-(L,S) probing.
+            # NB legislatures run up to 5 sessions (Leg 54 had 5). Probe
+            # S=1..6 and keep those that return at least one bill link.
+            L = all_sessions_in_legislature
+            for S in range(1, 7):
+                list_url = LIST_URL.format(legl=L, session=S)
+                try:
+                    r = await client.get(list_url, timeout=REQUEST_TIMEOUT)
+                except httpx.HTTPError as e:
+                    log.warning("nb probe failed %s: %s", list_url, e)
+                    continue
+                if r.status_code != 200:
+                    continue
+                if _LIST_HREF_RE.search(r.text):
+                    targets.append((L, S))
+            if not targets:
+                log.warning(
+                    "ingest_nb_bills: no sessions with bills found in legislature %d",
+                    L,
+                )
+                return totals
         else:
-            # Discover current session from the "all bills" index page.
+            # Default: discover current session from the "all bills" index.
             r = await client.get(
                 BASE + "/en/legislation/bills", timeout=REQUEST_TIMEOUT,
             )
             r.raise_for_status()
-            # The index redirects its canonical link to the current
-            # session; harvest URLs and use the most recent one.
             pairs = sorted({
                 (int(m.group("legl")), int(m.group("session")))
                 for m in _LIST_HREF_RE.finditer(r.text)
@@ -554,13 +586,7 @@ async def ingest_nb_bills(
             if not pairs:
                 log.warning("ingest_nb_bills: no sessions found on index")
                 return totals
-            if all_sessions_in_legislature is not None:
-                targets = sorted(
-                    (l, s) for (l, s) in pairs
-                    if l == all_sessions_in_legislature
-                )
-            else:
-                targets = [pairs[0]]
+            targets = [pairs[0]]
 
         log.info("ingest_nb_bills: %d target session(s)", len(targets))
         for L, S in targets:

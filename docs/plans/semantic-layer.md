@@ -1,7 +1,7 @@
 # Semantic Layer — Schema, Stack, and Phased Rollout
 
-**Last updated:** 2026-04-16
-**Status:** Approved architecture. Implementation by phase below.
+**Last updated:** 2026-04-19
+**Status:** Approved architecture. Schema + chunking rules are still the authority. Embed-stack section updated post-Qwen3 migration; see `docs/plans/embedding-model-comparison.md` for the bake-off that drove the choice and `docs/plans/search-features-handoff.md` for the retrieval-side contract.
 
 This doc translates `docs/plans/national-expansion-scoping.md` answers into a concrete plan. If it disagrees with that doc, that doc wins — come back and fix this one.
 
@@ -13,33 +13,29 @@ This doc translates `docs/plans/national-expansion-scoping.md` answers into a co
 - Source-language embeddings, multilingual retrieval by default.
 - Start federal + provincial. Municipal is phase-2.
 
-## Infrastructure status (2026-04-16)
+## Infrastructure status (2026-04-19)
 
-- **Database image:** now built from `db/Dockerfile` extending `postgis/postgis:16-3.4` with `postgresql-16-pgvector` (v0.8.2). `docker compose build db` rebuilds; `pgdata` volume persists.
-- **Applied migrations:** 0014 (vector + unaccent) · 0015 (speeches) · 0016 (speech_references) · 0017 (speech_chunks + HNSW/GIN indexes) · 0019 (jurisdiction_sources + seed) · 0020 (correction_submissions) · 0021 (constituency_boundaries temporal).
+- **Database image:** built from `db/Dockerfile` extending `postgis/postgis:16-3.4` with `postgresql-16-pgvector` (v0.8.2). `docker compose build db` rebuilds; `pgdata` volume persists.
+- **Applied migrations:** 0014 (vector + unaccent) · 0015 (speeches) · 0016 (speech_references) · 0017 (speech_chunks + HNSW/GIN indexes) · 0019 (jurisdiction_sources + seed) · 0020 (correction_submissions) · 0021 (constituency_boundaries temporal) · 0022 (scanner_jobs/schedules) · 0023 (embedding_next Qwen3 column) · 0024 (federal session re-tag) · 0025 (drop legacy BGE-M3 `embedding` column, rename `embedding_next` → `embedding`) · 0026 (politician photo local + socials provenance — two files share the 0026 number, both applied) · 0027 (users, login_tokens, saved_searches) · 0028 (users.email_bounced_at) · 0029 (users.is_admin).
 - **Held back:** 0018 (votes + vote_positions) — sits on disk, apply in phase 4 after NT/NU consensus-gov't data informs revisions.
-- **Bills coverage:** 9 of 13 sub-national legislatures live (NS, ON, BC, QC, AB, NB, NL, NT, NU). MB + SK (PDF-only) and PE + YT (WAF-blocked) remain.
-- **Embed service:** **deployed on GPU.** `services/embed/` container (`sovpro-embed:latest`) now runs BGE-M3 + BGE-reranker-v2-m3 on **NVIDIA RTX 4050 Mobile via CUDA 12.4 + fp16**. Base image is `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. Exposes `POST /embed` and `POST /rerank` on `embed:8000`. Model weights cache in the `embedmodels` named volume.
-- **Bench (RTX 4050 Mobile, fp16, 2026-04-16):**
-  - Cold start: ~5 s (was ~16 s on CPU)
-  - Embed steady-state: ~68 texts/sec @ batch=32, ~125 @ batch=64, **~205 @ batch=128** (was ~1.0 on 4-CPU cap)
-  - Rerank: 2 pairs in ~365 ms (post-load, similar to CPU — cross-encoders are small enough that PCIe transfer dominates at low batches)
-  - Net speedup: **~200× at peak batch size.** 50k speeches = ~4 min; 1M speeches ≈ 80 min.
-- **Precision:** cosine similarity between stored CPU-fp32 vectors and fresh GPU-fp16 vectors for the same text measured at 0.999999 — existing 20 embeddings do not require re-embedding.
-- **Federal Hansard pipeline shipped:** `ingest-federal-hansard` → `chunk-speeches` → `embed-speech-chunks` Click subcommands are live. 20 speeches ingested end-to-end as smoke test (1 sitting day, EN+FR mix, 100% politician FK resolution).
-- **Not yet:** historical backfill beyond the smoke test; hybrid retrieval API endpoint; corrections-inbox email ingest.
+- **Bills coverage:** 10 of 13 sub-national legislatures live (NS, ON, BC, QC, AB, NB, NL, NT, NU, **MB**). SK (PDF-only, single-province investment) and PE + YT (WAF-blocked pair) remain.
+- **Speeches coverage:** federal + QC + AB + BC + MB Hansard ingested — **2,035,283 speeches, 2,697,652 chunks, 100 % embedded** with Qwen3-Embedding-0.6B. ON / NS / NB / NL / NT / NU / SK / PE / YT Hansard pipelines are the remaining build-out.
+- **Embed service:** HuggingFace **Text Embeddings Inference (TEI)** serving **Qwen3-Embedding-0.6B** at fp16 on the RTX 4050 Mobile. Reachable at `http://tei:80` via TEI-native `POST /embed` or OpenAI-compatible `POST /v1/embeddings`. Model cache in `embedmodels` (mounted at `/data`). Legacy BGE-M3 + BGE-reranker wrapper retired on 2026-04-19; its code still lives at `services/embed/` for rollback but no compose service references it. **Reranker is no longer in the critical path.**
+- **Throughput (Qwen3-0.6B fp16 on RTX 4050 Mobile, 2026-04-18 re-embed):** ~75 chunks/sec pure GPU, **50.9 chunks/sec end-to-end** through the scanner's batched-UNNEST write path. 242 k chunks re-embedded in 1 h 19 m. The end-to-end number is the one worth capacity-planning against.
+- **Retrieval contract (query-time):** Qwen3-Embedding requires an **instruction prefix on queries, not documents**. Format: `Instruct: Given a parliamentary search query, retrieve relevant Canadian Hansard speech excerpts\nQuery: {user query}`. Without it, NDCG@10 drops from ~0.43 to ~0.22. See `docs/plans/search-features-handoff.md`.
+- **Not yet:** remaining provincial Hansard ingesters (ON / NS / NB / NL / NT / NU / SK / PE / YT); hybrid retrieval API endpoint (`/api/v1/search`); corrections-inbox email ingest.
 
 ## Stack decisions
 
 | Layer | Choice | Why |
 |---|---|---|
 | Vector store | **pgvector in existing `sovereignwatch` Postgres** | Single DB, clean joins to `politicians` / `bills`, SQL-native filters. ~10M chunk ceiling with HNSW is above our full-scope estimate. |
-| Embedding model | **BGE-M3** (self-hosted, CPU inference) | Multilingual (FR/EN/IU), 1024-dim, dense + sparse + colbert in one model. Free. |
-| Reranker | **BGE-reranker-v2-m3** (self-hosted) | Cross-encoder, multilingual, small enough for CPU. |
+| Embedding model | **Qwen3-Embedding-0.6B** (self-hosted, GPU fp16 via TEI) | Multilingual, 1024-dim native. Beat BGE-M3 by +13% NDCG@10 / +9% Recall@20 in the April 2026 bake-off; ~1.6× throughput. Apache 2.0. **Query-time instruction prefix is load-bearing.** |
+| Reranker | **None in the critical path** | Qwen3-0.6B retrieval cleared the bar without a cross-encoder. If reintroduced, run as a separate service — don't resurrect the legacy FlagEmbedding wrapper just for it. |
 | Sparse retrieval | **Postgres `tsvector`** with English + French configs | No new infra; catches bill numbers / act names that dense misses. |
 | Chunking | **One chunk per speaker turn**, token-capped with overlap on long turns | Turns ≤ 512 tokens → one chunk. Longer → split with 50-token overlap. |
 | Ingest | **Python async, extended existing scanner** | Same patterns as `legislative/*`. New `speeches/` subpackage. |
-| PDF extraction | **pdfplumber + speaker-turn regex + LLM fallback (local, Ollama or llama.cpp)** | AB Hansard forces this now; pays off for SK/MB/NL/PE archives. |
+| PDF extraction | **Poppler `pdftotext` via `pdf_utils.pdftotext(raw=True/layout=True)`** | Shared helper hoisted from AB Hansard; MB billstatus.pdf landed 2026-04-20. `-raw` for tables whose columns wrap, `-layout` for cleanly-gridded PDFs, default for prose like AB Hansard. `pdfplumber` kept as documented fallback if Poppler ever can't crack a grid. |
 
 ## Schema (proposed migrations)
 
@@ -137,7 +133,7 @@ CREATE TABLE speech_chunks (
   session_id         UUID,
 
   -- Retrieval
-  embedding      vector(1024), -- BGE-M3 dense
+  embedding      vector(1024), -- Qwen3-Embedding-0.6B dense (was BGE-M3 pre-0025)
   tsv            tsvector,     -- BM25 lexical
   tsv_config     TEXT,         -- 'english' / 'french' / 'simple'
 
@@ -253,7 +249,7 @@ source (API/HTML/PDF)
 └──────────┬───────────┘
            ▼
 ┌──────────────────────┐
-│ speeches_embed       │── BGE-M3 batch inference, CPU
+│ speeches_embed       │── Qwen3-0.6B batch inference via TEI (GPU fp16)
 └──────────┬───────────┘
            ▼
 ┌──────────────────────┐
@@ -269,9 +265,9 @@ Each stage is an idempotent Click subcommand. `raw_html` stays on `speeches.raw`
 query string + optional filters (level, province, party, date range, politician_id)
       │
       ▼
-┌──────────────────────┐
-│ BGE-M3 embed query   │── dense vector (1024-dim)
-└──────────┬───────────┘
+┌──────────────────────────────┐
+│ Qwen3-0.6B embed query       │── instruction-wrapped, 1024-dim
+└──────────┬───────────────────┘
            ▼
 ┌──────────────────────┐                   ┌─────────────────────┐
 │ HNSW top-50 dense    │   ─── union ───   │ tsquery top-50 BM25 │
@@ -283,19 +279,17 @@ query string + optional filters (level, province, party, date range, politician_
                  │ rank fusion          │
                  └──────────┬───────────┘
                             ▼
-                 ┌──────────────────────┐
-                 │ BGE-reranker top-10  │── cross-encoder, final order
-                 └──────────┬───────────┘
-                            ▼
                  hydrate speech+politician+bill joins → API response
 ```
+
+Reranker stage was dropped on 2026-04-19 — Qwen3-0.6B retrieval quality cleared the bar without a cross-encoder. If a future eval argues for putting one back, treat it as a separate service.
 
 ## Chunking rules (concrete)
 
 1. One speaker turn = one chunk by default.
 2. If turn > 512 tokens: split at paragraph boundary, 50-token overlap, carry same `politician_id` / metadata.
 3. Minimum chunk length: 20 tokens. Shorter turns (procedural "Mr. Speaker") are stored on `speeches` but skipped for `speech_chunks` embedding.
-4. Chunk token count uses BGE-M3's tokenizer, not a Python approximation.
+4. Chunk token count uses the embedding model's tokenizer (Qwen3 as of 2026-04-19; BGE-M3 tokenizer counts from pre-migration chunks were re-validated at re-embed time and stayed within the 512-token turn cap, so no re-chunking was required).
 
 ## Dedup strategy (at ingest)
 
@@ -307,8 +301,8 @@ query string + optional filters (level, province, party, date range, politician_
 
 - Store source language in `speeches.language`.
 - `speech_chunks.tsv_config` chooses between `english` / `french` / `simple` (for IU) for the tsvector.
-- BGE-M3 handles dense embeddings across all three — one `embedding` column, no per-language branching.
-- Retrieval queries embed the query once with BGE-M3 and score against all languages. A French query will retrieve English speeches and vice versa.
+- Qwen3-Embedding-0.6B handles dense embeddings across all three — one `embedding` column, no per-language branching.
+- Retrieval queries embed the query once with Qwen3 and score against all languages. Cross-lingual retrieval works but regressed vs. BGE-M3 (R@10 0.063 vs 0.081); the 2026-04-18 decision was to accept that trade-off for the NDCG / throughput win, because users generally search in one language at a time.
 
 ## Person-over-time
 
@@ -341,11 +335,10 @@ Future boundaries (new `electoral_boundaries_version`) get new rows; the map que
 
 | Operation | Expected latency |
 |---|---|
-| Ingest 1k speeches (embed on CPU) | ~10 minutes, BGE-M3 |
-| HNSW top-50 dense query | < 50 ms at 10M rows, tuned |
+| Ingest 1k chunks (embed via TEI/Qwen3 on RTX 4050 Mobile) | ~20 s end-to-end (50.9 chunks/sec measured) |
+| HNSW top-50 dense query | < 50 ms at ~2M rows, tuned (`hnsw.ef_search=200`, `iterative_scan=relaxed_order`) |
 | tsvector top-50 BM25 | < 100 ms with GIN |
-| BGE-reranker top-10 of 50 | ~1 s on CPU |
-| End-to-end search response | < 2 s target, < 5 s ceiling |
+| End-to-end search response | < 2 s target, < 5 s ceiling (no reranker stage in the critical path) |
 
 DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 GB**. Single-host is fine for the life of phase 1 on your bootstrapped infra.
 
@@ -354,11 +347,12 @@ DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 G
 ### Phase 0 — foundation
 - [x] Custom `db/Dockerfile` with pgvector; compose wired to `build: ./db`.
 - [x] Migrations 0014 (pgvector + unaccent), 0015–0017 (speeches / refs / chunks + HNSW/GIN), 0019 (jurisdiction_sources + seed), 0020 (corrections), 0021 (constituency temporal).
-- [x] Embed service: BGE-M3 + BGE-reranker-v2-m3 on RTX 4050 fp16, Dockerised, model-cache volume, `/embed` + `/rerank` endpoints live.
-- [x] GPU throughput benchmarked on a real speeches sample (~205 texts/sec at batch=128).
+- [x] Embed service: Qwen3-Embedding-0.6B via TEI on RTX 4050 fp16, Dockerised, model-cache volume shared with the retired BGE-M3 layout, `/embed` + `/v1/embeddings` endpoints live. (BGE-M3 + BGE-reranker wrapper was the prior incarnation; retired 2026-04-19 per `docs/plans/embedding-model-comparison.md`.)
+- [x] GPU throughput benchmarked on a real speeches sample (50.9 chunks/sec end-to-end; ~75 chunks/sec pure GPU).
 - [x] Frontend coverage page reading `jurisdiction_sources`.
-- [x] Federal Hansard ingester + chunker + embedder scanner commands, smoke-tested end-to-end.
+- [x] Federal Hansard ingester + chunker + embedder scanner commands shipped; federal + QC + AB + BC + MB corpora ingested (2.04 M speeches, 2.70 M chunks, 100 % embedded).
 - [ ] Extend `politician_terms` backfill to cover every politician currently in `politicians` (not just current term).
+- [ ] `/api/v1/search` hybrid endpoint — schema + vectors are ready; route not written.
 
 ### Phase 1 — federal Hansard (2–4 weeks)
 - Source: extend `politician_openparliament_cache` pattern into normalized `speeches` rows. Openparliament.ca provides structured JSON + speaker slugs.
@@ -372,8 +366,9 @@ DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 G
 - Expand search filters to include level + province + language.
 
 ### Phase 3 — remaining provincial Hansards (rolling, research-handoff-gated)
-- Bills layer already live for NB, NL, NT, NU (no pipeline needed for bills).
-- MB + SK — gated on PDF-extraction tooling (same investment unlocks AB Hansard).
+- Bills layer already live for NB, NL, NT, NU, MB (no pipeline needed for bills).
+- MB Hansard shipped 2026-04-20 (4th provincial Hansard after AB/BC/QC).
+- SK — gated on a dedicated PDF-extraction investment (both roster and timeline live in PDFs with a different layout from MB's billstatus.pdf).
 - PE + YT — gated on Playwright/browser-automation track.
 - Each Hansard pipeline remains gated on the user's research-handoff rule (see `feedback_research_handoff.md`).
 
@@ -392,7 +387,7 @@ Deferred per goals doc.
 ## What we're explicitly not doing
 
 - **No dedicated vector DB.** Single Postgres only.
-- **No hosted embeddings.** Self-hosted BGE-M3 in the critical path.
+- **No hosted embeddings.** Self-hosted Qwen3-Embedding-0.6B (via TEI) in the critical path.
 - **No machine translation.** Source-language embeddings.
 - **No browser-automation infra for Cloudflare/Radware-blocked legislatures in phase 1.** Flag them in `jurisdiction_sources` and defer.
 - **No federation / per-user accounts in v1.** Corrections are email-only.

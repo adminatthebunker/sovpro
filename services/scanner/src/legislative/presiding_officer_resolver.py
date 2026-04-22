@@ -111,6 +111,30 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
     "MB": [
         SpeakerTerm("Tom Lindsey",    "Tom",    "Lindsey",  date(2023, 11, 21), None),
     ],
+    # New Brunswick: covers Leg 58-61 (digital Hansard depth on
+    # legnb.ca starts at 58/3, 2016). Chris Collins was removed from
+    # the Liberal caucus in 2018 but remained Speaker; the role was
+    # effectively vacant between the 58th's summer 2018 recess and
+    # Guitard's election on 2018-11-20. "Mr. Speaker" / "Madam
+    # Speaker" in NB Hansard resolves via this roster + the spoken_at
+    # date.
+    # Source: legnb.ca /en/members/speakers + Wikipedia
+    # "Speaker of the New Brunswick Legislative Assembly".
+    "NB": [
+        SpeakerTerm("Chris Collins",    "Chris",    "Collins",  date(2014, 10, 23), date(2018,  8, 29)),
+        SpeakerTerm("Daniel Guitard",   "Daniel",   "Guitard",  date(2018, 11, 20), date(2020,  8, 17)),
+        SpeakerTerm("Bill Oliver",      "Bill",     "Oliver",   date(2020, 11, 17), date(2024,  8, 14)),
+        SpeakerTerm("Francine Landry",  "Francine", "Landry",   date(2024, 11, 19), None),
+    ],
+    # Nova Scotia: covers the 65th General Assembly (1st Session
+    # opened 2024-12-10). The sitting transcripts list the Speaker
+    # directly in a <p class="hsd_center">Hon. Danielle Barkhouse</p>
+    # block at the top of each day's Hansard. Earlier Speakers (Keith
+    # Bain, Kevin Murphy, Gordie Gosse) will be added when we backfill
+    # pre-65 sittings — not needed for current-session ingest.
+    "NS": [
+        SpeakerTerm("Danielle Barkhouse", "Danielle", "Barkhouse", date(2024, 12, 10), None),
+    ],
 }
 
 
@@ -259,6 +283,15 @@ _SPEAKER_ROLE_BY_PROVINCE: dict[str, tuple[str, ...]] = {
     # Manitoba: the mb_hansard parser normalises "Madam Speaker",
     # "Mister Speaker", and "The Speaker" all to "The Speaker".
     "MB": ("The Speaker",),
+    # New Brunswick: nb_hansard parser matches English role lines
+    # verbatim ("Mr. Speaker", "Madam Speaker"). "The Speaker" appears
+    # as a rarer alternative form. The French label "Le président :"
+    # is treated as body text by the parser (bilingual duplicate).
+    "NB": ("Mr. Speaker", "Madam Speaker", "Madame Speaker", "The Speaker"),
+    # Nova Scotia: ns_hansard parser normalises every presiding-officer
+    # anchor form ("THE SPEAKER", "MADAM SPEAKER", "MR. SPEAKER") to
+    # the canonical "The Speaker" role string.
+    "NS": ("The Speaker",),
 }
 
 # Back-compat default for any province without an explicit mapping.

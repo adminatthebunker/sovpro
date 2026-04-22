@@ -135,6 +135,92 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap speeches scanned (smoke-test aid)."},
         ],
     },
+    "ingest-mb-hansard": {
+        "description": "Pull Manitoba Hansard (Word-exported HTML) into `speeches`. Speaker resolution via politicians.mb_assembly_slug.",
+        "cli": "ingest-mb-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "parliament", "type": "int", "required": True,
+             "help": "MB legislature number (e.g. 43)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the legislature (e.g. 3)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed this run."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-mb-speakers": {
+        "description": "Re-resolve politician_id on MB Hansard speeches with NULL politician_id.",
+        "cli": "resolve-mb-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
+    "ingest-ns-hansard": {
+        "description": "Pull Nova Scotia Hansard (HTML transcripts) into `speeches`. Speaker resolution via politicians.nslegislature_slug.",
+        "cli": "ingest-ns-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "parliament", "type": "int", "required": True,
+             "help": "NS assembly number (e.g. 65 for current)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the assembly (e.g. 1)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed this run."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-ns-speakers": {
+        "description": "Re-resolve politician_id on NS Hansard speeches with NULL politician_id. Run after ingest-ns-mlas stamps new slugs.",
+        "cli": "resolve-ns-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
+    "ingest-nb-hansard": {
+        "description": "Pull New Brunswick Hansard (bilingual PDF) into `speeches`. English speaker lines trigger new rows; French translations become body text.",
+        "cli": "ingest-nb-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "legislature", "type": "int", "required": False,
+             "help": "NB Legislature number (pair with --session)."},
+            {"name": "session", "type": "int", "required": False,
+             "help": "Session within the legislature (requires --legislature)."},
+            {"name": "all_sessions_in_legislature", "type": "int", "required": False,
+             "help": "Every session in legislature L (e.g. 59 or 60 for a full-legislature backfill)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed (newest-first when capped)."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-nb-speakers": {
+        "description": "Re-resolve politician_id on NB Hansard speeches with NULL politician_id.",
+        "cli": "resolve-nb-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
     "chunk-speeches": {
         "description": "Split speeches.text into retrievable `speech_chunks` rows (idempotent).",
         "cli": "chunk-speeches",
@@ -165,12 +251,12 @@ COMMANDS: dict[str, dict[str, Any]] = {
         ],
     },
     "resolve-presiding-speakers": {
-        "description": "Tie 'The Speaker' speeches to the sitting Speaker by date. Seeds politicians + politician_terms for the jurisdiction's Speaker roster, then updates NULL-politician_id rows. Province defaults to AB; pass BC to run for British Columbia.",
+        "description": "Tie 'The Speaker' speeches to the sitting Speaker by date. Seeds politicians + politician_terms for the jurisdiction's Speaker roster, then updates NULL-politician_id rows. Province defaults to AB; pass BC/QC/MB to run for those legislatures.",
         "cli": "resolve-presiding-speakers",
         "category": "hansard",
         "args": [
             {"name": "province", "type": "enum", "required": False, "default": "AB",
-             "choices": ["AB", "BC", "QC"],
+             "choices": ["AB", "BC", "QC", "MB", "NB", "NS"],
              "help": "Which province's Speaker roster to resolve."},
             {"name": "limit", "type": "int", "required": False,
              "help": "Cap candidate speeches scanned (smoke-test aid)."},
@@ -231,11 +317,13 @@ COMMANDS: dict[str, dict[str, Any]] = {
         ],
     },
     "ingest-nb-bills": {
-        "description": "New Brunswick bills via legnb.ca.",
+        "description": "New Brunswick bills via legnb.ca. Default current session; --all-sessions-in-legislature L backfills every session in legislature L.",
         "cli": "ingest-nb-bills", "category": "bills",
         "args": [
-            {"name": "legislature", "type": "int", "required": False, "help": "Legislature number."},
-            {"name": "session", "type": "int", "required": False, "help": "Session number."},
+            {"name": "legislature", "type": "int", "required": False, "help": "One specific legislature (pair with --session)."},
+            {"name": "session", "type": "int", "required": False, "help": "One specific session (requires --legislature)."},
+            {"name": "all_sessions_in_legislature", "type": "int", "required": False, "help": "Every session within legislature L (e.g. 56 for the 2006–2010 era)."},
+            {"name": "delay", "type": "int", "required": False, "default": 2, "help": "Seconds between per-bill detail fetches (default 1.5 in code)."},
         ],
     },
     "ingest-nl-bills": {
@@ -264,6 +352,38 @@ COMMANDS: dict[str, dict[str, Any]] = {
             {"name": "session", "type": "int", "required": False, "help": "Session number (default: current)."},
         ],
     },
+    "ingest-mb-bills": {
+        "description": "Manitoba bills roster via web2.gov.mb.ca (Government + Private Members'). Sponsors on index only; stage dates come from parse-mb-bill-events.",
+        "cli": "ingest-mb-bills", "category": "bills",
+        "args": [
+            {"name": "parliament", "type": "int", "required": False, "default": 43,
+             "help": "Legislature number (default: 43, current)."},
+            {"name": "session", "type": "int", "required": False, "default": 3,
+             "help": "Session number within the legislature (default: 3, current)."},
+        ],
+    },
+    "fetch-mb-billstatus-pdf": {
+        "description": "Download MB billstatus.pdf into the scanner's PDF cache (once per UTC day).",
+        "cli": "fetch-mb-billstatus-pdf", "category": "bills", "args": [],
+    },
+    "parse-mb-bill-events": {
+        "description": "Parse MB billstatus.pdf → bill_events with real stage dates. Requires ingest-mb-bills first.",
+        "cli": "parse-mb-bill-events", "category": "bills",
+        "args": [
+            {"name": "parliament", "type": "int", "required": False, "default": 43,
+             "help": "Legislature number (default: 43, current)."},
+            {"name": "session", "type": "int", "required": False, "default": 3,
+             "help": "Session number within the legislature (default: 3, current)."},
+        ],
+    },
+    "resolve-mb-bill-sponsors": {
+        "description": "Link unresolved MB bill_sponsors to politicians (slug join + name-fuzz fallback). Mostly a no-op on fresh runs; matters for historical backfills.",
+        "cli": "resolve-mb-bill-sponsors", "category": "bills",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap on rows scanned this run (default: all unresolved)."},
+        ],
+    },
 
     # ── Reps / rosters (Open North) ──────────────────────────────────
     "ingest-mps": {
@@ -277,6 +397,22 @@ COMMANDS: dict[str, dict[str, Any]] = {
     "ingest-mlas": {
         "description": "Provincial/territorial legislators via Open North.",
         "cli": "ingest-mlas", "category": "enrichment", "args": [],
+    },
+    "ingest-mb-mlas": {
+        "description": "Stamp politicians.mb_assembly_slug on existing MB rows; insert any missing MLAs. Prereq for ingest-mb-bills and ingest-mb-hansard.",
+        "cli": "ingest-mb-mlas", "category": "enrichment", "args": [],
+    },
+    "ingest-ns-mlas": {
+        "description": "Stamp politicians.nslegislature_slug on seated NS MLAs by harvesting anchor slugs from current-session Hansard. Prereq for ingest-ns-hansard.",
+        "cli": "ingest-ns-mlas", "category": "enrichment",
+        "args": [
+            {"name": "parliament", "type": "int", "required": False, "default": 65,
+             "help": "Assembly to harvest slugs from (default 65 = current)."},
+            {"name": "session", "type": "int", "required": False, "default": 1,
+             "help": "Session within the assembly (default 1)."},
+            {"name": "sample_sittings", "type": "int", "required": False, "default": 5,
+             "help": "Newest sittings to scan (default 5 covers most speakers in a session)."},
+        ],
     },
     "ingest-councils": {
         "description": "Municipal councillors via Open North.",

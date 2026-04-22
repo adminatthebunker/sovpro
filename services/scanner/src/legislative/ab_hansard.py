@@ -68,7 +68,6 @@ import asyncio
 import hashlib
 import logging
 import re
-import subprocess
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
@@ -196,32 +195,15 @@ async def fetch_transcript_index(
 
 
 # ── PDF → text ───────────────────────────────────────────────────────
+# The byte-level primitive lives in pdf_utils; here we just call it in
+# reading-order mode (NOT -layout) because AB Hansards are two-column
+# prose and -layout interleaves the columns into nonsense. Tabular
+# PDFs (e.g. MB billstatus.pdf) use layout=True via the same helper.
 
 
 def _pdftotext(pdf_bytes: bytes) -> str:
-    """Pipe PDF bytes through `pdftotext` (Poppler) and return text.
-
-    Default reading-order mode (NOT -layout) because AB Hansards are
-    two-column and -layout interleaves them into nonsense.
-    """
-    try:
-        result = subprocess.run(
-            ["pdftotext", "-enc", "UTF-8", "-", "-"],
-            input=pdf_bytes,
-            capture_output=True,
-            timeout=120,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(
-            "pdftotext not on PATH — ensure poppler-utils is installed "
-            "in the scanner image"
-        ) from exc
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"pdftotext failed (rc={result.returncode}): "
-            f"{result.stderr.decode('utf-8', 'replace')[:300]}"
-        )
-    return result.stdout.decode("utf-8", "replace")
+    from .pdf_utils import pdftotext as _p
+    return _p(pdf_bytes, layout=False)
 
 
 async def fetch_pdf_and_extract(
