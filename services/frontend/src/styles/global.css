@@ -19,6 +19,12 @@
 html, body, #root { margin: 0; padding: 0; background: var(--bg); color: var(--ink); min-height: 100vh; }
 a { color: #93c5fd; text-decoration: none; }
 a:hover { text-decoration: underline; }
+abbr[title] {
+  text-decoration: underline dotted;
+  text-decoration-color: rgba(148, 163, 184, 0.6);
+  text-underline-offset: 2px;
+  cursor: help;
+}
 button {
   background: var(--panel);
   color: var(--ink);
@@ -30,6 +36,20 @@ button {
 }
 button:hover { background: var(--panel-2); }
 button.active { background: var(--accent); border-color: var(--accent); }
+
+/* ── Skip link (keyboard a11y) ────────────────────────── */
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--accent); color: #fff;
+  padding: .6rem 1rem; border-radius: 0 0 6px 0;
+  font-weight: 600; z-index: 1000;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
+  outline: 2px solid #fff; outline-offset: -4px;
+  text-decoration: none;
+}
 
 /* ── Shell ───────────────────────────────────────────── */
 .shell { max-width: 1400px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
@@ -567,6 +587,22 @@ button.active { background: var(--accent); border-color: var(--accent); }
   font-size: .82rem; color: var(--ink-muted);
   background: rgba(99,102,241,.07); border: 1px dashed rgba(99,102,241,.3);
   border-radius: 6px;
+}
+.map-hint--kbd {
+  background: transparent; border-style: dotted;
+  border-color: rgba(148,163,184,.25);
+  font-size: .78rem; margin-top: -.35rem;
+}
+.map-hint--kbd kbd {
+  display: inline-block; padding: .05em .35em;
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--border); border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: .85em;
+}
+.map-hint--kbd__sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
 }
 
 /* ── Referendum ──────────────────────────────────────── */
@@ -1525,6 +1561,40 @@ button.active { background: var(--accent); border-color: var(--accent); }
   color: var(--ink);
 }
 
+/* ── Map page hosting-sovereignty dashboard (above the map) ── */
+.map-dashboard {
+  margin: .4rem 0 1rem;
+  display: flex; flex-direction: column; gap: .6rem;
+}
+.map-dashboard__intro {
+  display: flex; flex-direction: column; gap: .25rem;
+}
+.map-dashboard__heading {
+  margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: -.015em;
+  color: var(--ink);
+}
+.map-dashboard__sub {
+  margin: 0; font-size: .82rem; line-height: 1.45; color: var(--ink-muted);
+  max-width: 62ch;
+}
+.map-dashboard__cards { margin: 0; }
+.map-dashboard__foot { color: var(--ink-muted); opacity: .75; }
+.map-dashboard__irony {
+  margin: 0; padding: .55rem .85rem;
+  background: linear-gradient(90deg, rgba(239,68,68,.10), rgba(245,158,11,.06));
+  border-left: 3px solid #ef4444;
+  border-radius: 6px;
+  font-size: .82rem; line-height: 1.45; color: var(--ink);
+  font-style: italic;
+}
+.map-dashboard--loading .map-dashboard__sub { opacity: .6; }
+
+@media (max-width: 640px) {
+  .map-dashboard__heading { font-size: 1.02rem; }
+  .map-dashboard__sub { font-size: .78rem; }
+  .map-dashboard__irony { font-size: .78rem; padding: .5rem .7rem; }
+}
+
 /* ── Lander (map backdrop + frost panel) ──────────────── */
 .lander {
   position: relative;
@@ -1589,7 +1659,8 @@ button.active { background: var(--accent); border-color: var(--accent); }
   transition: border-color .15s, background .15s;
 }
 .lander__find-row input:focus {
-  outline: none; border-color: var(--accent);
+  outline: 2px solid var(--accent); outline-offset: 2px;
+  border-color: var(--accent);
   background: rgba(15, 23, 42, 0.95);
 }
 .lander__find-row input::placeholder { color: rgba(148, 163, 184, 0.55); }
@@ -1624,6 +1695,94 @@ button.active { background: var(--accent); border-color: var(--accent); }
   background: #e11d48; border-color: #e11d48;
 }
 
+.lander__beta-badge {
+  position: absolute;
+  top: .75rem;
+  right: .75rem;
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .25rem .6rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+  font-size: .7rem; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.lander__beta-badge::before {
+  content: "";
+  width: .4rem; height: .4rem;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.7);
+}
+.lander__beta-badge:hover,
+.lander__beta-badge:focus-visible {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.85);
+  transform: translateY(-1px);
+}
+.lander__beta-badge:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+}
+
+.lander__beta-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, .78);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: lander-beta-fade-in .12s ease-out;
+}
+@keyframes lander-beta-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.lander__beta-modal-card {
+  position: relative;
+  width: min(480px, 100%);
+  padding: 1.5rem 1.4rem 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  display: flex; flex-direction: column; gap: .9rem;
+  text-align: left;
+}
+.lander__beta-modal-close {
+  position: absolute; top: .4rem; right: .5rem;
+  background: transparent; border: none;
+  color: var(--ink-muted);
+  font-size: 1.6rem; line-height: 1;
+  cursor: pointer;
+  padding: .25rem .45rem; border-radius: 4px;
+}
+.lander__beta-modal-close:hover {
+  color: var(--ink); background: var(--panel-2);
+}
+.lander__beta-modal-title {
+  margin: 0; padding-right: 1.5rem;
+  font-size: 1.1rem; color: var(--ink);
+}
+.lander__beta-modal-body {
+  display: flex; flex-direction: column; gap: .6rem;
+  color: var(--ink); font-size: .92rem; line-height: 1.5;
+}
+.lander__beta-modal-body p { margin: 0; }
+.lander__beta-modal-body a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lander__beta-modal-actions {
+  display: flex; flex-wrap: wrap; gap: .6rem;
+  justify-content: flex-end;
+  margin-top: .25rem;
+}
+
 @media (max-width: 760px) {
   /* Match the smaller .shell padding so the backdrop still goes edge-to-edge
      without overflowing the header. */
@@ -1638,6 +1797,9 @@ button.active { background: var(--accent); border-color: var(--accent); }
   .lander__find-hint { font-size: .75rem; }
   .lander__cta { flex-direction: column; }
   .lander__cta .lander__btn { width: 100%; }
+  .lander__beta-badge { top: .5rem; right: .5rem; font-size: .65rem; padding: .2rem .5rem; }
+  .lander__beta-modal-actions { flex-direction: column-reverse; }
+  .lander__beta-modal-actions .lander__btn { width: 100%; }
 }
 
 /* ── Politicians socials page ─────────────────────────── */
@@ -1662,7 +1824,8 @@ button.active { background: var(--accent); border-color: var(--accent); }
 }
 .politicians__filters input:focus,
 .politicians__filters select:focus {
-  outline: none; border-color: var(--accent);
+  outline: 2px solid var(--accent); outline-offset: 2px;
+  border-color: var(--accent);
 }
 
 .politicians__toggles {
