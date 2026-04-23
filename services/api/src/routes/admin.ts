@@ -270,6 +270,13 @@ const COMMAND_CATALOG = [
   { key: "ingest-mb-mlas", category: "enrichment",
     description: "Stamp politicians.mb_assembly_slug on existing MB rows; insert any missing MLAs. Prereq for ingest-mb-bills and ingest-mb-hansard.",
     args: [] },
+  { key: "ingest-mb-former-mlas", category: "enrichment",
+    description: "Backfill ~800 historical MB MLAs from mla_bio_living/deceased.html. Name-matches current MLAs before inserting; new rows keyed on lastname-firstname slugs. Prereq for pre-2023 MB Hansard backfill.",
+    args: [
+      { name: "living", type: "bool", required: false, default: true, help: "Include the living-MLAs bio page." },
+      { name: "deceased", type: "bool", required: false, default: true, help: "Include the deceased-MLAs bio page." },
+      { name: "delay", type: "float", required: false, default: 1.0, help: "Seconds between page fetches." },
+    ] },
   { key: "ingest-ns-mlas", category: "enrichment",
     description: "Stamp politicians.nslegislature_slug on seated NS MLAs by harvesting anchor slugs from current-session Hansard. Prereq for ingest-ns-hansard.",
     args: [

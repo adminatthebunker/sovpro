@@ -430,6 +430,18 @@ COMMANDS: dict[str, dict[str, Any]] = {
         "description": "Stamp politicians.mb_assembly_slug on existing MB rows; insert any missing MLAs. Prereq for ingest-mb-bills and ingest-mb-hansard.",
         "cli": "ingest-mb-mlas", "category": "enrichment", "args": [],
     },
+    "ingest-mb-former-mlas": {
+        "description": "Backfill ~800 historical MB MLAs from mla_bio_living/deceased.html. Name-matches existing current MLAs before inserting so no duplicates; new rows keyed on lastname-firstname slugs. Prereq for pre-2023 MB Hansard backfill.",
+        "cli": "ingest-mb-former-mlas", "category": "enrichment",
+        "args": [
+            {"name": "living", "type": "bool", "required": False, "default": True,
+             "help": "Include the living-MLAs bio page."},
+            {"name": "deceased", "type": "bool", "required": False, "default": True,
+             "help": "Include the deceased-MLAs bio page."},
+            {"name": "delay", "type": "float", "required": False, "default": 1.0,
+             "help": "Seconds between page fetches."},
+        ],
+    },
     "ingest-ns-mlas": {
         "description": "Stamp politicians.nslegislature_slug on seated NS MLAs by harvesting anchor slugs from current-session Hansard. Prereq for ingest-ns-hansard.",
         "cli": "ingest-ns-mlas", "category": "enrichment",

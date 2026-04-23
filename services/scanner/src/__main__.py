@@ -715,6 +715,7 @@ from .legislative.ab_mlas import enrich_ab_mla_ids  # noqa: E402
 from .legislative.ab_former_mlas import ingest_ab_former_mlas, resolve_ab_speakers  # noqa: E402
 from .legislative.ab_bills import ingest_ab_bills  # noqa: E402
 from .legislative.mb_mlas import ingest as ingest_mb_mlas  # noqa: E402
+from .legislative.mb_former_mlas import ingest_mb_former_mlas  # noqa: E402
 from .legislative.mb_bills import ingest as ingest_mb_bills  # noqa: E402
 from .legislative.mb_billstatus import (  # noqa: E402
     fetch as fetch_mb_billstatus,
@@ -1269,6 +1270,48 @@ def cmd_ingest_ab_former_mlas(
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
+
+
+@cli.command("ingest-mb-former-mlas")
+@click.option("--living/--no-living", default=True,
+              help="Include the living-MLAs bio page.")
+@click.option("--deceased/--no-deceased", default=True,
+              help="Include the deceased-MLAs bio page.")
+@click.option("--delay", type=float, default=1.0,
+              help="Seconds between page fetches.")
+@click.pass_context
+def cmd_ingest_mb_former_mlas(
+    ctx: click.Context, living: bool, deceased: bool, delay: float,
+) -> None:
+    """Enumerate every MLA who's ever served in the MB Legislature.
+
+    Scrapes gov.mb.ca/legislature/members/mla_bio_{living,deceased}.html,
+    which together list ~800+ MLAs back to 1870 with their term
+    ranges. Name-matches against existing politicians first so
+    current-roster rows (slug='byram', etc.) receive their
+    historical terms rather than spawning duplicates; net-new
+    historical rows land keyed on 'lastname-firstname' slugs.
+
+    Idempotent: politicians upserted on mb_assembly_slug (migration
+    0032 UNIQUE partial); politician_terms upserted on
+    (politician_id, office, started_at).
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_mb_former_mlas(
+            db, include_living=living, include_deceased=deceased, delay=delay,
+        )
+        console.print(
+            f"[green]ingest-mb-former-mlas[/green]: "
+            f"pages={stats.pages_fetched} "
+            f"names_seen={stats.names_seen} "
+            f"terms_parsed={stats.terms_parsed} "
+            f"inserted={stats.politicians_inserted} "
+            f"updated={stats.politicians_updated} "
+            f"slug_collisions={stats.slug_collisions} "
+            f"terms_inserted={stats.terms_inserted} "
+            f"terms_skipped_existing={stats.terms_skipped_existing}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
 @cli.command("resolve-ab-speakers")

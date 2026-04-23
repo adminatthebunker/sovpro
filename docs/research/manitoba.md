@@ -4,7 +4,7 @@
 
 **Legislature:** Legislative Assembly of Manitoba | **Website:** https://www.gov.mb.ca/legislature | **Seats:** 57 | **Next election:** By 2027-10-05
 
-**Status snapshot (2026-04-21):** 🟢 **Live.** Bills roster (81 bills, 81/81 sponsors FK-linked) + bill stage events from `billstatus.pdf` (106 events across 80 bills: 80 first readings, 17 seconds, 9 committees) + Hansard for the entire 43rd Legislature (3 sessions, **30,649 speeches**, 81.3% resolved to politicians, span 2023-11-09 → 2026-04-16). All via `ingest-mb-mlas` / `ingest-mb-bills` / `parse-mb-bill-events` / `ingest-mb-hansard`. PDF extraction uses the shared `pdf_utils.pdftotext` helper (Poppler, `-raw` mode) that also backs AB Hansard — no new dependency.
+**Status snapshot (2026-04-22):** 🟢 **Live.** Bills roster (81 bills, 81/81 sponsors FK-linked) + bill stage events from `billstatus.pdf` (106 events across 80 bills) + Hansard for the entire 43rd Legislature (3 sessions, **30,649 speeches**, ~81.6% resolved to politicians, span 2023-11-09 → 2026-04-16). Politicians table now holds the full **820-MLA historical roster** back to 1870 (56 current + 764 historical from `ingest-mb-former-mlas`, 1,723 term rows with date windows for 742/764 — 97% term coverage). Pre-2023 Hansard backfill is the next step and now has the historical roster it needs. All via `ingest-mb-mlas` / `ingest-mb-former-mlas` / `ingest-mb-bills` / `parse-mb-bill-events` / `ingest-mb-hansard`. PDF extraction uses the shared `pdf_utils.pdftotext` helper (Poppler, `-raw` mode) that also backs AB Hansard — no new dependency.
 
 ---
 
