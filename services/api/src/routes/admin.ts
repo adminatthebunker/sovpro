@@ -3,6 +3,11 @@ import { z } from "zod";
 import { query, queryOne } from "../db.js";
 import { requireAdmin, getAdminEmail } from "../middleware/user-auth.js";
 import { requireCsrf } from "../lib/csrf.js";
+import {
+  getBalance,
+  grantAdminCredit,
+  listLedgerEntries,
+} from "../lib/credits.js";
 
 /**
  * Admin-panel API.
@@ -101,6 +106,12 @@ const COMMAND_CATALOG = [
     description: "Re-resolve politician_id on MB Hansard speeches with NULL politician_id.",
     args: [
       { name: "limit", type: "int", required: false, help: "Cap speeches scanned (smoke-test aid)." },
+    ],
+  },
+  { key: "resolve-mb-speakers-dated", category: "hansard",
+    description: "Date-windowed MB speaker resolver. Uses politician_terms to disambiguate historical surnames after the former-MLAs backfill.",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Cap candidate speeches scanned (smoke-test aid)." },
     ],
   },
   { key: "ingest-ns-hansard", category: "hansard",
@@ -780,5 +791,225 @@ export default async function adminRoutes(app: FastifyInstance) {
     );
     if (!row) return reply.notFound();
     return row;
+  });
+
+  // ── Users (for credit grants + rate-limit tier adjustments) ────
+  //
+  // Scoped to what the billing-rail admin UI needs: email search
+  // picker, per-user detail with balance + ledger, credit grant,
+  // rate-limit tier bump. Non-admin users see nothing from these —
+  // requireAdmin gates the whole router.
+
+  app.get("/users", async (req, reply) => {
+    const q = z
+      .object({
+        q: z.string().trim().min(1).max(200).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+      })
+      .safeParse(req.query);
+    if (!q.success) return reply.badRequest(q.error.message);
+
+    const params: unknown[] = [];
+    const conditions: string[] = [];
+    if (q.data.q) {
+      params.push(`%${q.data.q.toLowerCase()}%`);
+      conditions.push(`email ILIKE $${params.length}`);
+    }
+    params.push(q.data.limit);
+    const whereSql = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = await query(
+      `SELECT id, email, display_name, is_admin, rate_limit_tier,
+              stripe_customer_id, created_at, last_login_at
+         FROM users
+         ${whereSql}
+         ORDER BY created_at DESC
+         LIMIT $${params.length}`,
+      params as any,
+    );
+    return { users: rows };
+  });
+
+  app.get("/users/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+
+    const user = await queryOne(
+      `SELECT id, email, display_name, is_admin, rate_limit_tier,
+              stripe_customer_id, created_at, last_login_at
+         FROM users WHERE id = $1`,
+      [id],
+    );
+    if (!user) return reply.notFound();
+
+    const [balance, history] = await Promise.all([
+      getBalance(id),
+      listLedgerEntries(id, 100),
+    ]);
+    return { user, balance, ledger: history };
+  });
+
+  app.post("/users/:id/grant-credits", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+
+    const parsed = z
+      .object({
+        amount: z.number().int().positive().max(100_000),
+        reason: z.string().trim().min(3).max(500),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid body", details: parsed.error.flatten() });
+    }
+
+    const target = await queryOne<{ id: string }>(
+      `SELECT id FROM users WHERE id = $1`,
+      [id],
+    );
+    if (!target) return reply.notFound();
+
+    // The acting admin's id — pulled from the request after
+    // requireAdmin has validated the session. We need the id (not
+    // just email) for the created_by_admin_id FK.
+    const actingAdminEmail = getAdminEmail(req) ?? null;
+    if (!actingAdminEmail) return reply.code(403).send({ error: "admin identity lost" });
+    const actingAdmin = await queryOne<{ id: string }>(
+      `SELECT id FROM users WHERE email = $1`,
+      [actingAdminEmail],
+    );
+    if (!actingAdmin) return reply.code(403).send({ error: "admin row missing" });
+
+    const ledgerId = await grantAdminCredit({
+      userId: id,
+      adminId: actingAdmin.id,
+      credits: parsed.data.amount,
+      reason: parsed.data.reason,
+    });
+
+    req.log.info(
+      { target_user_id: id, admin_email: actingAdminEmail, amount: parsed.data.amount, ledger_id: ledgerId },
+      "[admin] credits granted",
+    );
+
+    const balance = await getBalance(id);
+    return reply.send({ ledger_entry_id: ledgerId, balance });
+  });
+
+  app.patch("/users/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+
+    const parsed = z
+      .object({
+        rate_limit_tier: z.enum(["default", "extended", "unlimited", "suspended"]),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid body" });
+    }
+
+    const row = await queryOne(
+      `UPDATE users
+          SET rate_limit_tier = $1
+        WHERE id = $2
+        RETURNING id, email, rate_limit_tier`,
+      [parsed.data.rate_limit_tier, id],
+    );
+    if (!row) return reply.notFound();
+
+    req.log.info(
+      { target_user_id: id, tier: parsed.data.rate_limit_tier, admin: getAdminEmail(req) },
+      "[admin] rate_limit_tier updated",
+    );
+    return row;
+  });
+
+  // ── Rate-limit increase requests ───────────────────────────────
+
+  app.get("/rate-limit-requests", async (req, reply) => {
+    const q = z
+      .object({
+        status: z.enum(["pending", "approved", "denied"]).optional(),
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+      })
+      .safeParse(req.query);
+    if (!q.success) return reply.badRequest(q.error.message);
+
+    const params: unknown[] = [];
+    const conditions: string[] = [];
+    if (q.data.status) {
+      params.push(q.data.status);
+      conditions.push(`r.status = $${params.length}`);
+    }
+    params.push(q.data.limit);
+    const whereSql = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    const rows = await query(
+      `SELECT r.id, r.user_id, u.email, r.reason, r.requested_tier,
+              r.status, r.admin_response, r.created_at, r.resolved_at
+         FROM rate_limit_increase_requests r
+         JOIN users u ON u.id = r.user_id
+         ${whereSql}
+         ORDER BY r.created_at DESC
+         LIMIT $${params.length}`,
+      params as any,
+    );
+    return { requests: rows };
+  });
+
+  app.patch("/rate-limit-requests/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.notFound();
+
+    const parsed = z
+      .object({
+        status: z.enum(["approved", "denied"]),
+        admin_response: z.string().trim().min(1).max(1000),
+        // When approving, the admin can also bump the user's tier in
+        // the same action. Declined requests just update the request
+        // row and leave the user's tier untouched.
+        apply_tier: z.enum(["extended", "unlimited"]).optional(),
+      })
+      .safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid body", details: parsed.error.flatten() });
+    }
+
+    const actingAdminEmail = getAdminEmail(req) ?? null;
+    if (!actingAdminEmail) return reply.code(403).send({ error: "admin identity lost" });
+    const actingAdmin = await queryOne<{ id: string }>(
+      `SELECT id FROM users WHERE email = $1`,
+      [actingAdminEmail],
+    );
+    if (!actingAdmin) return reply.code(403).send({ error: "admin row missing" });
+
+    const requestRow = await queryOne<{ user_id: string; status: string }>(
+      `SELECT user_id, status FROM rate_limit_increase_requests WHERE id = $1`,
+      [id],
+    );
+    if (!requestRow) return reply.notFound();
+    if (requestRow.status !== "pending") {
+      return reply.code(409).send({ error: `request already ${requestRow.status}` });
+    }
+
+    const updated = await queryOne(
+      `UPDATE rate_limit_increase_requests
+          SET status         = $1,
+              admin_response = $2,
+              resolved_by    = $3,
+              resolved_at    = now()
+        WHERE id = $4
+        RETURNING id, user_id, status, requested_tier, admin_response,
+                  resolved_at`,
+      [parsed.data.status, parsed.data.admin_response, actingAdmin.id, id],
+    );
+
+    if (parsed.data.status === "approved" && parsed.data.apply_tier) {
+      await query(
+        `UPDATE users SET rate_limit_tier = $1 WHERE id = $2`,
+        [parsed.data.apply_tier, requestRow.user_id],
+      );
+    }
+
+    return updated;
   });
 }

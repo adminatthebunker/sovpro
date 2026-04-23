@@ -21,6 +21,7 @@ import AccountPage from "./pages/AccountPage";
 import SavedSearchesPage from "./pages/SavedSearchesPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
 import AccountCorrectionsPage from "./pages/AccountCorrectionsPage";
+import CreditsPage from "./pages/CreditsPage";
 import { AdminLayout } from "./components/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminJobs from "./pages/admin/AdminJobs";
@@ -28,6 +29,7 @@ import AdminJobDetail from "./pages/admin/AdminJobDetail";
 import AdminSchedules from "./pages/admin/AdminSchedules";
 import AdminSocialsReview from "./pages/admin/AdminSocialsReview";
 import AdminCorrections from "./pages/admin/AdminCorrections";
+import AdminUsers from "./pages/admin/AdminUsers";
 
 // Legacy /politician/:id → /politicians/:id, preserving any #hash (e.g. #socials)
 // so existing deep-links keep the right tab open after the redirect.
@@ -58,6 +60,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="account" element={<AccountPage />} />
           <Route path="account/saved-searches" element={<SavedSearchesPage />} />
           <Route path="account/corrections" element={<AccountCorrectionsPage />} />
+          <Route path="account/credits" element={<CreditsPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
@@ -66,6 +69,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="schedules" element={<AdminSchedules />} />
             <Route path="socials" element={<AdminSocialsReview />} />
             <Route path="corrections" element={<AdminCorrections />} />
+            <Route path="users" element={<AdminUsers />} />
           </Route>
         </Route>
         </Routes>

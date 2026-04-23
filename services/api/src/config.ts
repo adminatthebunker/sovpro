@@ -5,15 +5,18 @@ const schema = z.object({
   API_PORT: z.coerce.number().int().default(3000),
   API_HOST: z.string().default("0.0.0.0"),
   API_LOG_LEVEL: z.enum(["trace","debug","info","warn","error","fatal"]).default("info"),
-  API_CORS_ORIGIN: z.string().default("*"),
+  // CORS allowlist. Default is the production origin — NOT a
+  // wildcard. Setting this to "*" with credentials: true in
+  // services/api/src/index.ts would be browser-rejected for
+  // credentialed cross-origin responses anyway, but it's sloppy
+  // signalling. Comma-separated list allowed (e.g. for
+  // "prod + www subdomain" setups); @fastify/cors accepts an
+  // array. In dev, set API_CORS_ORIGIN=http://localhost:5173 in
+  // your local .env.
+  API_CORS_ORIGIN: z.string().default("https://canadianpoliticaldata.ca"),
   DATABASE_URL: z.string().url().or(z.string().startsWith("postgres")),
   CHANGE_WEBHOOK_SECRET: z.string().min(16).optional(),
   WEBHOOK_SECRET: z.string().min(16).optional(),
-  // Shared bearer token for the /admin panel. 32+ chars of url-safe
-  // entropy is a reasonable floor; missing in dev is OK (admin routes
-  // will simply reject all callers with 503 until set), but NODE_ENV
-  // === "production" without ADMIN_TOKEN is a boot-time warning.
-  ADMIN_TOKEN: z.string().min(32).optional(),
   TEI_URL: z.string().default("http://tei:80"),
   // End-user auth (phase 1 magic-link). Unset → /api/v1/auth/* and
   // /api/v1/me/* respond 503 (feature disabled), same ergonomics as
@@ -28,6 +31,34 @@ const schema = z.object({
   SMTP_FROM: z.string().optional(),
   // Used when building magic-link URLs in outgoing emails.
   PUBLIC_SITE_URL: z.string().url().default("http://localhost:5173"),
+  // OpenRouter (AI contradictions analysis on grouped search).
+  // Unset OPENROUTER_API_KEY → feature disabled; GET /contradictions/meta
+  // returns { enabled: false } and POST /analyze returns 503. The model id
+  // is surfaced to the frontend consent modal verbatim, so swapping it
+  // (e.g. when a free-tier option disappears) is a one-line ops change
+  // that re-prompts every user on their next click.
+  OPENROUTER_API_KEY: z.string().optional(),
+  OPENROUTER_MODEL: z.string().default("nvidia/nemotron-3-super-120b-a12b:free"),
+  OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
+  OPENROUTER_SITE_URL: z.string().url().default("https://canadianpoliticaldata.ca"),
+  OPENROUTER_APP_NAME: z.string().default("Canadian Political Data"),
+  OPENROUTER_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  // Stripe billing rail (premium-reports phase 1a + future dev-API
+  // subscriptions). Unset STRIPE_SECRET_KEY → POST /me/credits/checkout
+  // returns 503 and the "Buy credits" UI hides its purchase buttons.
+  // Webhook signature verification requires STRIPE_WEBHOOK_SECRET; an
+  // unset secret causes POST /webhooks/stripe to refuse every event
+  // (fail-closed, not fail-open). Price IDs are created once in the
+  // Stripe dashboard; each one that's unset hides its pack on the
+  // frontend pack listing. Success / cancel URLs fall back to
+  // ${PUBLIC_SITE_URL}/account/credits?purchase=success|cancel.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRICE_ID_CREDIT_PACK_SMALL: z.string().optional(),
+  STRIPE_PRICE_ID_CREDIT_PACK_MEDIUM: z.string().optional(),
+  STRIPE_PRICE_ID_CREDIT_PACK_LARGE: z.string().optional(),
+  STRIPE_SUCCESS_URL: z.string().url().optional(),
+  STRIPE_CANCEL_URL: z.string().url().optional(),
 });
 
 export const config = (() => {
@@ -42,10 +73,17 @@ export const config = (() => {
     port: env.API_PORT,
     host: env.API_HOST,
     logLevel: env.API_LOG_LEVEL,
-    corsOrigin: env.API_CORS_ORIGIN,
+    // Comma-separated list → array for @fastify/cors. Single entry
+    // stays a string so the normal single-origin path is unchanged.
+    corsOrigin: (() => {
+      const raw = env.API_CORS_ORIGIN;
+      if (raw.includes(",")) {
+        return raw.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+      return raw;
+    })(),
     databaseUrl: env.DATABASE_URL,
     webhookSecret: env.CHANGE_WEBHOOK_SECRET ?? env.WEBHOOK_SECRET ?? "",
-    adminToken: env.ADMIN_TOKEN ?? "",
     teiUrl: env.TEI_URL.replace(/\/$/, ""),
     jwtSecret: env.JWT_SECRET ?? "",
     smtp: {
@@ -56,14 +94,38 @@ export const config = (() => {
       from: env.SMTP_FROM ?? "",
     },
     publicSiteUrl: env.PUBLIC_SITE_URL.replace(/\/$/, ""),
+    openrouter: {
+      apiKey: env.OPENROUTER_API_KEY ?? "",
+      model: env.OPENROUTER_MODEL,
+      baseUrl: env.OPENROUTER_BASE_URL.replace(/\/$/, ""),
+      siteUrl: env.OPENROUTER_SITE_URL.replace(/\/$/, ""),
+      appName: env.OPENROUTER_APP_NAME,
+      timeoutMs: env.OPENROUTER_TIMEOUT_MS,
+      enabled: (env.OPENROUTER_API_KEY ?? "").length > 0,
+    },
+    stripe: {
+      secretKey: env.STRIPE_SECRET_KEY ?? "",
+      webhookSecret: env.STRIPE_WEBHOOK_SECRET ?? "",
+      priceIds: {
+        small: env.STRIPE_PRICE_ID_CREDIT_PACK_SMALL ?? "",
+        medium: env.STRIPE_PRICE_ID_CREDIT_PACK_MEDIUM ?? "",
+        large: env.STRIPE_PRICE_ID_CREDIT_PACK_LARGE ?? "",
+      },
+      successUrl:
+        env.STRIPE_SUCCESS_URL ??
+        `${env.PUBLIC_SITE_URL.replace(/\/$/, "")}/account/credits?purchase=success`,
+      cancelUrl:
+        env.STRIPE_CANCEL_URL ??
+        `${env.PUBLIC_SITE_URL.replace(/\/$/, "")}/account/credits?purchase=cancel`,
+      // Feature-level enabled flag: both the SDK key and the webhook
+      // secret must be set for Checkout to round-trip. Price IDs are
+      // per-pack — see packs() below.
+      enabled:
+        (env.STRIPE_SECRET_KEY ?? "").length > 0 &&
+        (env.STRIPE_WEBHOOK_SECRET ?? "").length > 0,
+    },
   };
 })();
-
-if (config.env === "production" && !config.adminToken) {
-  console.warn(
-    "[config] ADMIN_TOKEN is unset in production; /api/v1/admin/* routes will reject all callers."
-  );
-}
 
 if (config.env === "production" && !config.jwtSecret) {
   console.warn(
@@ -74,6 +136,12 @@ if (config.env === "production" && !config.jwtSecret) {
 if (config.env === "production" && (!config.smtp.password || !config.smtp.username)) {
   console.warn(
     "[config] SMTP credentials unset in production; magic-link emails will be logged to stdout instead of sent."
+  );
+}
+
+if (config.env === "production" && !config.stripe.enabled) {
+  console.warn(
+    "[config] Stripe secret key or webhook secret unset in production; /me/credits/checkout and /webhooks/stripe will be disabled."
   );
 }
 

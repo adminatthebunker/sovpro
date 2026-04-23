@@ -28,6 +28,10 @@ import meRoutes from "./routes/me.js";
 import alertRoutes from "./routes/alerts.js";
 import feedRoutes from "./routes/feeds.js";
 import correctionsRoutes, { meCorrectionsRoutes } from "./routes/corrections.js";
+import contradictionsRoutes from "./routes/contradictions.js";
+import creditsRoutes from "./routes/credits.js";
+import stripeWebhookRoutes from "./routes/stripe-webhook.js";
+import rateLimitRequestRoutes from "./routes/rate-limit-requests.js";
 
 const app = Fastify({
   logger: {
@@ -92,6 +96,14 @@ await app.register(alertRoutes, { prefix: "/api/v1/alerts" });
 await app.register(feedRoutes, { prefix: "/api/v1/feeds" });
 await app.register(correctionsRoutes, { prefix: "/api/v1/corrections" });
 await app.register(meCorrectionsRoutes, { prefix: "/api/v1/me" });
+await app.register(contradictionsRoutes, { prefix: "/api/v1/contradictions" });
+// Credits (billing rail). User-facing balance + checkout under /me/credits;
+// Stripe webhook handler is a separate plugin with a plugin-scoped raw-body
+// parser so signature verification isn't broken by Fastify's default JSON
+// body parsing.
+await app.register(creditsRoutes, { prefix: "/api/v1/me/credits" });
+await app.register(rateLimitRequestRoutes, { prefix: "/api/v1/me/rate-limit-requests" });
+await app.register(stripeWebhookRoutes, { prefix: "/api/v1/webhooks/stripe" });
 // Mounted under the same /politicians prefix so the final URL is
 // /api/v1/politicians/:id/openparliament (REST sub-resource pattern).
 await app.register(openparliamentRoutes, { prefix: "/api/v1/politicians" });

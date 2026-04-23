@@ -118,10 +118,14 @@ chart. Intended for use in `<meta property="og:image">` tags.
 
 ## Admin
 
-All `/api/v1/admin/*` routes require `Authorization: Bearer <ADMIN_TOKEN>`. Without the header → **401**; with `ADMIN_TOKEN` unset on the server → **503**.
+All `/api/v1/admin/*` routes require a valid user session cookie (`sw_session`) on a user whose `users.is_admin = true`. Mutating verbs (POST / PATCH / DELETE) additionally require the double-submit CSRF token in `X-CSRF-Token`.
 
-### `POST /admin/login`
-Body: `{ token: string }`. Returns `{ ok: true }` on success. Callers should send the token in **both** the body and `Authorization: Bearer …` header; the header is what gets checked. Intended as a UX "verify before persisting" handshake.
+- Not signed in → **401** `{"error":"not signed in"}`.
+- Signed in but not admin → **403** `{"error":"admin access required"}`.
+- CSRF missing/invalid on a mutating route → **403** `{"error":"csrf check failed"}`.
+- `JWT_SECRET` unset on the server → **503** (admin surface is disabled along with all user auth).
+
+No `POST /admin/login` endpoint — admins sign in via the shared magic-link flow (`POST /api/v1/auth/request-link` → email → `POST /api/v1/auth/verify`). The `is_admin` flag is included on `GET /me`.
 
 ### `GET /admin/commands`
 Returns the whitelist catalog:
@@ -167,6 +171,85 @@ Dashboard counters:
   "recent_failures": [ { "id", "command", "finished_at", "error" }, ... ]
 }
 ```
+
+## Credits (billing rail — phase 1a)
+
+All `/me/credits/*` routes require a signed-in session (`sw_session` cookie). Mutating routes additionally require the `sw_csrf` cookie echoed in the `X-CSRF-Token` header. When Stripe is unconfigured (`STRIPE_SECRET_KEY` unset), the feature returns `stripe_enabled: false` and the purchase endpoint 503s — no payment surface is exposed.
+
+### `GET /me/credits`
+Current spendable balance + recent ledger history (up to 50 entries, newest first). `reference_id` is deliberately omitted from the user-facing shape — see `/admin/users/:id` for the full-fidelity admin view.
+```json
+{
+  "balance": 120,
+  "history": [
+    { "id": "uuid", "delta": 100, "state": "committed", "kind": "stripe_purchase", "reason": null, "created_at": "2026-04-23T..." },
+    { "id": "uuid", "delta": 20,  "state": "committed", "kind": "admin_credit",    "reason": "Launch promo", "created_at": "..." }
+  ],
+  "stripe_enabled": true
+}
+```
+
+### `GET /me/credits/packs`
+Lists the credit packs currently offered. Filtered to packs whose `STRIPE_PRICE_ID_*` env var is set — if a pack isn't configured, it's simply omitted.
+```json
+{
+  "enabled": true,
+  "packs": [
+    { "sku": "small",  "credits": 50,  "display_price": "$5",  "bonus_label": null },
+    { "sku": "medium", "credits": 250, "display_price": "$20", "bonus_label": "12% bonus" }
+  ]
+}
+```
+
+### `POST /me/credits/checkout`
+Per-route rate limit: 5/min. Creates a Stripe Checkout Session for the given SKU and returns the hosted-page URL. The frontend `window.location.assign`s to that URL. The actual credit grant happens via the `POST /webhooks/stripe` handler after payment completion.
+```json
+// request
+{ "sku": "small" }
+// response
+{ "url": "https://checkout.stripe.com/c/pay/cs_test_…", "session_id": "cs_test_…" }
+```
+
+## Rate-limit requests
+
+### `GET /me/rate-limit-requests`
+The caller's own rate-limit increase requests (up to 20, newest first).
+
+### `POST /me/rate-limit-requests`
+Per-route rate limit: 3/hour. One-pending-per-user: returns 409 if the caller already has an unresolved request.
+```json
+// request
+{ "reason": "Covering the upcoming federal election, need higher report volume", "requested_tier": "extended" }
+// response 201
+{ "id": "uuid", "reason": "...", "requested_tier": "extended", "status": "pending", "admin_response": null, "created_at": "...", "resolved_at": null }
+```
+
+## Stripe webhook
+
+### `POST /webhooks/stripe`
+Not called by clients — registered in the Stripe dashboard as the endpoint for `checkout.session.completed` events. Verifies the `Stripe-Signature` header before any DB write. Two-layer idempotency via `stripe_webhook_events.id` PK + `credit_ledger (kind, reference_id)` partial unique index. Returns 200 with `{ received: true }` on success, `{ received: true, duplicate: true }` on re-delivery, `{ received: false, reason: "stripe not configured" }` 200 when disabled, 400 on signature failure.
+
+## Admin — user management (phase 1a additions)
+
+All routes under `/admin/*` require `is_admin=true` on the session user plus CSRF on mutations.
+
+### `GET /admin/users`
+Query: `?q=<email-substring>&limit=<n>` (limit 1–100, default 20). Returns users matching the email ILIKE pattern.
+
+### `GET /admin/users/:id`
+Single user detail + current balance + ledger history (up to 100 entries, retains `reference_id`).
+
+### `POST /admin/users/:id/grant-credits`
+Admin comp flow. Body: `{ "amount": <1..100_000>, "reason": "<3..500 chars>" }`. Produces a `credit_ledger` row with `kind='admin_credit'`, `created_by_admin_id` = acting admin, `reason` = supplied note.
+
+### `PATCH /admin/users/:id`
+Body: `{ "rate_limit_tier": "default" | "extended" | "unlimited" | "suspended" }`. Suspending a user takes effect on their next request via `requireUser`'s re-read.
+
+### `GET /admin/rate-limit-requests`
+Query: `?status=pending|approved|denied&limit=<n>`. Queue of user-submitted increase requests.
+
+### `PATCH /admin/rate-limit-requests/:id`
+Body: `{ "status": "approved"|"denied", "admin_response": "<message to user>", "apply_tier": "extended"|"unlimited"? }`. When approved with `apply_tier`, the user's `rate_limit_tier` is bumped atomically.
 
 ## Health
 

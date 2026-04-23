@@ -28,13 +28,13 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
        │  asyncio + dns +  │              │  ghcr.io/.../change│
        │  geoip2 + httpx   │              │  → POST /webhooks  │
        └────┬──────────────┘              └────────────────────┘
-            │ HTTP /embed, /rerank
+            │ HTTP POST /embed (or /v1/embeddings)
             │
-       ┌────▼──────────────┐              ┌─────────────────────┐
-       │  Embed (Python)   │              │  scanner-cron       │
-       │  FastAPI + BGE-M3 │              │  loop + bootstrap   │
-       │  CPU, 4-core cap  │              └─────────────────────┘
-       └───────────────────┘
+       ┌────▼────────────────────────┐   ┌─────────────────────┐
+       │  TEI (HuggingFace)          │   │  scanner-cron       │
+       │  Qwen3-Embedding-0.6B fp16  │   │  loop + bootstrap   │
+       │  GPU (RTX 4050 Mobile)      │   └─────────────────────┘
+       └─────────────────────────────┘
 ```
 
 ## Services
@@ -52,8 +52,12 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
 
 ### `api` (Node 20 + Fastify)
 - `/api/v1/politicians`, `/organizations`, `/map/*`, `/stats/*`, `/changes`, `/webhooks/change`, `/coverage`, `/og`, `/parties`, `/committees`, `/socials`, `/lookup`, `/alberta`, politicians' `/openparliament` sub-resource
+- User account surface: `/auth/*`, `/me/*` (profile, saved searches, corrections, credits, rate-limit requests)
+- Admin surface: `/admin/*` (jobs, schedules, socials review, corrections, users + credit grants + tier adjustments)
+- Billing: `/me/credits/*` (balance, packs, checkout), `/webhooks/stripe` (plugin-scoped raw-body parser, two-layer idempotency via `stripe_webhook_events` PK + `credit_ledger` partial unique index)
 - pg.Pool with 10 connections
 - HMAC-verifies incoming `change` webhooks
+- Stripe SDK wrapper in `src/lib/stripe.ts` is the sole importer of the `stripe` npm package — other consumers (dev-API plan, future premium features) reuse the same wrapper
 - Zod validation on every query / body
 - Health: `GET /health`
 
@@ -66,18 +70,21 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
 - Build-time only: `VITE_SHOW_DRAFTS=1` exposes draft posts for preview builds
 
 ### `scanner` (Python 3.13 async)
-- One-shot CLI invoked via `docker compose run --rm scanner <cmd>`
-- 70+ Click subcommands covering ingestion, enrichment, legislative pipelines, gap fillers
+- One-shot CLI invoked via `docker compose run --rm scanner <cmd>` (module is `python -m src`, not `python -m scanner`)
+- 115 Click subcommands covering ingestion, enrichment, legislative pipelines, embeddings, gap fillers
 - Concurrency capped via `SCANNER_CONCURRENCY` (default 16)
 - Uses MaxMind GeoLite2 DBs from `./data/`
-- Legislative bills pipelines live for 9 of 13 sub-national legislatures (NS, ON, BC, QC, AB, NB, NL, NT, NU) — see `docs/scanner.md`
+- Legislative bills pipelines live for 10 of 13 sub-national legislatures (NS, ON, BC, QC, AB, NB, NL, NT, NU, MB) — see `docs/scanner.md`
+- Talks to embeddings via `EMBED_URL` (default `http://tei:80`); model tag stored in `speech_chunks.embedding_model` via `EMBED_MODEL_TAG` (default `qwen3-embedding-0.6b`)
 
-### `embed` (Python 3.11 + FastAPI + FlagEmbedding)
-- Self-hosted BGE-M3 (dense embeddings, 1024-dim, multilingual) + BGE-reranker-v2-m3 (cross-encoder scoring)
-- `POST /embed`, `POST /rerank`, `GET /health` on `embed:8000` inside the `sw` network
-- Model weights cache in the `embedmodels` named volume — first call downloads ~2 GB, subsequent boots are fast
-- CPU capped at 4 cores / 4 GiB RAM by default (override via `.env`); torch threads bounded to match
-- No outbound API dependency once models are cached; ~1 text/sec throughput at batch=32 on the baseline host
+### `tei` (HuggingFace Text Embeddings Inference — Qwen3-Embedding-0.6B)
+- Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9` serving **Qwen3-Embedding-0.6B** at fp16 on an NVIDIA RTX 4050 Mobile (CUDA 12.4, sm_89)
+- Endpoints: TEI-native `POST /embed`, OpenAI-compatible `POST /v1/embeddings`, `GET /health` on `tei:80` inside the `sw` network
+- Output: 1024-dim dense vectors, L2-normalised when `normalize: true` is passed
+- Model cache in the `embedmodels` named volume (mounted at `/data`); first boot pulls ~1.3 GB, subsequent boots are seconds
+- `--max-client-batch-size=64`, `--max-batch-tokens=16384`, `--dtype=float16` by default (overridable via `TEI_MAX_CLIENT_BATCH`, `TEI_MAX_BATCH_TOKENS`, env)
+- Measured ~75 chunks/sec pure-GPU throughput, 50.9 chunks/sec end-to-end through the scanner's batched-UNNEST write path (2026-04-18 re-embed landed 242 k chunks in 1 h 19 m)
+- Replaced the prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) on 2026-04-19. Legacy code still lives at `services/embed/` for rollback. Reranker stage is **no longer in the critical path** — Qwen3 retrieval quality cleared the bar without it
 
 ### `scanner-cron`
 - Long-running sidecar that wakes hourly, runs the right scan job for the time of day

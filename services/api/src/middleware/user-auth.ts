@@ -53,6 +53,21 @@ export async function requireUser(req: FastifyRequest, reply: FastifyReply) {
   if (!claims) {
     return reply.code(401).send({ error: "invalid or expired session" });
   }
+
+  // Per-request suspension check. An admin flipping a user's
+  // rate_limit_tier to 'suspended' takes effect on the next request,
+  // matching the same "re-read every request" discipline requireAdmin
+  // uses for is_admin. One extra query on every authenticated /me/*
+  // call is cheap at the traffic levels this project runs at; when
+  // that changes, cache with a 30-second TTL.
+  const tierRow = await queryOne<{ rate_limit_tier: string }>(
+    `SELECT rate_limit_tier FROM users WHERE id = $1`,
+    [claims.sub]
+  );
+  if (tierRow?.rate_limit_tier === "suspended") {
+    return reply.code(403).send({ error: "account suspended" });
+  }
+
   (req as AuthedRequest).user = claims;
 }
 

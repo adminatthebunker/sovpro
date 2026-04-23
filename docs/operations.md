@@ -37,44 +37,53 @@ sovpro logs scanner-cron
 
 ## Embedding service
 
-The `embed` service hosts BGE-M3 + BGE-reranker-v2-m3 on the RTX 4050 GPU via `pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime`. Reachable inside the compose network as `http://embed:8000`.
+The `tei` service runs HuggingFace **Text Embeddings Inference** serving **Qwen3-Embedding-0.6B** (1024-dim, fp16) on the RTX 4050 GPU. Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9`. Reachable inside the compose network as `http://tei:80`.
 
-- **Model cache.** First `/embed` or `/rerank` call downloads ~2 GB of weights into the `embedmodels` named volume. `docker compose down && up` is safe — the volume persists. `docker volume rm sovpro_embedmodels` forces a re-download.
-- **GPU attachment.** Compose uses `deploy.resources.reservations.devices` with `driver: nvidia, capabilities: [gpu]` — no Docker daemon restart required, no `/etc/docker/daemon.json` edit. Confirm attachment:
+The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) was retired on 2026-04-19 after a 3-way eval (see `docs/plans/embedding-model-comparison.md`). Its code still lives at `services/embed/` for rollback; no compose service references it.
+
+- **Model cache.** First request pulls ~1.3 GB into the `embedmodels` named volume (mounted at `/data`; TEI expects HF_HOME-style layout there). The volume was shared with the legacy BGE-M3 layout so a rollback wouldn't re-download either model.
+- **GPU attachment.** Compose uses `deploy.resources.reservations.devices` with `driver: nvidia, capabilities: [gpu]`. Confirm via:
   ```bash
-  docker exec sw-embed curl -s http://localhost:8000/health
-  # → { ..., "device": "cuda", "device_name": "NVIDIA GeForce RTX 4050 Laptop GPU", "fp16": true, ... }
+  docker exec sw-tei curl -s http://localhost:80/health
+  docker logs sw-tei 2>&1 | head  # expect "Starting Qwen3 model on Cuda" near the top
   ```
 - **Overrides** via `.env`:
   ```env
-  EMBED_MEMORY=6g                # soft host-RAM cap (not VRAM)
-  EMBED_MAX_BATCH=128            # bounded by VRAM headroom; drop to 64 if you hit OOM
-  EMBED_GPU_COUNT=all            # restrict via CUDA_VISIBLE_DEVICES semantics if multi-GPU
-  EMBED_CUDA_DEVICES=all
+  TEI_MODEL=Qwen/Qwen3-Embedding-0.6B       # HF repo ID
+  TEI_MAX_CLIENT_BATCH=64                   # max array length per HTTP call
+  TEI_MAX_BATCH_TOKENS=16384                # token-budget across the batch
+  TEI_MEMORY=6g                             # soft host-RAM cap (not VRAM)
+  EMBED_CUDA_DEVICES=all                    # CUDA_VISIBLE_DEVICES-style
+  EMBED_GPU_COUNT=all
   ```
-  Any change requires `docker compose up -d embed` to recreate the container.
+  Any change requires `docker compose up -d tei` to recreate the container.
 - **Hot-path endpoints.**
-  - `POST /embed` — body `{"texts": ["..."], "return_tokens": false}` → `{items: [{embedding: [...1024], token_count?: int}], elapsed_ms, dim, model}`
-  - `POST /rerank` — body `{"pairs": [{"query": "...", "document": "..."}]}` → `{scores: [...], elapsed_ms}`
-  - `GET /health` — `{ok, device, device_name, fp16, embed_model, rerank_model, embed_loaded, rerank_loaded}`. Loads are lazy: healthy does NOT mean models are warm.
-- **Performance expectations (RTX 4050 Mobile, 2026-04-16).**
-  - Cold start (first embed after container boot): ~5 s
-  - batch=32: ~68 texts/sec
-  - batch=64: ~125 texts/sec
-  - batch=128: ~205 texts/sec  ← sweet spot on 6 GiB VRAM
-  - 50k speeches at peak ≈ 4 min. 1M ≈ 80 min.
-- **VRAM budget.** BGE-M3 fp16 weights ~1 GiB; BGE-reranker fp16 ~300 MiB; peak activations at batch=128 ~1.5 GiB. Total ~3 GiB with ~3 GiB headroom for the desktop compositor. Running a GPU-heavy app (gaming, Blender) alongside may OOM; pause embedding if you need the card.
-- **Falling back to CPU.** If a host has no GPU: change `services/embed/Dockerfile`'s base to `python:3.11-slim`, flip `USE_FP16` guard to always-False, drop the `reservations.devices` block in compose. The CPU variant lived on disk before commit `ef26d03` — worth carrying forward in a branch if you want a reproducible CPU build.
-- **Monitoring.** `docker stats sw-embed --no-stream` for host-side CPU/RAM; `nvidia-smi` on the host for GPU utilisation + VRAM; `docker logs sw-embed -f` for model-load progress.
+  - `POST /embed` (TEI-native) — body `{"inputs": ["..."], "normalize": true}` → bare JSON array of float arrays.
+  - `POST /v1/embeddings` (OpenAI-compatible) — body `{"input": [...], "model": "..."}` → `{data: [{embedding: [...]}, ...]}`.
+  - `GET /health` — minimal liveness; weights load on first request (lazy).
+- **Throughput (RTX 4050 Mobile, 2026-04-18 re-embed, Qwen3-Embedding-0.6B fp16).**
+  - Pure GPU: ~75 chunks/sec.
+  - End-to-end through the scanner's batched-UNNEST write path: **50.9 chunks/sec**. 242 k chunks re-embedded in 1 h 19 m.
+  - End-to-end is the capacity-planning number; pure-GPU ignores DB write contention.
+- **Query-time instruction wrapper (critical).** Qwen3-Embedding needs queries prefixed with an instruction; documents are NOT prefixed. Without the wrapper NDCG drops from ~0.43 to ~0.22. Format:
+  ```
+  Instruct: Given a parliamentary search query, retrieve relevant Canadian Hansard speech excerpts
+  Query: {user query}
+  ```
+  Indexing code writes documents unwrapped. See `docs/plans/search-features-handoff.md` for the full retrieval contract.
+- **Reranking.** The BGE-reranker cross-encoder is **no longer in the critical path** — Qwen3 retrieval quality cleared the bar without it. If you re-introduce reranking, run it as a separate service; don't resurrect the FlagEmbedding wrapper just for it.
+- **Scanner env.** The scanner reads `EMBED_URL` (default `http://tei:80`), `EMBED_MODEL_TAG` (default `qwen3-embedding-0.6b`, written to `speech_chunks.embedding_model`), and `EMBED_BATCH` (default 32).
+- **Monitoring.** `docker stats sw-tei --no-stream` for host-side CPU/RAM; `nvidia-smi` on the host for GPU utilisation + VRAM; `docker logs sw-tei -f` for model-load progress. `docker compose stop tei` releases the card cleanly when you need it for other work.
 
 ## Admin panel
 
 `/admin` on the public frontend surfaces a private operator console: queue any whitelisted scanner command, set cron schedules, and watch dashboard counts (speeches, chunks, pending embeds, job throughput).
 
-- **Enable:** set `ADMIN_TOKEN` in `.env` (`openssl rand -hex 32`), then `docker compose up -d api scanner-jobs`.
-- **Login:** browse to `https://<host>/admin/login`, paste the token. Token persists in browser `localStorage` under `sw_admin_token`; it's sent as `Authorization: Bearer …` on every admin API call.
-- **Disabled state:** with `ADMIN_TOKEN` unset, admin routes return **503** rather than 401 so it's obvious the panel is off (not a bad password).
-- **Rotate the token:** edit `.env`, `docker compose up -d api`. Active sessions 401 on next call; re-login with the new token.
+- **Enable:** set `JWT_SECRET` + SMTP in `.env`, then `docker compose up -d api scanner-jobs`. Admin access is "signed-in user with `is_admin = true`" — no separate ADMIN_TOKEN anymore.
+- **Promote an account:** sign in once via the magic-link flow (`/login` → email → verify), then in psql run `UPDATE users SET is_admin = true WHERE email = 'you@example.com';`. The very next admin request sees the new role (re-read per request).
+- **Login:** browse to `/admin`; if not signed in, you'll be bounced to `/login?from=/admin`. Signed-in non-admins see a small "not authorized" surface rather than a redirect loop.
+- **Demote / force logout:** `UPDATE users SET is_admin = false WHERE email = '…';` (instant for admin routes). To fully sign someone out, rotate `JWT_SECRET` — invalidates every session in one move.
+- **Disabled state:** with `JWT_SECRET` unset, `/api/v1/auth/*` + `/api/v1/me/*` + `/api/v1/admin/*` all return **503**.
 
 ### Scheduling commands
 
@@ -88,6 +97,7 @@ The `embed` service hosts BGE-M3 + BGE-reranker-v2-m3 on the RTX 4050 GPU via `p
 All catalog entries live in `services/scanner/src/jobs_catalog.py`. Out of the box, the admin panel exposes:
 
 - Federal Hansard: `ingest-federal-hansard`, `chunk-speeches`, `embed-speech-chunks`
+- NS Hansard: `ingest-ns-mlas`, `ingest-ns-hansard`, `resolve-ns-speakers`
 - Provincial bills: one entry per live pipeline (AB/BC/NB/NL/NS/ON/QC + their RSS variants)
 - Rosters: `ingest-mps`, `ingest-senators`, `ingest-mlas`, `ingest-councils`, `ingest-legislatures`
 - Enrichment: `harvest-personal-socials`
@@ -98,6 +108,73 @@ Adding a new command requires updates in **two** spots (see CLAUDE.md § Admin p
 ### Worker restart + stuck jobs
 
 `sw-scanner-jobs` is a long-running container. On boot it requeues any `status='running'` row older than `JOBS_STUCK_MINUTES` (default 10 min) with an `error='recovered after worker restart'` note. That makes `docker compose restart scanner-jobs` safe even mid-job — the current run is abandoned, the DB row flips to queued, the next worker picks it up.
+
+## Billing rail (premium reports phase 1a)
+
+Full design + deploy sequence in `docs/plans/premium-reports.md`. Operational quick-ref below.
+
+### Env vars
+
+`STRIPE_SECRET_KEY` unset → feature disabled. UI hides purchase buttons; `POST /me/credits/checkout` returns 503; `POST /webhooks/stripe` returns 200-discard (NOT 5xx — Stripe would retry for 72h and burn its budget). Full list in `.env.example`:
+
+| Var | Unset behaviour |
+|---|---|
+| `STRIPE_SECRET_KEY` | Checkout endpoint 503s, buy buttons hidden. |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signature verification fails closed. |
+| `STRIPE_PRICE_ID_CREDIT_PACK_SMALL` / `_MEDIUM` / `_LARGE` | Each pack hides individually if its price id is unset. |
+| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Default to `${PUBLIC_SITE_URL}/account/credits?purchase=success|cancel`. |
+
+### Compiling a user a credit grant (admin "comp" workflow)
+
+Intended for journalist / partner access or support remediation. Leaves a normal ledger row with admin attribution:
+
+1. Sign in as an admin (`users.is_admin = true`).
+2. Navigate to `/admin/users` → search by email → Open the user.
+3. In the "Grant credits (comp)" form enter amount (1–100,000) and a reason — the reason is user-visible in their `/account/credits` history so write it for them, not for yourself.
+4. Click "Grant credits." The ledger row posts with `kind='admin_credit'`, `created_by_admin_id` = you, and the user's spendable balance updates immediately.
+
+Audit trail: `SELECT * FROM credit_ledger WHERE kind='admin_credit' ORDER BY created_at DESC;` shows every comp with the granting admin id.
+
+### Suspending a user
+
+1. `/admin/users` → search → Open.
+2. Dropdown "Rate-limit tier" → `suspended` → blur.
+3. Takes effect on the user's next request (no logout required). They see a 403 on every signed-in endpoint until the tier is reverted.
+
+Direct-SQL alternative if the admin UI is unavailable:
+```sql
+UPDATE users SET rate_limit_tier = 'suspended' WHERE email = 'abuser@example.com';
+```
+
+### Rotating the Stripe webhook signing secret
+
+1. In Stripe dashboard → Developers → Webhooks → your endpoint → "Roll signing secret."
+2. Copy the new `whsec_…` value.
+3. Update `.env` → `STRIPE_WEBHOOK_SECRET=whsec_<new>`.
+4. `docker compose up -d api` (api restart only; the Stripe SDK picks up the new secret at boot).
+5. Stripe gives you a 24h overlap window where both old and new secrets validate — plenty of time for the restart.
+
+### Verifying the ledger balance of a specific user
+
+```sql
+SELECT COALESCE(SUM(delta), 0) AS balance
+  FROM credit_ledger
+ WHERE user_id = (SELECT id FROM users WHERE email = 'you@example.com')
+   AND state IN ('committed','held');
+```
+Held rows contribute their negative delta → balance is the *spendable* amount, not the gross grant total.
+
+### Disaster: "the ledger is wrong"
+
+Never `UPDATE credit_ledger SET delta = ...`. Every correction must be a **new** ledger row:
+
+```sql
+-- Refund 50 credits to a user after a failed report, outside the automatic hold-release path
+INSERT INTO credit_ledger (user_id, delta, state, kind, reason, created_by_admin_id)
+     VALUES ($user_id, 50, 'committed', 'admin_credit', 'Manual refund — report #xxx hung', $admin_id);
+```
+
+The ledger is append-only by discipline, not just by schema. Debug from `SELECT … ORDER BY created_at`; never mutate past rows.
 
 ## Scheduled jobs
 

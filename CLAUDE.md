@@ -50,7 +50,7 @@ Every upstream legislature that ships a stable integer or slug ID for its member
 - Quebec: `qc_assnat_id` (int)
 - Alberta: `ab_assembly_mid` (zero-padded text)
 
-When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. Current state: 840 of 13,633 `bill_sponsors` rows are FK-linked to politicians — the raw percentage is low because sub-national legislatures with sparse structured rosters (QC, NB, NL, NT, NU) dominate the denominator, while federal + NS + BC + ON + AB sponsor resolution remains >99% where the canonical-ID pattern is in place. Closing the gap means adding ID columns for the remaining legislatures, not rewriting the resolver.
+When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. NS now joins the "both bills and Hansard live via the jurisdiction-specific ID column" tier alongside federal, BC, ON, QC, and AB. Current state: 1,075 of 14,929 `bill_sponsors` rows are FK-linked to politicians — the raw percentage is low because sub-national legislatures with sparse structured rosters (QC, NB, NL, NT, NU) dominate the denominator, while federal + NS + BC + ON + AB sponsor resolution remains >99% where the canonical-ID pattern is in place. Closing the gap means adding ID columns for the remaining legislatures, not rewriting the resolver.
 
 ### 2. Discriminated tables, not per-jurisdiction tables
 
@@ -74,7 +74,7 @@ Before building any new ingestion pipeline, check in order:
 
 **Before starting any new provincial pipeline, pause and ask the user for their research pass.** No probing, no migration, no code until the user has either shared their findings or explicitly said "probe yourself."
 
-As of 2026-04-19 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* provincial Hansard / votes / committees pipeline on top of the 9 live bills pipelines. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
+As of 2026-04-22 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* provincial Hansard / votes / committees pipeline on top of the 9 live bills pipelines. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
 
 Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
 
@@ -92,7 +92,16 @@ Private `/admin` surface that lets the operator queue scanner jobs, set cron sch
 
 ### Auth
 
-Shared bearer token via `ADMIN_TOKEN` in `.env` (min 32 chars, `openssl rand -hex 32`). Paste into `/admin/login`; the token is stored in browser `localStorage` as `sw_admin_token` and attached as `Authorization: Bearer <token>` on every admin-scoped request. Unset token → `/api/v1/admin/*` returns **503** (clearly disabled, not wrong password). Wrong token → **401** with timing-safe comparison. Rotate by editing `.env` + `docker compose up -d api`.
+Admin access is the user-session flow with a DB role flag: **signed-in user with `users.is_admin = true`**. No shared bearer token, no localStorage-held credential. An admin signs in via the same magic-link flow end-users use; the per-request `requireAdmin` preHandler (in `services/api/src/middleware/user-auth.ts`) does `requireUser` + re-reads `is_admin` from the DB each time, so a `UPDATE users SET is_admin = false` takes effect on the next request (not on next session expiry). Mutating admin routes additionally require the double-submit CSRF token.
+
+Promote / demote an account via psql:
+
+```sql
+UPDATE users SET is_admin = true  WHERE email = 'you@example.com';
+UPDATE users SET is_admin = false WHERE email = 'you@example.com';
+```
+
+If no user has `is_admin = true` the admin surface is simply unreachable (403 for any signed-in non-admin, login redirect for anonymous). Collapsed from the old `ADMIN_TOKEN` flow on 2026-04-20 after the corrections-XSS review showed that localStorage-held admin tokens amplified any same-origin XSS into full admin takeover.
 
 ### Execution pipeline
 
@@ -105,7 +114,7 @@ Schedules table (`scanner_schedules`) is expanded by the same worker — enabled
 
 ### Curated command whitelist
 
-The admin UI exposes a subset of the 95 scanner commands. Catalog lives in **two places that must stay in sync**:
+The admin UI exposes a subset of the 115 scanner commands. Catalog lives in **two places that must stay in sync**:
 
 - `services/scanner/src/jobs_catalog.py` (authoritative for the worker, maps `key` → `{cli, args}`)
 - The `COMMAND_CATALOG` constant near the top of `services/api/src/routes/admin.ts` (served to the frontend form generator verbatim)
@@ -117,11 +126,11 @@ If they diverge the worker refuses the command with `unknown command` — the UI
 | Concern | Path |
 |---|---|
 | Queue + schedule schema | `db/migrations/0022_scanner_jobs_and_schedules.sql` |
+| `is_admin` column + seed | `db/migrations/0029_users_is_admin.sql` |
 | Worker daemon | `services/scanner/src/jobs_worker.py` + `jobs_catalog.py` |
-| API middleware | `services/api/src/middleware/admin-auth.ts` |
+| `requireAdmin` preHandler | `services/api/src/middleware/user-auth.ts` |
 | API routes | `services/api/src/routes/admin.ts` |
-| Frontend auth hook | `services/frontend/src/hooks/useAdminAuth.ts` |
-| Frontend admin shell | `services/frontend/src/components/AdminLayout.tsx` |
+| Frontend admin shell (gates on `useUserAuth().user.is_admin`) | `services/frontend/src/components/AdminLayout.tsx` |
 | Frontend pages | `services/frontend/src/pages/admin/*.tsx` |
 | Command form generator | `services/frontend/src/components/CommandForm.tsx` |
 | Compose service | `scanner-jobs` in `docker-compose.yml` |
@@ -131,11 +140,12 @@ If they diverge the worker refuses the command with `unknown command` — the UI
 - **Do not link `/admin` from the public nav.** Access is by direct URL.
 - **Do not mount `/var/run/docker.sock` anywhere.** The worker executes via subprocess in the same container — socket mounting is root-equivalent.
 - **Do not allow arbitrary commands.** Every admin-submitted command goes through the whitelist. `jobs_catalog.build_cli_args` validates args against schema before any subprocess spawn.
-- **Do not log tokens.** Fastify's default logger doesn't log headers; if you enable request-body logging add a redact rule for `headers.authorization`.
+- **Do not embed `is_admin` in the session JWT.** The per-request DB read is deliberate — it makes demotion instant. If admin traffic ever becomes large enough to matter (it won't), cache the lookup with a short TTL before moving it into the claim.
+- **Do not expose a self-promotion route.** `is_admin` is flipped only via psql; there is no HTTP endpoint that mutates it.
 
 ## User accounts
 
-Public passwordless auth surface, **completely orthogonal to the admin token**. A request can carry admin bearer, user session cookie, or neither — they're independent trust boundaries.
+Public passwordless auth surface. The admin panel piggybacks on this flow via the `users.is_admin` flag (see the Admin panel section above) — there is only one session system.
 
 ### Auth model
 
@@ -193,13 +203,66 @@ Complexity ceiling: O(users × saved-searches) HNSW queries per day. At 1000 × 
 
 ### What not to do
 
-- **Do not merge admin and user auth.** Two trust boundaries, deliberately. Admin routes use `ADMIN_TOKEN` bearer header; user routes use the session cookie.
-- **Do not bypass CSRF on new `/me/*` mutations.** Every POST/PATCH/DELETE on `/me/*` runs `requireCsrf` alongside `requireUser`.
+- **Do not bypass CSRF on new `/me/*` or `/admin/*` mutations.** Both surfaces use cookie auth, so every POST/PATCH/DELETE runs `requireCsrf` alongside `requireUser` (or `requireAdmin`).
 - **Do not store plaintext magic-link nonces** — only `sha256(nonce)` in `login_tokens.token_hash`.
 - **Do not log session cookies or CSRF tokens.** Fastify's default logger skips `Cookie`; add redact rules if custom logging is introduced.
 - **Do not call TEI from the alerts worker.** The query embedding is cached on `saved_searches.query_embedding` at save time; re-embedding at alert time would scale poorly and can drift from the user's original query.
 - **Do not add social login** (Google/Meta/GitHub). Wrong trust model for civic research — leaks user intent to ad platforms.
 - **Do not bump to Keycloak casually.** Revisit only when a concrete need surfaces (partner newsroom SSO, OAuth clients). The `verifyToken` seam is specifically designed so the swap is mechanical.
+
+## Premium reports / billing rail
+
+Phase 1a landed 2026-04-23. Adds one-time Stripe credit purchases, an append-only credit ledger, and an admin comp flow. The report-generation feature (phase 1b) is not yet built — phase 1a ships the payment rail alone, deliberately, so future premium features (full reports, bulk exports, dev-API tiers from `docs/plans/public-developer-api.md`) plug into the same ledger without a second billing redesign. See `docs/plans/premium-reports.md` for the full design + deployment sequence.
+
+### The ledger discipline (do not break)
+
+Credit balance is **always derived** from `SUM(delta) WHERE state IN ('committed','held')`. There is no mutable `balance` column anywhere in the system and there never should be. A hold debits visible spendable balance (negative delta, state `held`); on report success the same row flips to `committed`; on failure to `refunded` (drops out of the sum). One row per economic event.
+
+Idempotency is **two-layer** by design:
+- `stripe_webhook_events.id PK` catches duplicate webhook *deliveries* at the door.
+- `uniq_credit_ledger_kind_ref` (partial unique index on `(kind, reference_id)`) catches duplicate *application* of the same Stripe event to a user's ledger. If the upstream layer ever fails open, the downstream layer still holds.
+
+### Graceful-degrade ergonomics
+
+Same pattern as `JWT_SECRET` / `OPENROUTER_API_KEY`. Phase-1a code ships with `STRIPE_SECRET_KEY` unset in production by default — the buy-credits UI hides its purchase buttons, the webhook returns 200-discard, and zero payment surface is exposed. Stripe enablement is a second, smaller deploy documented in the plan.
+
+### Webhook security — non-negotiable invariants
+
+- Verify the Stripe signature **before any DB write**.
+- The credit amount granted **must** come from the server-side `PACK_CREDITS` catalog keyed on `metadata.sku`. **Never** trust `metadata.credits` — Stripe Dashboard admins can edit session metadata before payment, and the signature is computed after that edit. A mismatch between the two is logged as a potential-tamper signal; the catalog value wins.
+- Fail-closed when the webhook secret is unset. Plugin-scoped raw-body parser ensures signature verification isn't broken by Fastify's default JSON re-serialisation.
+
+### Admin comp flow
+
+Admins can grant credits directly via `POST /admin/users/:id/grant-credits` (hard-capped at 100,000 per call, zod-checked positive integers only). The grant produces a normal `credit_ledger` row with `kind='admin_credit'` and `created_by_admin_id` set — no parallel "free credits" system exists. Same audit discipline as `is_admin`: psql-only promotion, flipping the flag takes effect on the next request via `requireAdmin`'s per-request re-read.
+
+### Rate-limit tier
+
+`users.rate_limit_tier ∈ ('default','extended','unlimited','suspended')`. `requireUser` re-reads this every request (same DB-read discipline as `requireAdmin`) and 403s `suspended` users immediately. Users can submit an increase request via `POST /me/rate-limit-requests` (one-pending-per-user guard at the app layer); admins resolve in the `/admin/users` queue. Tier enforcement for the non-suspended bands (per-report, per-credit rates) is phase 1b — the DB column is in place but only `suspended` is currently enforced.
+
+### Files involved
+
+| Concern | Path |
+|---|---|
+| Migration | `db/migrations/0033_billing_rail.sql` |
+| Stripe SDK wrapper | `services/api/src/lib/stripe.ts` |
+| Credit ledger helpers | `services/api/src/lib/credits.ts` |
+| User routes | `services/api/src/routes/credits.ts`, `services/api/src/routes/rate-limit-requests.ts` |
+| Webhook | `services/api/src/routes/stripe-webhook.ts` |
+| Admin additions | `services/api/src/routes/admin.ts` (appended) |
+| Suspended enforcement | `services/api/src/middleware/user-auth.ts` (`requireUser`) |
+| Frontend user pages | `services/frontend/src/pages/CreditsPage.tsx`, balance chip in `AccountPage.tsx` |
+| Frontend admin page | `services/frontend/src/pages/admin/AdminUsers.tsx` |
+
+### What not to do
+
+- **Do not add a mutable `balance` column** on `users`. Always `SUM(delta)`. Cached balances diverge under concurrent writes and make refunds incoherent.
+- **Do not grant credits from `session.metadata.credits`.** Always look up via `getPackBySku(metadata.sku)`. Stripe signs events after metadata edits — signature verification does NOT protect against tampered amounts.
+- **Do not log `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, or the `stripe-signature` header.** The webhook route logs event ids + types, never the raw signed body beyond failure messages.
+- **Do not return `credit_purchases.raw_webhook`** from any HTTP response. It holds the full Stripe event (customer email, payment intent); it's audit-only and stays in the DB.
+- **Do not accept negative credit amounts** in any route. Zod `z.number().int().positive()` at the route + `<= 0` throw in the lib.
+- **Do not build a second Stripe integration.** Subscriptions (dev-API plan) reuse `services/api/src/lib/stripe.ts` + `stripe_webhook_events`. One Stripe customer per user, one webhook endpoint, one client wrapper.
+- **Do not bypass the "one pending rate-limit request per user" guard** without adding a DB-level partial unique index. App-level check is the minimum.
 
 ## Blog (MDX-in-repo)
 
@@ -258,8 +321,8 @@ Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `d
 ### Legislative tables (current row counts, 2026-04-19)
 
 - `legislative_sessions` — jurisdiction + parliament + session.
-- `bills` / `bill_events` / `bill_sponsors` — **18,782 bills** across NS (3,522) / AB (11,133) / BC (2,276) / ON (104) / QC (497) / NB (33) / NL (1,193) / NT (20) / NU (4). 13,633 sponsor rows; 840 FK-linked to politicians (see convention #1 for why that ratio is not a regression).
-- `speeches` / `speech_chunks` / `speech_references` — **1,716,550 speeches, 2,144,232 chunks**, of which **2,067,709 (96.4%) carry Qwen3-Embedding-0.6B vectors** in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal Hansard is fully ingested; provincial Hansard ingesters are the next build-out.
+- `bills` / `bill_events` / `bill_sponsors` — **18,863 bills** across AB (11,133) / NS (3,522) / BC (2,276) / NL (1,193) / QC (497) / ON (104) / MB (81) / NB (33) / NT (20) / NU (4). 13,714 sponsor rows; 921 FK-linked to politicians (see convention #1 for why that ratio is not a regression).
+- `speeches` / `speech_chunks` / `speech_references` — **2,115,043 speeches, 2,830,503 chunks, 100 % embedded** with Qwen3-Embedding-0.6B vectors in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal + QC + AB + BC + MB + NS + NB + NL Hansard ingested; ON / NT / NU / SK / PE / YT Hansard pipelines are the next build-out.
 - `votes` / `vote_positions` — **still does not exist.** `0018_votes.sql` remains on disk and intentionally unapplied pending real NT/NU consensus-gov't data.
 - `jurisdiction_sources` — coverage + blockers (seeded with all 14 jurisdictions). Feeds the public coverage dashboard. Refreshed by `refresh-coverage-stats` scanner command.
 - `correction_submissions` — corrections inbox (web + email sources).
@@ -281,12 +344,19 @@ Numbered sequentially under `db/migrations/`. No automated runner — apply manu
 docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrations/<file>.sql
 ```
 
-**Latest applied migrations (2026-04-19):**
+**Latest applied migrations (2026-04-23):**
 - `0022_scanner_jobs_and_schedules.sql` — admin queue + cron table.
 - `0023_embedding_next.sql` — parallel Qwen3 vector column for blue-green re-embed.
 - `0024_fix_federal_session_tagging.sql` — retag federal speeches into correct parliaments.
 - `0025_drop_legacy_embedding_column.sql` — drop BGE-M3 column, rename `embedding_next` → `embedding`.
-- `0026_politician_photo_local.sql` and `0026_politician_socials_provenance.sql` — two files share the `0026` number (accidental collision; both applied). When adding the next migration bump to `0027` regardless; do not back-renumber.
+- `0026_politician_photo_local.sql` and `0026_politician_socials_provenance.sql` — two files share the `0026` number (accidental collision; both applied). When adding the next migration bump past the conflict; do not back-renumber.
+- `0027_users_and_saved_searches.sql` — magic-link users, login_tokens, saved_searches; hook on correction_submissions.user_id.
+- `0028_users_email_bounces.sql` — users.email_bounced_at; alerts-worker suppresses sending to hard-bounced addresses.
+- `0029_users_is_admin.sql` — users.is_admin; collapses the old ADMIN_TOKEN flow into the user-session flow.
+- `0030_politician_mb_assembly_slug.sql` — MB Manitoba assembly member slug column.
+- `0031_unique_ab_assembly_mid.sql` — unique constraint on `ab_assembly_mid`.
+- `0032_unique_mb_assembly_slug.sql` — unique constraint on `mb_assembly_slug`.
+- `0033_billing_rail.sql` — billing rail phase 1a: `users.stripe_customer_id` + `users.rate_limit_tier`, `stripe_webhook_events`, `credit_ledger`, `credit_purchases`, `rate_limit_increase_requests`.
 
 **Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
 
@@ -305,7 +375,7 @@ sovpro doctor             # sanity-check all services
 docker compose run --rm scanner python -m src <subcommand>
 ```
 
-The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **95 `@cli.command` decorators** as of 2026-04-19. Grep there for the full list.
+The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **115 `@cli.command` decorators** as of 2026-04-22. Grep there for the full list.
 
 ## Development workflow
 

@@ -4,6 +4,11 @@ import { userFetch } from "../api";
 import { useUserAuth } from "../hooks/useUserAuth";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
+interface CreditsSummary {
+  balance: number;
+  stripe_enabled: boolean;
+}
+
 /**
  * Signed-in user's home. Profile (display_name), link to saved
  * searches, logout. If not signed in, prompt sign-in.
@@ -16,9 +21,26 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [credits, setCredits] = useState<CreditsSummary | null>(null);
 
   useEffect(() => {
     if (user) setDisplayName(user.display_name ?? "");
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    userFetch<CreditsSummary>("/me/credits")
+      .then((res) => {
+        if (!cancelled) setCredits({ balance: res.balance, stripe_enabled: res.stripe_enabled });
+      })
+      .catch(() => {
+        // Credits fetch failures don't block the rest of the page.
+        // The balance chip just won't appear.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   if (loading) {
@@ -110,6 +132,11 @@ export default function AccountPage() {
         <Link to="/account/corrections" className="cpd-auth__linklike">
           Your corrections →
         </Link>
+        {credits && credits.stripe_enabled && (
+          <Link to="/account/credits" className="cpd-auth__linklike">
+            Your credits <span className="cpd-auth__chip">{credits.balance}</span> →
+          </Link>
+        )}
         <button type="button" onClick={onLogout} className="cpd-auth__linkbtn">
           Sign out
         </button>
