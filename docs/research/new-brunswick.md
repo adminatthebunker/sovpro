@@ -4,9 +4,9 @@
 
 **Legislature:** Legislative Assembly of New Brunswick | **Website:** https://www.legnb.ca | **Seats:** 49 | **Next election:** By 2028-10-16
 
-**Status snapshot (2026-04-22):** ✅ **Bills historical backfill complete** — Legislatures 56 through 61 (2007–present, ~20 years, 4 sessions per legislature on average). ~1.2k bills / ~4k events / ~1.2k sponsors. Digital coverage on legnb.ca starts at Leg 56/1 (2007); earlier bills are paper-only via the Legislative Library (506-453-2338). Each ingested bill also stores `bills.raw_html` so re-parsing is network-free.
+**Status snapshot (2026-04-22):** ✅ **Bills historical backfill complete** — Legislatures 56 through 61 (2007–present, ~20 years). **1,248 bills / ~4.6k events / ~1,250 sponsors**, all with `raw_html` cached. Digital coverage on legnb.ca starts at Leg 56/1 (2007); earlier bills are paper-only via the Legislative Library (506-453-2338). FK-link rate ~100% on Leg 60-61, ~0-30% on Leg 56-58 pending historical-MLA enrichment (idempotent — a future `ingest-mlas` run fills in retroactively).
 
-✅ **Hansard live** — bilingual PDF scrape of `/en/house-business/hansard/{L}/{S}` covering Leg 58/3 onward (2016–present). Earlier "available from 1900" claim on the site refers to paper records at the Legislative Library; digital Hansard begins at 58/3 in practice. Speaker resolution is name-based (no canonical MLA id) with presiding-officer rows resolved by date range via the NB Speaker roster in `presiding_officer_resolver.SPEAKER_ROSTER["NB"]`.
+✅ **Hansard live** — bilingual PDF scrape of `/en/house-business/hansard/{L}/{S}` covering Leg 58/3 onward (Nov 2016 – present). **22,895 speeches across 312 sittings**. Earlier "available from 1900" claim on the site refers to paper records at the Legislative Library; digital Hansard begins at 58/3 in practice. Speaker resolution is name-based (no canonical MLA id); presiding-officer rows resolved by date range via the NB Speaker roster in `presiding_officer_resolver.SPEAKER_ROSTER["NB"]` — 4,131 of 4,208 "Mr./Madam Speaker" rows resolved (98%). Person-speaker resolution ranges 17% (Leg 59, 2018) → 77% (Leg 61, current) — the gap tracks NB MLA roster completeness.
 
 The earlier hopeful note about `gnb.socrata.com` carrying NB legislative data turned out to be wrong — every "bill" hit on that portal is from another jurisdiction.
 

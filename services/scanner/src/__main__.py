@@ -712,6 +712,7 @@ from .legislative.qc_bills import (  # noqa: E402
     fetch_qc_bill_sponsors, ingest_qc_bills_csv, ingest_qc_bills_rss,
 )
 from .legislative.ab_mlas import enrich_ab_mla_ids  # noqa: E402
+from .legislative.ab_former_mlas import ingest_ab_former_mlas, resolve_ab_speakers  # noqa: E402
 from .legislative.ab_bills import ingest_ab_bills  # noqa: E402
 from .legislative.mb_mlas import ingest as ingest_mb_mlas  # noqa: E402
 from .legislative.mb_bills import ingest as ingest_mb_bills  # noqa: E402
@@ -731,6 +732,10 @@ from .legislative.nb_hansard import (  # noqa: E402
     resolve_nb_speakers as resolve_nb_hansard_speakers,
 )
 from .legislative.nl_bills import ingest_nl_bills  # noqa: E402
+from .legislative.nl_hansard import (  # noqa: E402
+    ingest as ingest_nl_hansard,
+    resolve_nl_speakers as resolve_nl_hansard_speakers,
+)
 from .legislative.nt_bills import ingest_nt_bills  # noqa: E402
 from .legislative.nu_bills import ingest_nu_bills  # noqa: E402
 from .gap_fillers import bc as _gf_bc  # noqa: E402
@@ -1220,6 +1225,78 @@ def cmd_enrich_ab_mla_ids(ctx: click.Context) -> None:
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
+
+@cli.command("ingest-ab-former-mlas")
+@click.option("--from-legl", type=int, default=1,
+              help="Earliest legislature to enumerate (default: 1 = 1906).")
+@click.option("--until-legl", type=int, default=31,
+              help="Latest legislature to enumerate (default: 31 = current).")
+@click.option("--delay", type=float, default=1.0,
+              help="Seconds between page fetches (be polite).")
+@click.pass_context
+def cmd_ingest_ab_former_mlas(
+    ctx: click.Context, from_legl: int, until_legl: int, delay: float,
+) -> None:
+    """Enumerate every MLA who's ever served in the AB Legislature.
+
+    Scrapes assembly.ab.ca/members/...?legl=N for N in [--from-legl,
+    --until-legl], upserts politicians keyed on ab_assembly_mid, and
+    creates politician_terms rows per (politician, legislature) using
+    the year ranges advertised on each index page.
+
+    Full-history default (1..31) takes ~35 seconds at --delay=1.0 and
+    yields ~800-900 unique politicians covering 1906-present. Safe to
+    re-run: politicians are upserted on ab_assembly_mid, terms on
+    (politician_id, office, started_at).
+
+    Prereq for resolver date-awareness — without term date ranges,
+    historical speeches can't be date-filtered against the right
+    contemporaneous roster.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_ab_former_mlas(
+            db, from_legl=from_legl, until_legl=until_legl, delay=delay,
+        )
+        console.print(
+            f"[green]ingest-ab-former-mlas[/green]: "
+            f"legls={stats.legls_scanned} "
+            f"mid_legl_pairs={stats.mid_legl_pairs_seen} "
+            f"politicians_inserted={stats.politicians_inserted} "
+            f"politicians_updated={stats.politicians_updated} "
+            f"terms_inserted={stats.terms_inserted} "
+            f"terms_skipped={stats.terms_skipped} "
+            f"missing_legl_dates={stats.missing_legl_dates}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+
+@cli.command("resolve-ab-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_ab_speakers(ctx: click.Context, limit: Optional[int]) -> None:
+    """Re-resolve politician_id on AB Hansard speeches with NULL
+    politician_id.
+
+    Keyed on (surname, legislature) from the parser-extracted
+    speeches.raw->'ab_hansard' fields, joined against the historical
+    politician_terms rows stamped by ingest-ab-former-mlas. Single
+    SQL batch; cheap enough to run after every roster top-up.
+
+    No-op on speeches where the surname + legislature yields multiple
+    candidates (same surname in the same legislature — rare but real).
+    Those stay NULL pending a riding-aware or portfolio-aware
+    follow-up.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await resolve_ab_speakers(db, limit=limit)
+        console.print(
+            f"[green]resolve-ab-speakers[/green]: "
+            f"scanned={stats.scanned} updated={stats.updated} "
+            f"still_unresolved={stats.still_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 @cli.command("resolve-mb-bill-sponsors")
 @click.option("--limit", type=int, default=None,
@@ -1951,6 +2028,95 @@ def cmd_resolve_mb_speakers(ctx: click.Context, limit: Optional[int]) -> None:
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
 
+@cli.command("ingest-nl-hansard")
+@click.option("--ga", type=int, required=True,
+              help="NL General Assembly number (e.g. 51).")
+@click.option("--session", type=int, required=True,
+              help="Session within the GA (e.g. 1).")
+@click.option("--since", type=str, default=None,
+              help="Only ingest sittings on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only ingest sittings on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-sittings", type=int, default=None,
+              help="Cap on sittings processed (most-recent first when capped).")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.option("--url", "one_off_url", type=str, default=None,
+              help="Bypass discovery and ingest a single transcript URL directly.")
+@click.pass_context
+def cmd_ingest_nl_hansard(
+    ctx: click.Context, ga, session, since, until,
+    limit_sittings, limit_speeches, one_off_url,
+) -> None:
+    """Ingest Newfoundland & Labrador Hansard (HTML) → speeches table.
+
+    Discovery: session calendar at
+    /HouseBusiness/Hansard/ga{GA}session{S}/ lists sitting-day hrefs
+    of the form {YY}-{MM}-{DD}[{Label}].htm[l]. Special days carry a
+    suffix label (SwearingIn, ElectionofSpeaker).
+
+    Parser: era-branching. Modern (Word-exported, MsoNormal + <strong>)
+    vs legacy (FrontPage, malformed <b>). Both UTF-8. Speakers in both
+    eras use compact ALLCAPS attributions — no riding, no party inline.
+
+    Speaker resolution: (first_initial, surname) against date-windowed
+    NL politician_terms; surname-only fallback. Presiding "SPEAKER"
+    rows are left NULL and resolved in a post-pass via
+    resolve-presiding-speakers --province NL.
+
+    Idempotent via UNIQUE (source_system, source_url, sequence).
+    """
+    from datetime import date as _date
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_nl_hansard(
+            db,
+            ga=ga,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_sittings=limit_sittings,
+            limit_speeches=limit_speeches,
+            one_off_url=one_off_url,
+        )
+        console.print(
+            f"[green]ingest-nl-hansard[/green]: "
+            f"sittings={stats.sittings_scanned} (skipped_404={stats.sittings_skipped_404}) "
+            f"seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} parse_errors={stats.parse_errors} "
+            f"resolved={stats.speeches_resolved} group={stats.speeches_group} "
+            f"role_only={stats.speeches_role_only} ambiguous={stats.speeches_ambiguous} "
+            f"unresolved={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-nl-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_nl_speakers(ctx: click.Context, limit: Optional[int]) -> None:
+    """Re-resolve politician_id on NL Hansard speeches with NULL politician_id.
+
+    Run after expanding the NL MHA roster or fixing a parser edge case.
+    Skips group markers ("SOME HON. MEMBERS") and presiding-role rows
+    (those are the province of resolve-presiding-speakers --province NL).
+    Idempotent.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await resolve_nl_hansard_speakers(db, limit=limit)
+        console.print(
+            f"[green]resolve-nl-speakers[/green]: "
+            f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
+            f"still_unresolved={stats.still_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("ingest-nb-hansard")
 @click.option("--legislature", type=int, default=None,
               help="NB Legislature number (pair with --session). Required unless --all-sessions-in-legislature is given.")
@@ -2254,7 +2420,7 @@ def cmd_refresh_coverage_stats(ctx: click.Context) -> None:
 
 
 @cli.command("resolve-presiding-speakers")
-@click.option("--province", type=click.Choice(["AB", "BC", "QC", "MB", "NB", "NS"]), default="AB",
+@click.option("--province", type=click.Choice(["AB", "BC", "QC", "MB", "NB", "NL", "NS"]), default="AB",
               help="Jurisdiction whose Speaker roster to seed + resolve.")
 @click.option("--limit", type=int, default=None,
               help="Cap candidate speeches scanned (smoke-test aid).")

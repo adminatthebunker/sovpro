@@ -126,14 +126,47 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
         SpeakerTerm("Bill Oliver",      "Bill",     "Oliver",   date(2020, 11, 17), date(2024,  8, 14)),
         SpeakerTerm("Francine Landry",  "Francine", "Landry",   date(2024, 11, 19), None),
     ],
-    # Nova Scotia: covers the 65th General Assembly (1st Session
-    # opened 2024-12-10). The sitting transcripts list the Speaker
-    # directly in a <p class="hsd_center">Hon. Danielle Barkhouse</p>
-    # block at the top of each day's Hansard. Earlier Speakers (Keith
-    # Bain, Kevin Murphy, Gordie Gosse) will be added when we backfill
-    # pre-65 sittings — not needed for current-session ingest.
+    # Nova Scotia: covers General Assemblies 58 (1999-2003) through
+    # 65 (current). Sittings list the Speaker directly in a
+    # <p class="hsd_center">Hon. Danielle Barkhouse</p> block at the
+    # top of each day's Hansard (modern markup, 62-1 onward). Legacy-
+    # markup sittings (58-1 through 61-5) use plaintext "MR. SPEAKER:"
+    # lines, which still resolve via the date-ranged term lookup here
+    # regardless of markup shape.
+    # Sources: Wikipedia "Speaker of the Nova Scotia House of Assembly"
+    # + nslegislature.ca historical records.
     "NS": [
+        SpeakerTerm("Ronald Russell",     "Ronald",   "Russell",   date(1999,  9,  9), date(2003,  7,  8)),
+        SpeakerTerm("Murray Scott",       "Murray",   "Scott",     date(2003,  9,  9), date(2006,  9, 14)),
+        SpeakerTerm("Cecil Clarke",       "Cecil",    "Clarke",    date(2006,  9, 14), date(2008,  1, 16)),
+        SpeakerTerm("Alfie MacLeod",      "Alfie",    "MacLeod",   date(2008,  1, 16), date(2009,  6,  9)),
+        SpeakerTerm("Charlie Parker",     "Charlie",  "Parker",    date(2009,  6,  9), date(2009,  9, 23)),
+        SpeakerTerm("Gordie Gosse",       "Gordie",   "Gosse",     date(2009,  9, 23), date(2013, 10, 24)),
+        SpeakerTerm("Kevin Murphy",       "Kevin",    "Murphy",    date(2013, 10, 24), date(2021,  8, 19)),
+        SpeakerTerm("Keith Bain",         "Keith",    "Bain",      date(2021,  8, 19), date(2024, 12,  9)),
         SpeakerTerm("Danielle Barkhouse", "Danielle", "Barkhouse", date(2024, 12, 10), None),
+    ],
+    # Newfoundland & Labrador: covers GA 48–51 (2015+), the range the
+    # Hansard backfill is expected to reach. Dates are year-boundary
+    # approximations — assembly.nl.ca's FormerSpeakers.aspx only
+    # publishes year ranges ("2021–2025 Derek Bennett"), and transitions
+    # typically happen at the start of a new GA so month precision
+    # rarely matters for date-windowed resolution. Transition dates
+    # align with known GA dissolutions / elections:
+    #   - 2017-11-15: Osborne → Trimper (mid-GA 48, Trimper elected
+    #                  Speaker after Osborne was appointed minister).
+    #   - 2019-05-31: Trimper → Reid (post-2019 election, GA 49).
+    #   - 2021-04-15: Reid → Bennett (post-2021 election, GA 50 opening).
+    #   - 2025-11-03: Bennett → Lane (verified from assembly.nl.ca).
+    # NL Hansard emits "SPEAKER:" (modern, Word-exported) and
+    # "MR. SPEAKER:" (legacy, FrontPage-era); both normalise to
+    # "The Speaker".
+    "NL": [
+        SpeakerTerm("Tom Osborne",      "Tom",      "Osborne",  date(2015, 12,  7), date(2017, 11, 15)),
+        SpeakerTerm("Perry Trimper",    "Perry",    "Trimper",  date(2017, 11, 15), date(2019,  5, 31)),
+        SpeakerTerm("Scott Reid",       "Scott",    "Reid",     date(2019,  5, 31), date(2021,  4, 15)),
+        SpeakerTerm("Derek Bennett",    "Derek",    "Bennett",  date(2021,  4, 15), date(2025, 11,  3)),
+        SpeakerTerm("Paul Lane",        "Paul",     "Lane",     date(2025, 11,  3), None),
     ],
 }
 
@@ -292,6 +325,10 @@ _SPEAKER_ROLE_BY_PROVINCE: dict[str, tuple[str, ...]] = {
     # anchor form ("THE SPEAKER", "MADAM SPEAKER", "MR. SPEAKER") to
     # the canonical "The Speaker" role string.
     "NS": ("The Speaker",),
+    # Newfoundland & Labrador: nl_hansard parser normalises both
+    # "SPEAKER:" (modern Word-exported era) and "MR. SPEAKER:" (legacy
+    # FrontPage era) to the canonical "The Speaker" role.
+    "NL": ("The Speaker",),
 }
 
 # Back-compat default for any province without an explicit mapping.

@@ -174,7 +174,10 @@ def extract_sitting_date(html: str) -> Optional[date]:
 # <td class="indent10"><div class="leader"><span class="leader">…).
 _TURN_OPENER_RE = re.compile(
     r"<p\b[^>]*>"                                     # opening <p>
-    r"\s*(?:<a\s+name=\"[^\"]+\"[^>]*>\s*</a>\s*)?"  # optional anchor target
+    # Optional anchor target. In session 65-1 the name anchor self-closes
+    # (``<a name="x"></a>``); in 63-3 and earlier it stays open
+    # (``<a name="x">`` with no ``</a>`` before the href anchor).
+    r"\s*(?:<a\s+name=\"[^\"]+\"[^>]*>\s*(?:</a>\s*)?)?"
     r"<a\b[^>]*\bhref=\"(?P<href>/members/"
     r"(?:profiles/[^\"]+|speaker/?))\""              # /members/profiles/slug OR /members/speaker
     r"[^>]*>(?P<name>[^<]+)</a>",

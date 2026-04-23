@@ -163,6 +163,34 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap speeches scanned (smoke-test aid)."},
         ],
     },
+    "ingest-nl-hansard": {
+        "description": "Pull Newfoundland & Labrador Hansard (Word-exported + legacy FrontPage HTML) into `speeches`. Era-branching parser; speaker resolution via (first_initial, surname) against date-windowed NL politician_terms.",
+        "cli": "ingest-nl-hansard",
+        "category": "hansard",
+        "args": [
+            {"name": "ga", "type": "int", "required": True,
+             "help": "NL General Assembly number (e.g. 51)."},
+            {"name": "session", "type": "int", "required": True,
+             "help": "Session within the GA (e.g. 1)."},
+            {"name": "since", "type": "date", "required": False,
+             "help": "Only fetch sittings on/after this date (ISO YYYY-MM-DD)."},
+            {"name": "until", "type": "date", "required": False,
+             "help": "Only fetch sittings on/before this date (ISO YYYY-MM-DD)."},
+            {"name": "limit_sittings", "type": "int", "required": False,
+             "help": "Cap on sittings processed this run."},
+            {"name": "limit_speeches", "type": "int", "required": False,
+             "help": "Cap on TOTAL speeches ingested this run."},
+        ],
+    },
+    "resolve-nl-speakers": {
+        "description": "Re-resolve politician_id on NL Hansard speeches with NULL politician_id (skips group markers + presiding-role rows).",
+        "cli": "resolve-nl-speakers",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap speeches scanned (smoke-test aid)."},
+        ],
+    },
     "ingest-ns-hansard": {
         "description": "Pull Nova Scotia Hansard (HTML transcripts) into `speeches`. Speaker resolution via politicians.nslegislature_slug.",
         "cli": "ingest-ns-hansard",
@@ -256,7 +284,7 @@ COMMANDS: dict[str, dict[str, Any]] = {
         "category": "hansard",
         "args": [
             {"name": "province", "type": "enum", "required": False, "default": "AB",
-             "choices": ["AB", "BC", "QC", "MB", "NB", "NS"],
+             "choices": ["AB", "BC", "QC", "MB", "NB", "NL", "NS"],
              "help": "Which province's Speaker roster to resolve."},
             {"name": "limit", "type": "int", "required": False,
              "help": "Cap candidate speeches scanned (smoke-test aid)."},

@@ -120,6 +120,23 @@ const COMMAND_CATALOG = [
       { name: "limit", type: "int", required: false, help: "Cap speeches scanned (smoke-test aid)." },
     ],
   },
+  { key: "ingest-nl-hansard", category: "hansard",
+    description: "Pull Newfoundland & Labrador Hansard (era-branching: Word-exported MsoNormal + legacy FrontPage) into `speeches`. Speaker resolution via (first_initial, surname) against date-windowed NL politician_terms.",
+    args: [
+      { name: "ga", type: "int", required: true, help: "NL General Assembly number (e.g. 51)." },
+      { name: "session", type: "int", required: true, help: "Session within the GA (e.g. 1)." },
+      { name: "since", type: "date", required: false, help: "Only fetch sittings on/after this date." },
+      { name: "until", type: "date", required: false, help: "Only fetch sittings on/before this date." },
+      { name: "limit_sittings", type: "int", required: false, help: "Cap on sittings processed." },
+      { name: "limit_speeches", type: "int", required: false, help: "Cap on TOTAL speeches ingested." },
+    ],
+  },
+  { key: "resolve-nl-speakers", category: "hansard",
+    description: "Re-resolve politician_id on NL Hansard speeches with NULL politician_id (skips group markers + presiding-role rows).",
+    args: [
+      { name: "limit", type: "int", required: false, help: "Cap speeches scanned (smoke-test aid)." },
+    ],
+  },
   { key: "ingest-nb-hansard", category: "hansard",
     description: "Pull New Brunswick Hansard (bilingual PDF) into `speeches`. English speaker lines trigger rows; French lines become body text.",
     args: [
@@ -158,7 +175,7 @@ const COMMAND_CATALOG = [
   { key: "resolve-presiding-speakers", category: "hansard",
     description: "Tie 'The Speaker' speeches to the sitting Speaker by date. Seeds politicians + politician_terms for the jurisdiction's Speaker roster, then updates NULL-politician_id rows.",
     args: [
-      { name: "province", type: "enum", required: false, default: "AB", choices: ["AB", "BC", "QC", "MB", "NB", "NS"],
+      { name: "province", type: "enum", required: false, default: "AB", choices: ["AB", "BC", "QC", "MB", "NB", "NL", "NS"],
         help: "Jurisdiction whose Speaker roster to resolve." },
       { name: "limit", type: "int", required: false, help: "Cap candidate speeches scanned." },
     ],

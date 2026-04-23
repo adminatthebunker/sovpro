@@ -4,7 +4,7 @@
 
 **Legislature:** House of Assembly | **Website:** https://nslegislature.ca | **Seats:** 55 | **Next election:** By 2029-12-07
 
-**Status snapshot (2026-04-19):** ✅ **Bill rows live** via Socrata — easiest source in the country (3,522 bills across 24 sessions). Per-bill HTML cache **partially blocked by WAF budget** (~25/3,522 cached). RSS-feed pivot or email allowlist pending. NS is the **reference implementation** that other provincial pipelines follow.
+**Status snapshot (2026-04-22):** ✅ **Bill rows live** via Socrata — easiest source in the country (3,522 bills across 24 sessions). Per-bill HTML cache **partially blocked by WAF budget** (~25/3,522 cached). RSS-feed pivot or email allowlist pending. ✅ **Hansard session 65-1 live** — 10,608 speeches across 44 sittings (Dec 2024 → present), 100% speaker resolution via `politicians.nslegislature_slug` + date-ranged Speaker roster. NS is the **reference implementation** that other provincial pipelines follow.
 
 ---
 
@@ -50,8 +50,20 @@ Neither has been started. Meanwhile the existing 25-bill cache is sufficient to 
 - **Format:** HTML transcripts from 1994 forward; PDF index; video/audio webcasts.
 - **Granularity:** Daily; includes committee Hansards.
 - **Speaker identification:** Yes.
-- **Difficulty (1–5):** 3.
+- **Difficulty (1–5):** 3 (HTML scrape; near-trivial once the slug roster is stamped).
 - **Notes:** Transcripts published next morning after sitting. Contact: Hansard Reporting Services, 902-424-7990.
+
+### Implementation (current-session, 2026-04-22)
+
+Session index URL `https://nslegislature.ca/legislative-business/hansard-debates/{parliament}-{session}` lists every sitting in the given assembly. Sitting transcript URLs follow `/assembly-{N}-session-{M}/house_{YYmonDD}` — deterministic, enumerable. No Hansard-specific RSS feed exists (probed 2026-04-22: `/rss`, `/feed`, `/hansard-debates/rss`, `/hansard/rss`, `/legislative-business/rss` — only the last returns a valid RSS, and it's empty); `?_format=json` also disabled.
+
+Every speaker turn in the body HTML is a `<p>` opening with `<a name="{slug}-NNNN"></a><a href="/members/profiles/{slug}">NAME</a>` (member) or `<a href="/members/speaker/">THE SPEAKER</a>` (presiding). The slug is the exact value stored on `politicians.nslegislature_slug`, so speaker resolution is a direct FK join — the strongest attribution model of any NS-visible legislature, on par with the federal openparliament pipeline. No name-fuzz fallback is used in production.
+
+**Pipeline:** `ingest-ns-mlas` → `ingest-ns-hansard` → `resolve-presiding-speakers --province NS` → `chunk-speeches` → `embed-speech-chunks`. The MLA roster command harvests `(slug, displayed_name)` pairs from the newest sittings and stamps `nslegislature_slug` on existing NS politician rows; at the start of NS Hansard work only 10/55 seated MLAs had slugs (sponsors of the 25 WAF-cached bills), so this pre-pass is load-bearing.
+
+The NS Hansard pages sit on a different CDN path than the per-bill HTML that triggered the WAF budget — no rate-limit issues observed at 1.5s delay between sittings.
+
+**Phase-1 scope (landed 2026-04-22):** Session 65-1 only, 44 sittings, 10,608 speeches, 100 % politician_id resolved (5,665 slug-joined to MLAs + 4,943 Speaker turns resolved to Danielle Barkhouse via `presiding_officer_resolver`). Historical sessions (back to 1994) deferred until an historical-MLA roster pass lands slugs for departed members.
 
 ## Voting Records / Divisions
 
@@ -82,6 +94,6 @@ Neither has been started. Meanwhile the existing 25-bill cache is sufficient to 
 - [x] Ingestion prototyped (Socrata → 3,522 bills across 24 sessions)
 - [~] Production ingestion partial — bill rows complete; per-bill HTML fetch blocked by WAF budget (25/3,522 cached). RSS-feed pivot or email allowlist pending.
 - [x] Sponsor→politician resolver working (14/14 parsed sponsors linked)
-- [ ] Hansard
+- [x] Hansard — session 65-1 live (10,608 speeches, 100% resolved); historical backfill deferred
 - [ ] Votes
 - [ ] Committees
