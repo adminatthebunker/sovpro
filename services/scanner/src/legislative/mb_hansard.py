@@ -659,3 +659,93 @@ async def resolve_mb_speakers(
         stats.speeches_scanned, stats.speeches_updated, stats.still_unresolved,
     )
     return stats
+
+
+async def resolve_mb_speakers_dated(
+    db: Database, *, limit: Optional[int] = None,
+) -> ResolveStats:
+    """Date-windowed resolver — rescues historical MB surnames that the
+    name-only resolver rejects as ambiguous after the former-MLAs
+    backfill.
+
+    For each unresolved hansard-mb speech with a parsed surname + a
+    known spoken_at, join politicians by surname (normalized) AND
+    join politician_terms where spoken_at falls inside [started_at,
+    ended_at]. If exactly one distinct politician emerges, attribute
+    the speech (and its chunks).
+
+    This is the MB analog of AB's ``resolve_ab_speakers`` legl-keyed
+    rescue: the historical roster supplies terms, terms give us
+    contemporaneous disambiguation, and surname matching becomes
+    sufficient again.
+
+    Skipped by design:
+      * "Mr. Speaker"/"Mr. Deputy Speaker" rows — handled by
+        ``resolve-presiding-speakers --province MB``.
+      * "Some Honourable Members" / "Mr. Chairperson" — role
+        attributions that aren't real MLAs.
+    """
+    stats = ResolveStats()
+    limit_clause = f"LIMIT {int(limit)}" if limit else ""
+
+    update_sql = f"""
+    WITH candidates AS (
+      SELECT s.id AS speech_id,
+             array_agg(DISTINCT p.id) AS cand_ids,
+             count(DISTINCT p.id) AS n_cands
+        FROM speeches s
+        JOIN politicians p
+          ON p.province_territory = 'MB'
+         AND p.level = 'provincial'
+         AND lower(unaccent(p.last_name)) = lower(unaccent(s.raw->'mb_hansard'->>'surname'))
+        JOIN politician_terms pt
+          ON pt.politician_id = p.id
+         AND (pt.started_at IS NULL OR pt.started_at::date <= s.spoken_at::date)
+         AND (pt.ended_at   IS NULL OR pt.ended_at::date   >= s.spoken_at::date)
+       WHERE s.source_system = 'hansard-mb'
+         AND s.politician_id IS NULL
+         AND s.raw->'mb_hansard'->>'surname' IS NOT NULL
+         AND s.raw->'mb_hansard'->>'surname' NOT IN
+              ('Speaker', 'Chairperson', 'Chair')
+         AND s.spoken_at IS NOT NULL
+       GROUP BY s.id
+       {limit_clause}
+    ),
+    uniq AS (
+      SELECT speech_id, cand_ids[1] AS politician_id
+        FROM candidates WHERE n_cands = 1
+    ),
+    updated_speeches AS (
+      UPDATE speeches s
+         SET politician_id = u.politician_id,
+             confidence    = GREATEST(s.confidence, 0.85),
+             updated_at    = now()
+        FROM uniq u
+       WHERE s.id = u.speech_id
+       RETURNING s.id, s.politician_id
+    ),
+    updated_chunks AS (
+      UPDATE speech_chunks sc
+         SET politician_id = us.politician_id
+        FROM updated_speeches us
+       WHERE sc.speech_id = us.id
+         AND sc.politician_id IS DISTINCT FROM us.politician_id
+       RETURNING sc.id
+    )
+    SELECT
+      (SELECT count(*) FROM candidates)           AS scanned,
+      (SELECT count(*) FROM updated_speeches)     AS speeches_updated,
+      (SELECT count(*) FROM updated_chunks)       AS chunks_updated,
+      (SELECT count(*) FROM candidates WHERE n_cands > 1) AS still_ambiguous
+    """
+    row = await db.pool.fetchrow(update_sql, timeout=1800)
+    stats.speeches_scanned = int(row["scanned"] or 0)
+    stats.speeches_updated = int(row["speeches_updated"] or 0)
+    stats.still_unresolved = int(row["still_ambiguous"] or 0)
+    log.info(
+        "resolve_mb_speakers_dated: scanned=%d speeches_updated=%d "
+        "chunks_updated=%d still_ambiguous=%d",
+        stats.speeches_scanned, stats.speeches_updated,
+        int(row["chunks_updated"] or 0), stats.still_unresolved,
+    )
+    return stats

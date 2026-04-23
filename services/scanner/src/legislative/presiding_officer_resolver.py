@@ -102,14 +102,21 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
         SpeakerTerm("François Paradis",  "François", "Paradis",   date(2018, 11, 28), date(2022, 11, 29)),
         SpeakerTerm("Nathalie Roy",      "Nathalie", "Roy",       date(2022, 11, 29), None),
     ],
-    # Manitoba: covers the 43rd Legislature (2023-present) which is
-    # where the Hansard corpus currently lives. Earlier Speakers
-    # (Driedger, Reid, Hickes) will be added when we backfill
-    # pre-2023 sittings — not needed for the current-session ingest.
+    # Manitoba: covers the 37th Legislature (1999-2003) through the
+    # current 43rd Legislature, aligned with the Hansard backfill
+    # depth on gov.mb.ca (URL pattern holds to 1958 but the 2000→
+    # present ingest draws the line at Leg 37). Transition dates
+    # are election-boundary approximations — Speaker elections
+    # typically happen on the first sitting day of a new
+    # legislature, so month precision is sufficient for the date-
+    # windowed resolver.
     # Source: Wikipedia "Speaker of the Legislative Assembly of
     # Manitoba" + gov.mb.ca/legislature/members.
     "MB": [
-        SpeakerTerm("Tom Lindsey",    "Tom",    "Lindsey",  date(2023, 11, 21), None),
+        SpeakerTerm("George Hickes",    "George",  "Hickes",    date(1999, 10,  6), date(2012, 11, 20)),
+        SpeakerTerm("Daryl Reid",       "Daryl",   "Reid",      date(2012, 11, 20), date(2016,  5, 16)),
+        SpeakerTerm("Myrna Driedger",   "Myrna",   "Driedger",  date(2016,  5, 16), date(2023, 10,  3)),
+        SpeakerTerm("Tom Lindsey",      "Tom",     "Lindsey",   date(2023, 11, 21), None),
     ],
     # New Brunswick: covers Leg 58-61 (digital Hansard depth on
     # legnb.ca starts at 58/3, 2016). Chris Collins was removed from

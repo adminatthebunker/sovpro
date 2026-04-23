@@ -363,6 +363,8 @@ _HEADER_DATE_RE = re.compile(
 
 
 def extract_sitting_date(html: str) -> Optional[date]:
+    # 1. Modern sittings carry the date in <title>, e.g.
+    #    "3rd Session - 43rd Legislature, Vol. 1, Nov 18, 2025".
     m = _TITLE_DATE_RE.search(html)
     if m:
         mon = _MONTHS_LONG.get(m.group("mon").lower())
@@ -371,7 +373,19 @@ def extract_sitting_date(html: str) -> Optional[date]:
                 return date(int(m.group("year")), mon, int(m.group("day")))
             except ValueError:
                 pass
-    m = _HEADER_DATE_RE.search(html)
+    # 2. Historical "letter"-variant volumes (vol_NN[a-z]) have a
+    #    bare <title>VOL</title>. The sitting-date header appears
+    #    in the body but is wrapped in tags ("<b><span>Thursday,
+    #    </span></b><b><span>April 24, 2008</span></b>"), so regex
+    #    against raw HTML misses it. Strip tags + collapse
+    #    whitespace, then look for the first
+    #    "Day-of-week, Month DD, YYYY" in the plaintext.
+    #    No byte limit — early sittings often have ~30 KB of CSS
+    #    font-face definitions before any body content, pushing the
+    #    header date past a small window. Full-page strip is cheap.
+    stripped = re.sub(r"<[^>]+>", " ", html)
+    stripped = re.sub(r"\s+", " ", stripped)
+    m = _HEADER_DATE_RE.search(stripped)
     if m:
         mon = _MONTHS_LONG.get(m.group("mon").lower())
         if mon:

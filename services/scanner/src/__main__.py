@@ -725,6 +725,7 @@ from .legislative.mb_bill_sponsors import resolve as resolve_mb_bill_sponsors  #
 from .legislative.mb_hansard import (  # noqa: E402
     ingest as ingest_mb_hansard,
     resolve_mb_speakers as resolve_mb_hansard_speakers,
+    resolve_mb_speakers_dated as resolve_mb_hansard_speakers_dated,
 )
 from .legislative.nb_bills import ingest_nb_bills  # noqa: E402
 from .legislative.nb_hansard import (  # noqa: E402
@@ -2067,6 +2068,35 @@ def cmd_resolve_mb_speakers(ctx: click.Context, limit: Optional[int]) -> None:
             f"[green]resolve-mb-speakers[/green]: "
             f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
             f"still_unresolved={stats.still_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-mb-speakers-dated")
+@click.option("--limit", type=int, default=None,
+              help="Cap candidate speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_mb_speakers_dated(ctx: click.Context, limit: Optional[int]) -> None:
+    """Date-windowed MB speaker resolver: uses politician_terms spans to
+    disambiguate historical surnames.
+
+    After ingest-mb-former-mlas lands ~800 historical MLAs, the
+    name-only resolver flips many rows from "unresolved" to
+    "ambiguous" because surnames collide across eras. This v2 joins
+    politicians by surname AND politician_terms by spoken_at window —
+    if the (surname, date) pair yields exactly one politician, it
+    attributes. Mirrors AB's legl-keyed approach with a date
+    parametrization instead of a legl parametrization (MB speeches
+    don't carry legislature in raw).
+
+    Idempotent.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await resolve_mb_hansard_speakers_dated(db, limit=limit)
+        console.print(
+            f"[green]resolve-mb-speakers-dated[/green]: "
+            f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
+            f"still_ambiguous={stats.still_unresolved}"
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 

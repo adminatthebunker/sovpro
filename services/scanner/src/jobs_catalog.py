@@ -163,6 +163,15 @@ COMMANDS: dict[str, dict[str, Any]] = {
              "help": "Cap speeches scanned (smoke-test aid)."},
         ],
     },
+    "resolve-mb-speakers-dated": {
+        "description": "Date-windowed MB speaker resolver. Uses politician_terms to disambiguate historical surnames (Driedger, Friesen, McFadyen, ...) that the name-only resolver now rejects as ambiguous after the former-MLAs backfill.",
+        "cli": "resolve-mb-speakers-dated",
+        "category": "hansard",
+        "args": [
+            {"name": "limit", "type": "int", "required": False,
+             "help": "Cap candidate speeches scanned (smoke-test aid)."},
+        ],
+    },
     "ingest-nl-hansard": {
         "description": "Pull Newfoundland & Labrador Hansard (Word-exported + legacy FrontPage HTML) into `speeches`. Era-branching parser; speaker resolution via (first_initial, surname) against date-windowed NL politician_terms.",
         "cli": "ingest-nl-hansard",
