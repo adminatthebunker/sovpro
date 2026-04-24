@@ -74,7 +74,7 @@ Before building any new ingestion pipeline, check in order:
 
 **Before starting any new provincial pipeline, pause and ask the user for their research pass.** No probing, no migration, no code until the user has either shared their findings or explicitly said "probe yourself."
 
-As of 2026-04-22 the rule still applies to the four unbuilt bills pipelines (**MB, SK, PE, YT**) and to *every* provincial Hansard / votes / committees pipeline on top of the 9 live bills pipelines. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
+As of 2026-04-23 the rule still applies to the three unbuilt bills pipelines (**SK, PE, YT**) and to every *provincial* Hansard pipeline that isn't yet live. Live provincial Hansards: AB, BC, QC, MB (now full 1999-present), NS, NB, NL. Remaining Hansard builds gated on research-handoff: ON, NT, NU, SK, PE, YT. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
 
 Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
 
@@ -309,7 +309,7 @@ Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `d
 
 ### Core tables
 
-- `politicians` — 3,086 rows, per-jurisdiction slug columns (see convention #1).
+- `politicians` — 4,768 rows, per-jurisdiction slug columns (see convention #1). Recent growth: AB historical backfill (+901 former MLAs, 2026-04-22) and MB historical backfill (+764 former MLAs, 2026-04-23) together moved the count from 3,086 → 4,768.
 - `politician_terms` — role / party / level / constituency over time.
 - `politician_socials` — platform handles, no content. Provenance columns added in 0026.
 - `politician_committees`, `politician_offices` — supporting detail.
@@ -318,11 +318,11 @@ Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `d
 - `websites`, `infrastructure_scans`, `scan_changes` — the hosting-sovereignty layer.
 - `constituency_boundaries` — temporal (`effective_from` / `effective_to`) as of 0021.
 
-### Legislative tables (current row counts, 2026-04-19)
+### Legislative tables (current row counts, 2026-04-23)
 
 - `legislative_sessions` — jurisdiction + parliament + session.
 - `bills` / `bill_events` / `bill_sponsors` — **18,863 bills** across AB (11,133) / NS (3,522) / BC (2,276) / NL (1,193) / QC (497) / ON (104) / MB (81) / NB (33) / NT (20) / NU (4). 13,714 sponsor rows; 921 FK-linked to politicians (see convention #1 for why that ratio is not a regression).
-- `speeches` / `speech_chunks` / `speech_references` — **2,115,043 speeches, 2,830,503 chunks, 100 % embedded** with Qwen3-Embedding-0.6B vectors in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal + QC + AB + BC + MB + NS + NB + NL Hansard ingested; ON / NT / NU / SK / PE / YT Hansard pipelines are the next build-out.
+- `speeches` / `speech_chunks` / `speech_references` — **2,568,359 speeches, 3,398,197 chunks, 100 % embedded** with Qwen3-Embedding-0.6B vectors in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal + QC + AB + BC + MB + NS + NB + NL Hansard ingested. MB Hansard now spans **legs 37-43 (1999-11-26 → 2026-04-16, 407,695 speeches across 2,325 sittings)** — dispatches between modern (MsoNormal) and Word-97-era parsers at ingest time. ON / NT / NU / SK / PE / YT Hansard pipelines are the next build-out.
 - `votes` / `vote_positions` — **still does not exist.** `0018_votes.sql` remains on disk and intentionally unapplied pending real NT/NU consensus-gov't data.
 - `jurisdiction_sources` — coverage + blockers (seeded with all 14 jurisdictions). Feeds the public coverage dashboard. Refreshed by `refresh-coverage-stats` scanner command.
 - `correction_submissions` — corrections inbox (web + email sources).
@@ -375,7 +375,7 @@ sovpro doctor             # sanity-check all services
 docker compose run --rm scanner python -m src <subcommand>
 ```
 
-The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **115 `@cli.command` decorators** as of 2026-04-22. Grep there for the full list.
+The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **117 `@cli.command` decorators** as of 2026-04-23. Additions since 2026-04-22: `ingest-ab-former-mlas`, `resolve-ab-speakers`, `ingest-mb-former-mlas`, `resolve-mb-speakers-dated` — the historical-roster + date-windowed-resolver pattern that unlocked pre-current-session Hansard attribution. Grep there for the full list.
 
 ## Development workflow
 

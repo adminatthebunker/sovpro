@@ -2,8 +2,8 @@
 
 > Shared methodology, schema log, and progress tracking for the Canadian Political Data legislative-data effort. Per-jurisdiction dossiers (federal + 13 provinces/territories) are siblings of this file in `docs/research/`. See [`README.md`](./README.md) for the index.
 
-**Status:** Active — federal Hansard + NS + ON + BC + QC + AB + NB + NL + NT + NU + **MB** bills layer in production (11 of 14 Canadian legislatures including federal); **QC Hansard live** for 8 sessions (39-1 → 43-2, Jan 2009 → Apr 2026 — **313,345 speeches / 1,278 sittings / 17-year span**) via origin HTML + Wayback CDX fallback for historical URL discovery; **MB Hansard live** for session 43-3 (fourth provincial Hansard pipeline after AB + BC + QC); SK deferred (PDF-only, single-province investment); PEI and YT deferred (CAPTCHA / Cloudflare pair).
-**Last updated:** 2026-04-20
+**Status:** Active — federal Hansard + NS + ON + BC + QC + AB + NB + NL + NT + NU + **MB** bills layer in production (11 of 14 Canadian legislatures including federal); **QC Hansard live** for 8 sessions (39-1 → 43-2, Jan 2009 → Apr 2026 — **313,345 speeches / 1,278 sittings / 17-year span**) via origin HTML + Wayback CDX fallback for historical URL discovery; **MB Hansard live end-to-end for legs 37-43 (1999-11 → 2026-04, 407,695 speeches across 2,325 sittings / 27-year span)** — era-dispatching parser covers both modern MsoNormal (legs 39+) and Word-97 HTML export (legs 37-38); SK deferred (PDF-only, single-province investment); PEI and YT deferred (CAPTCHA / Cloudflare pair). **Historical-MLA roster backfills** landed for AB (+901 MLAs back to 1906) and MB (+764 MLAs back to 1870), enabling date-windowed speaker resolution across the full Hansard span. Corpus-wide: **2,568,359 speeches / 3,398,197 Qwen3 chunks, 100% embedded.**
+**Last updated:** 2026-04-23
 
 ## Implementation Log
 
@@ -31,6 +31,12 @@ Tracks what's built so far. See per-jurisdiction "Status" sections for granular 
 - `legislative/ns_bill_parse.py` — regex parser (phase 3)
 - `legislative/on_bills.py` — discovery + fetcher + parser (ON; one module because all three sources are scraped)
 - `legislative/sponsor_resolver.py` — bill_sponsors → politicians via slug join + name match; backfills politician slug columns. Jurisdiction-agnostic: add a row to `SOURCE_SYSTEM_TO_SLUG_COL` per province.
+
+### Scanner modules (added 2026-04-22 / 2026-04-23)
+- `legislative/ab_former_mlas.py` — AB historical-MLA roster ingester. Iterates `assembly.ab.ca/members/...?legl=N` for N in 1..31, upserts politicians keyed on `ab_assembly_mid`, and creates `politician_terms` per (politician, legislature). Post-pass `resolve_ab_speakers` re-resolves existing speeches via legislature-scoped UPDATE, with `speech_chunks` propagation batched per-legl (mandatory — single-shot UPDATE wedges on autovacuum contention at the 234k-row scale). Migration **0031** tightens `ab_assembly_mid` to a UNIQUE partial index.
+- `legislative/mb_former_mlas.py` — MB historical-MLA roster ingester. Parses both the deceased- and living-MLA bio pages with a `<tr>`-based walker that handles two data shapes per page: the deceased-page `<strong>Month DD, YYYY - Month DD, YYYY</strong>` term-range tags and the living-page narrative-event format ("Elected g.e. DATE" / "Resigned DATE"). Name-matches existing MB politicians before inserting so current-roster rows receive historical terms rather than duplicating. Migration **0032** tightens `mb_assembly_slug` to a UNIQUE partial index.
+- `legislative/mb_hansard_parse_w97.py` — Manitoba Word-97 HTML-export parser (legs 37-38, 1999-10 → 2007-05). Sister module to `mb_hansard_parse`; `mb_hansard.py` dispatches on `is_word97()` (checks for "Microsoft Word 97" generator meta + absence of `MsoNormal`). Handles uppercase-tag markup, `<B><P>Name:</B>body</P>` speaker pattern (bold wraps across paragraph boundary), split-sitting discovery (`h002_1.html` + `h002_2.html`), CENTER-aligned section headers, and sitting-date extraction from the "Day-of-week, Month DD, YYYY" header. Output-compatible with the modern parser's `ParsedSpeech` so downstream code doesn't care which era it processed.
+- `mb_hansard.resolve_mb_speakers_dated` — date-windowed MB speaker resolver. Joins unresolved speeches by normalized surname AND `politician_terms` by `spoken_at ∈ [started_at, ended_at]`, attributes when exactly one politician matches. MB analog of AB's legislature-keyed resolver; unblocks historical surnames (Driedger/Friesen/McFadyen era) that the name-only resolver now rejects as ambiguous after the 820-MLA roster expansion.
 
 ### Data on hand (as of 2026-04-16)
 | Jurisdiction | Bills | Events | Sponsors | Linked to politicians |
