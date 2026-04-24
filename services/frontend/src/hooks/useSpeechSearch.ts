@@ -96,7 +96,11 @@ export interface SpeechSearchFilter {
   lang?: "en" | "fr" | "any";
   level?: "federal" | "provincial" | "municipal";
   province_territory?: string;
+  /** Legacy singular pin. New code should prefer `politician_ids`; both
+   *  are accepted by the API for back-compat. */
   politician_id?: string;
+  /** Canonical multi-select politician pin, cap 10 at the API. */
+  politician_ids?: string[];
   party?: string;
   from?: string;
   to?: string;
@@ -107,6 +111,15 @@ export interface SpeechSearchFilter {
   // Only meaningful when group_by === "politician".
   sort?: PoliticianSort;
 }
+
+/** Collapse the legacy singular + canonical array into a single list. */
+export function effectivePoliticianIds(f: SpeechSearchFilter): string[] {
+  if (f.politician_ids && f.politician_ids.length > 0) return f.politician_ids;
+  if (f.politician_id) return [f.politician_id];
+  return [];
+}
+
+export const MAX_POLITICIAN_PINS = 10;
 
 export interface SpeechSearchMeta {
   total_chunks: number;
@@ -126,7 +139,10 @@ export function buildSpeechSearchQuery(f: SpeechSearchFilter): string {
   if (f.lang && f.lang !== "any") p.set("lang", f.lang);
   if (f.level) p.set("level", f.level);
   if (f.province_territory) p.set("province_territory", f.province_territory);
-  if (f.politician_id) p.set("politician_id", f.politician_id);
+  // URL convention: repeated `politician_id=uuid` params (standard
+  // URLSearchParams multi-value handling). Backward compatible with
+  // single-pin URLs shared/bookmarked before Phase 2.
+  for (const id of effectivePoliticianIds(f)) p.append("politician_id", id);
   if (f.party) p.set("party", f.party);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);

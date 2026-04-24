@@ -23,7 +23,20 @@ const submitBody = z.object({
   subject_id: z.string().uuid().optional().nullable(),
   issue: z.string().trim().min(5).max(5000),
   proposed_fix: z.string().trim().max(5000).optional().nullable(),
-  evidence_url: z.string().url().max(2000).optional().nullable(),
+  // Zod's .url() accepts javascript:/data:/file: schemes because it
+  // defers to the WHATWG URL parser. That value is later rendered as
+  // an <a href> in the admin review UI, so anything other than http(s)
+  // is a stored-XSS sink. Lock the scheme here at the boundary.
+  evidence_url: z
+    .string()
+    .trim()
+    .max(2000)
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), {
+      message: "evidence_url must be http(s)",
+    })
+    .optional()
+    .nullable(),
   submitter_name: z.string().trim().max(200).optional().nullable(),
   submitter_email: z.string().trim().email().max(320).optional().nullable(),
 });

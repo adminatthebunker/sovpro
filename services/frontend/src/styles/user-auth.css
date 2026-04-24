@@ -244,10 +244,58 @@
   font-size: .8rem;
 }
 
+.cpd-saved-search__pin {
+  color: var(--accent, #4a9eff);
+}
+
+.cpd-auth__backlink {
+  margin: 0 0 .5rem;
+  font-size: .85rem;
+}
+
+.cpd-saved-search__edit {
+  margin-top: .75rem;
+  padding-top: .75rem;
+  border-top: 1px dashed #3a4658;
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+
+.cpd-saved-search__edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+}
+
+.cpd-saved-search__edit-field > span {
+  font-size: .75rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--ink-muted);
+}
+
+.cpd-saved-search__edit-field input[type="text"],
+.cpd-saved-search__edit-field select {
+  padding: .4rem .55rem;
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid #3a4658;
+  border-radius: 5px;
+  font: inherit;
+}
+
+.cpd-saved-search__pin-row {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--ink-muted);
+}
+
 @media (max-width: 640px) {
   .cpd-auth { margin: 1.5rem .75rem; padding: 1.25rem 1rem; }
   .cpd-auth__meta { grid-template-columns: 1fr; gap: .1rem; }
   .cpd-auth__meta dt { margin-top: .5rem; }
+  .cpd-saved-search__edit .speech-filters { grid-template-columns: 1fr 1fr; }
 }
 
 /* Save-search button (inline form on the search page) */
@@ -366,7 +414,7 @@
   flex-wrap: wrap;
 }
 
-.cpd-follow {
+.cpd-monitor {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
@@ -381,22 +429,22 @@
   cursor: pointer;
 }
 
-.cpd-follow:hover {
+.cpd-monitor:hover {
   border-color: var(--accent, #4a9eff);
   color: var(--accent, #4a9eff);
 }
 
-.cpd-follow--on {
+.cpd-monitor--on {
   background: rgba(74, 158, 255, .15);
   border-color: var(--accent, #4a9eff);
   color: var(--accent, #4a9eff);
 }
 
-.cpd-follow--anon { color: var(--ink-muted); }
+.cpd-monitor--anon { color: var(--ink-muted); }
 
-.cpd-follow:disabled { opacity: .6; cursor: wait; }
+.cpd-monitor:disabled { opacity: .6; cursor: wait; }
 
-.cpd-follow__error {
+.cpd-monitor__error {
   color: #ff7a7a;
   font-size: .8rem;
 }

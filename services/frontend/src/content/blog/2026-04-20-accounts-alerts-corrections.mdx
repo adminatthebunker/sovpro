@@ -1,0 +1,77 @@
+---
+title: "Accounts, alerts, corrections — CPD is now two-way"
+slug: "accounts-alerts-corrections"
+date: "2026-04-20"
+excerpt: "You can now save a search, get emailed when new matches land in Hansard, follow any politician, and send us corrections. The site just went from something to read to something to use."
+author: "adminatthebunker"
+tags: ["launch", "accounts", "alerts"]
+draft: false
+---
+
+Canadian Political Data has been a read-only site since launch. You could browse, search, and click around, but the site had no idea who you were and couldn't do anything *for* you. That changes today.
+
+Four new user-facing features shipped this week. Plus Quebec Hansard came online, which brings us to three provincial Hansards live. Here's the short tour.
+
+## Sign in with your email — no password
+
+Click **Sign in** in the header, type your email, click the link we send you. That's it. No passwords to remember, no "sign up" vs "log in" distinction, no password-reset maze.
+
+Under the hood this is a magic-link flow: we email you a one-time link, clicking it creates a session, and the session lasts 30 days. Your password isn't stored anywhere because there isn't one. If you want to sign out of every device at once, the only "password reset" you need is a new sign-in.
+
+We also deliberately **did not** add Google / Meta / GitHub sign-in. Those leak your search intent to ad platforms, which is the wrong trust model for civic research. Email-in-email-out keeps things simple.
+
+## Save a search
+
+Every search on [/search](/search) can now be saved. Filters and all — jurisdiction, party, date range, the query itself. Hit the **Save** button, give it a name, and it lives in your account forever.
+
+The use cases we built this for:
+
+- A journalist tracking "pharmacare" mentions in Question Period
+- A staffer watching what every Green Party MP says about housing
+- A researcher following bill-specific debates across sessions
+- A voter who wants to know when their own MP speaks on climate
+
+Saved searches live at [/account/saved-searches](/account/saved-searches) once you're signed in.
+
+## Get email digests when new Hansard lands
+
+On any saved search, you can flip on **daily** or **weekly** alerts. Every morning (or Monday), a worker re-runs your search against any speeches that have been ingested since the last check and emails you a digest of the top 10 new matches — speaker, date, an excerpt, and a link to the source.
+
+Two design choices worth flagging:
+
+- **We cache your query embedding at save time.** The first time you save a search, we run it through our embedding model and store the resulting vector on your saved-search row. Every subsequent alert tick uses that cached vector. Your alerts stay consistent with the search you originally saved, and the worker never burns GPU re-embedding text it's already seen.
+- **First digests are capped at 30 days of history.** If you save a search about "pharmacare" and have never had an alert before, your first email won't be a thousand-line wall of history. It'll be the last 30 days; subsequent emails roll forward from there.
+
+Alerts include one-click unsubscribe — the standard Gmail/Outlook "Unsubscribe" button works, backed by a signed HMAC token so leaving an alert never requires signing in again.
+
+## Every saved search is also an RSS feed
+
+If email isn't how you consume things, every saved search gets its own RSS URL. Drop it in Feedly, Inoreader, Miniflux, whatever you use. Same matches, same ordering, no inbox clutter. The RSS token is cookie-less so the feed works in any aggregator without a login round-trip.
+
+## Follow a politician
+
+On any [politician detail page](/politicians) there's now a **Follow** button. It's a thin wrapper over saved-searches — it creates a saved search scoped to that politician, with weekly alerts on by default. Unfollow is one click on the same button.
+
+For 1,815 elected officials across Canada, this turns the site into a news-feed for *the speech record itself*, not a journalist's summary of it.
+
+## Send us corrections
+
+Canadian Political Data is built from dozens of upstream sources — Parliamentary Hansard, provincial legislatures, Elections Canada, Wikidata, municipal rosters. Things drift. Names get misspelled. Party labels go stale when someone crosses the floor. A bill's sponsor gets attributed to the wrong MP because two MPs share a surname.
+
+[/corrections](/corrections) is where you tell us. Pick a subject type (a politician, bill, speech, or just "something's wrong somewhere"), describe the issue, link to evidence if you have it. If you're signed in we attribute it to your account so we can thread a reply. If you're not, we take the submission anonymously.
+
+Behind the scenes, corrections land in a review queue. We triage them, apply what's fixable, mark duplicates, and push back when we can't verify. This is the on-ramp toward a phase we're calling "corrections with credit" — where the people keeping the data accurate get public attribution for the fixes they contributed.
+
+## Also: Quebec Hansard is live
+
+Third provincial Hansard after Alberta and British Columbia. The current session (43-2) is fully ingested — 51 sittings, **14,784 speeches**, 19,423 chunks, all embedded with the same Qwen3 model the federal corpus uses. Politician attribution is 84.9% overall, 95.9% if you exclude structurally anonymous roles ("Des voix," "Une voix," "Le Secrétaire"). All 124 active MNAs resolve to the politicians table via their Assemblée nationale ID.
+
+Quebec Hansard is bilingual-first, and the embedding model was chosen specifically to handle French speeches as cleanly as English ones. Search "changements climatiques" on [/search](/search) — you'll get French results from Québec City alongside English results from Ottawa.
+
+## What's next
+
+- **More provincial Hansards.** Ontario, Manitoba, Saskatchewan are next. Each one is structurally different — ON is Drupal-backed, MB/SK are PDF-only — so the pipeline work is per-jurisdiction. Federal already lives at 1.08 million speeches; adding provinces is the scale play.
+- **Attribution-aware follows.** Right now "follow a politician" gives you weekly digests; we want "tell me within an hour when my own MP speaks in QP" for real-time watchers.
+- **Better cross-reference UX.** When a speech references a specific bill, the link should go somewhere. We have the data; the presentation catches up next.
+
+The site is at [canadianpoliticaldata.ca](https://canadianpoliticaldata.ca). If you save a search today, you'll get the first alert tomorrow morning. Tell us what breaks — [/corrections](/corrections) is now a thing you can use for that too.

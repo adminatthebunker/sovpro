@@ -1,9 +1,9 @@
 # Embedding Model Comparison — Eval Harness and Selection
 
-**Last updated:** 2026-04-18 (evening)
-**Status:** Phase 1 (query set) + Phase 2 (comparison run) shipped. **Verdict: Qwen3-Embedding-4B (INT8, instruct) beats BGE-M3 by +17.6% NDCG@10 and +31% cross-lingual R@10 on the 5 k-chunk eval sample.** See `services/embed/eval/REPORT.md` for the full write-up. Re-embed is hardware-feasible but blocks on caveats (INT8 only; fp16 needs >6 GiB VRAM; auto-labels noisy). Phase 3 (throughput) and Phase B9 (migration) pending user decision.
+**Last updated:** 2026-04-19
+**Status:** **Migration shipped.** Qwen3-Embedding-0.6B (instruct) replaced BGE-M3 in production on 2026-04-19. Qwen3-4B-INT8 was the eval winner on raw NDCG but 0.6B was selected for throughput + VRAM headroom; the backfill for all 1.48 M chunks landed via TEI at 50.9 chunks/sec end-to-end. See migration 0023 → 0025 for the schema blue-green, `services/embed/eval/REPORT.md` for the eval write-up, and `docs/posts/linkedin-embedding-rebuild-post.md` for the narrative. The rest of this doc is preserved as the decision-log that led to the switch — do not retrofit it into a present-tense "current state" doc.
 
-This doc is the authoritative tracking document for the Canadian Political Data embedding model bake-off: BGE-M3 (incumbent) vs Qwen3-Embedding-0.6B vs Qwen3-Embedding-4B. It also tracks the independent throughput-optimization workstream. If this disagrees with `docs/plans/semantic-layer.md`, that doc wins for schema; this one wins for model choice.
+This doc is the authoritative tracking document for the Canadian Political Data embedding model bake-off: BGE-M3 (the then-incumbent) vs Qwen3-Embedding-0.6B vs Qwen3-Embedding-4B. It also tracks the throughput-optimization workstream that followed. If this disagrees with `docs/plans/semantic-layer.md`, that doc wins for schema; this one wins for the historical record of the model choice.
 
 ## Why now
 

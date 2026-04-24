@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { userFetch, type SavedSearch } from "../api";
 import { useUserAuth } from "../hooks/useUserAuth";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
-import { buildSpeechSearchQuery } from "../hooks/useSpeechSearch";
+import { buildSpeechSearchQuery, type SpeechSearchFilter } from "../hooks/useSpeechSearch";
+import { SpeechFilters } from "../components/SpeechFilters";
+
+type FilterPayload = SavedSearch["filter_payload"];
+
+interface EditDraft {
+  name: string;
+  filter: FilterPayload;
+  cadence: SavedSearch["alert_cadence"];
+}
 
 /**
  * List / delete / re-run saved searches. Re-running is just a link back
@@ -20,6 +29,9 @@ export default function SavedSearchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<EditDraft | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,8 +111,86 @@ export default function SavedSearchesPage() {
     navigate(`/search?${qs}`);
   }
 
+  function onStartEdit(s: SavedSearch) {
+    setEditingId(s.id);
+    setDraft({
+      name: s.name,
+      filter: { ...s.filter_payload },
+      cadence: s.alert_cadence,
+    });
+    setError(null);
+  }
+
+  function onCancelEdit() {
+    setEditingId(null);
+    setDraft(null);
+  }
+
+  function onDraftFilterChange(patch: Partial<SpeechSearchFilter>) {
+    setDraft(d => (d ? { ...d, filter: { ...d.filter, ...patch } as FilterPayload } : d));
+  }
+
+  function onClearPoliticianPin() {
+    setDraft(d => {
+      if (!d) return d;
+      const {
+        politician_id: _legacy,
+        politician_ids: _ids,
+        ...rest
+      } = d.filter;
+      return { ...d, filter: rest };
+    });
+  }
+
+  async function onSaveEdit(e: FormEvent) {
+    e.preventDefault();
+    if (!draft || !editingId) return;
+    setSavingEdit(true);
+    setError(null);
+    try {
+      // Strip empty strings so the zod baseFilterSchema happily accepts
+      // them as "unset" rather than rejecting length-0 province codes etc.
+      const f = draft.filter;
+      const payload: Record<string, unknown> = {
+        q: (f.q ?? "").trim(),
+        lang: f.lang ?? "any",
+      };
+      if (f.level) payload.level = f.level;
+      if (f.province_territory) payload.province_territory = f.province_territory;
+      // Canonicalize on write: fold any surviving legacy politician_id
+      // into politician_ids, never send both.
+      const pids = f.politician_ids && f.politician_ids.length > 0
+        ? f.politician_ids
+        : (f.politician_id ? [f.politician_id] : []);
+      if (pids.length > 0) payload.politician_ids = pids;
+      if (f.party && f.party.trim()) payload.party = f.party.trim();
+      if (f.from) payload.from = f.from;
+      if (f.to) payload.to = f.to;
+
+      const updated = await userFetch<SavedSearch>(`/me/saved-searches/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: draft.name.trim(),
+          filter_payload: payload,
+          alert_cadence: draft.cadence,
+        }),
+      });
+      setItems(prev => prev?.map(x => (x.id === updated.id ? updated : x)) ?? null);
+      setEditingId(null);
+      setDraft(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed.");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
   return (
     <section className="cpd-auth cpd-auth--account">
+      <p className="cpd-auth__backlink">
+        <Link to="/account" className="cpd-auth__linklike">← Back to account</Link>
+      </p>
       <h2>Saved searches</h2>
       {loading && <p>Loading…</p>}
       {error && <p className="cpd-auth__error" role="alert">{error}</p>}
@@ -112,55 +202,162 @@ export default function SavedSearchesPage() {
       )}
       {items && items.length > 0 && (
         <ul className="cpd-saved-searches">
-          {items.map(s => (
-            <li key={s.id} className="cpd-saved-search">
-              <div className="cpd-saved-search__head">
-                <strong>{s.name}</strong>
-                <span className="cpd-saved-search__meta">
-                  {s.filter_payload.q && <code>"{s.filter_payload.q}"</code>}
-                  {s.filter_payload.province_territory && <span> · {s.filter_payload.province_territory}</span>}
-                  {s.filter_payload.level && <span> · {s.filter_payload.level}</span>}
-                  {s.filter_payload.from && <span> · from {s.filter_payload.from}</span>}
-                  {s.filter_payload.to && <span> · to {s.filter_payload.to}</span>}
-                </span>
-              </div>
-              <div className="cpd-saved-search__actions">
-                <button type="button" onClick={() => onRerun(s)}>Run now</button>
-                <label>
-                  <span>Alerts:</span>
-                  <select
-                    value={s.alert_cadence}
-                    onChange={e => onToggleCadence(s, e.target.value as SavedSearch["alert_cadence"])}
-                  >
-                    <option value="none">off</option>
-                    <option value="daily">daily</option>
-                    <option value="weekly">weekly</option>
-                  </select>
-                </label>
-                {s.feed_url && (
-                  <button
-                    type="button"
-                    onClick={() => onCopyFeed(s)}
-                    title="Copy a URL you can paste into any RSS reader"
-                  >
-                    {copiedId === s.id ? "✓ Copied" : "RSS"}
-                  </button>
+          {items.map(s => {
+            const isEditing = editingId === s.id;
+            return (
+              <li key={s.id} className="cpd-saved-search">
+                <div className="cpd-saved-search__head">
+                  <strong>{s.name}</strong>
+                  <span className="cpd-saved-search__meta">
+                    {s.filter_payload.q && <code>"{s.filter_payload.q}"</code>}
+                    {s.filter_payload.lang && s.filter_payload.lang !== "any" && (
+                      <span> · {s.filter_payload.lang}</span>
+                    )}
+                    {s.filter_payload.level && <span> · {s.filter_payload.level}</span>}
+                    {s.filter_payload.province_territory && (
+                      <span> · {s.filter_payload.province_territory}</span>
+                    )}
+                    {s.filter_payload.party && <span> · {s.filter_payload.party}</span>}
+                    {(() => {
+                      const pids = s.filter_payload.politician_ids ?? [];
+                      const legacy = s.filter_payload.politician_id;
+                      const n = pids.length || (legacy ? 1 : 0);
+                      if (n === 0) return null;
+                      return (
+                        <span className="cpd-saved-search__pin">
+                          {" · "}pinned to {n === 1 ? "1 politician" : `${n} politicians`}
+                        </span>
+                      );
+                    })()}
+                    {s.filter_payload.from && <span> · from {s.filter_payload.from}</span>}
+                    {s.filter_payload.to && <span> · to {s.filter_payload.to}</span>}
+                  </span>
+                </div>
+                {!isEditing && (
+                  <div className="cpd-saved-search__actions">
+                    <button type="button" onClick={() => onRerun(s)}>Run now</button>
+                    <button type="button" onClick={() => onStartEdit(s)}>Edit</button>
+                    <label>
+                      <span>Alerts:</span>
+                      <select
+                        value={s.alert_cadence}
+                        onChange={e => onToggleCadence(s, e.target.value as SavedSearch["alert_cadence"])}
+                      >
+                        <option value="none">off</option>
+                        <option value="daily">daily</option>
+                        <option value="weekly">weekly</option>
+                      </select>
+                    </label>
+                    {s.feed_url && (
+                      <button
+                        type="button"
+                        onClick={() => onCopyFeed(s)}
+                        title="Copy a URL you can paste into any RSS reader"
+                      >
+                        {copiedId === s.id ? "✓ Copied" : "RSS"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="cpd-auth__linkbtn"
+                      onClick={() => onDelete(s)}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  className="cpd-auth__linkbtn"
-                  onClick={() => onDelete(s)}
-                >
-                  Delete
-                </button>
-              </div>
-              {s.alert_cadence !== "none" && !s.has_embedding && (
-                <p className="cpd-saved-search__warn">
-                  This search has no query text; alerts will use filters only.
-                </p>
-              )}
-            </li>
-          ))}
+                {isEditing && draft && (
+                  <form className="cpd-saved-search__edit" onSubmit={onSaveEdit}>
+                    <label className="cpd-saved-search__edit-field">
+                      <span>Name</span>
+                      <input
+                        type="text"
+                        value={draft.name}
+                        onChange={e => setDraft(d => (d ? { ...d, name: e.target.value } : d))}
+                        maxLength={100}
+                        required
+                      />
+                    </label>
+                    <label className="cpd-saved-search__edit-field">
+                      <span>Search text</span>
+                      <input
+                        type="text"
+                        value={draft.filter.q ?? ""}
+                        onChange={e =>
+                          setDraft(d =>
+                            d ? { ...d, filter: { ...d.filter, q: e.target.value } } : d
+                          )
+                        }
+                        maxLength={500}
+                        placeholder="Leave empty for a filter-only alert"
+                      />
+                    </label>
+                    <SpeechFilters
+                      value={draft.filter as SpeechSearchFilter}
+                      onChange={onDraftFilterChange}
+                    />
+                    {(() => {
+                      const pids = draft.filter.politician_ids ?? [];
+                      const legacy = draft.filter.politician_id;
+                      const n = pids.length || (legacy ? 1 : 0);
+                      if (n === 0) return null;
+                      return (
+                        <p className="cpd-saved-search__pin-row">
+                          <span>
+                            {n === 1
+                              ? "Pinned to 1 politician."
+                              : `Pinned to ${n} politicians.`}
+                          </span>{" "}
+                          <button
+                            type="button"
+                            className="cpd-auth__linkbtn"
+                            onClick={onClearPoliticianPin}
+                          >
+                            Clear {n === 1 ? "pin" : "pins"}
+                          </button>
+                        </p>
+                      );
+                    })()}
+                    <label className="cpd-saved-search__edit-field">
+                      <span>Alerts</span>
+                      <select
+                        value={draft.cadence}
+                        onChange={e =>
+                          setDraft(d =>
+                            d
+                              ? { ...d, cadence: e.target.value as SavedSearch["alert_cadence"] }
+                              : d
+                          )
+                        }
+                      >
+                        <option value="none">Off — just save it</option>
+                        <option value="daily">Daily digest</option>
+                        <option value="weekly">Weekly digest</option>
+                      </select>
+                    </label>
+                    <div className="cpd-saved-search__actions">
+                      <button type="submit" disabled={savingEdit || !draft.name.trim()}>
+                        {savingEdit ? "Saving…" : "Save changes"}
+                      </button>
+                      <button
+                        type="button"
+                        className="cpd-auth__linkbtn"
+                        onClick={onCancelEdit}
+                        disabled={savingEdit}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+                {!isEditing && s.alert_cadence !== "none" && !s.has_embedding && (
+                  <p className="cpd-saved-search__warn">
+                    This search has no query text; alerts will use filters only.
+                  </p>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

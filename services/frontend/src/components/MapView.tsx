@@ -170,6 +170,11 @@ export function MapView({ filters, compact = false, height, visibleTiers }: Prop
         wheelPxPerZoomLevel={120}
         scrollWheelZoom={!compact}
         dragging={!compact}
+        {...(!compact && {
+          role: "application",
+          "aria-label":
+            "Interactive map of Canadian political data hosting. Use arrow keys to pan, plus and minus to zoom, Tab to step through markers, Enter to open.",
+        })}
       >
         <FitToFeatures features={[
           ...polygons.features as GeoJSON.Feature[],

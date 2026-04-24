@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { adminFetch } from "../../api";
+import { safeHttpHref } from "../../lib/safe-href";
 import "../../styles/admin.css";
 
 type Status = "pending" | "triaged" | "applied" | "rejected" | "duplicate" | "spam";
@@ -196,9 +197,13 @@ export default function AdminCorrections() {
                               <>
                                 <dt>Evidence</dt>
                                 <dd>
-                                  <a href={c.evidence_url} target="_blank" rel="noopener noreferrer">
-                                    {c.evidence_url}
-                                  </a>
+                                  {safeHttpHref(c.evidence_url) ? (
+                                    <a href={safeHttpHref(c.evidence_url)} target="_blank" rel="noopener noreferrer">
+                                      {c.evidence_url}
+                                    </a>
+                                  ) : (
+                                    <code title="non-http(s) URL — not rendered as a link">{c.evidence_url}</code>
+                                  )}
                                 </dd>
                               </>
                             )}

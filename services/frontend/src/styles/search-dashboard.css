@@ -240,7 +240,52 @@
 /* ── Year histogram ─────────────────────────────────────────── */
 
 .year-hist {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.year-hist__bars {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-height: 0;
+}
+
+.year-hist__bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  background: var(--accent);
+  opacity: .85;
+  border-radius: 2px 2px 0 0;
+  transition: opacity .12s;
+}
+
+.year-hist__bar:hover {
+  opacity: 1;
+}
+
+.year-hist__bar--empty {
+  background: var(--border);
+  opacity: .3;
+}
+
+.year-hist__labels {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: .68rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.year-hist__label {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .year-hist__empty {

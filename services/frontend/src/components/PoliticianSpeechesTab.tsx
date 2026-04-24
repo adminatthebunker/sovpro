@@ -25,11 +25,14 @@ export function PoliticianSpeechesTab({ politicianId }: PoliticianSpeechesTabPro
 
   const filter: SpeechSearchFilter = {
     q: q || undefined,
-    politician_id: politicianId,
+    politician_ids: [politicianId],
     page,
     limit: 15,
   };
-  const { data, loading, error } = useSpeechSearch(filter, true);
+  const { data: raw, loading, error } = useSpeechSearch(filter, true);
+  // This tab is always timeline-mode — narrow away the grouped case so
+  // the rest of the component can stay simple.
+  const data = raw && raw.mode !== "grouped" ? raw : null;
 
   const pages = data?.pages ?? 1;
   const total = data?.total ?? 0;

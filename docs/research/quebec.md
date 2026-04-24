@@ -4,7 +4,7 @@
 
 **Legislature:** National Assembly of Quebec (Assemblée nationale du Québec) | **Website:** https://www.assnat.qc.ca | **Seats:** 125 | **Next election:** 2026-10-05
 
-**Status snapshot (2026-04-20):** ✅ **Bills live** (102 / 115 / 95 — **94 / 95 sponsors FK-linked, 99%**) via donneesquebec.ca CSV + RSS + bill-detail HTML. ✅ **Hansard live for 8 sessions** (39-1 → 43-2, Jan 2009 → April 2026, **17-year span, 313,345 speeches / 1,278 sittings**) via Journal des débats HTML + Wayback CDX fallback for historical URL discovery. ✅ **Tier 1 Speaker resolution live** — "Le Président" rows tied to the sitting Speaker by date across 5 Speakers (Bissonnet / Vallières / Chagnon / Paradis / Roy). Embedding queue has ~393 k chunks pending at pause time (GPU-wedge reboot required — see `docs/runbooks/resume-after-reboot-2026-04-20-qc-hansard.md`). Votes / committees not yet built. Private bills and votes registry deferred.
+**Status snapshot (2026-04-21):** ✅ **Bills live** (102 / 115 / 95 — **94 / 95 sponsors FK-linked, 99%**) via donneesquebec.ca CSV + RSS + bill-detail HTML. ✅ **Hansard live for 8 sessions** (39-1 → 43-2, Jan 2009 → April 2026, **17-year span, 313,345 speeches / 1,278 sittings, 438,830 chunks all embedded with Qwen3**) via Journal des débats HTML + Wayback CDX fallback for historical URL discovery. ✅ **Tier 1 Speaker resolution live** — "Le Président" rows tied to the sitting Speaker by date across 5 Speakers (Bissonnet / Vallières / Chagnon / Paradis / Roy). Votes / committees not yet built. Private bills and votes registry deferred.
 
 ---
 

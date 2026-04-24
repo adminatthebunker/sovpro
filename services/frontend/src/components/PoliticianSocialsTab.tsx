@@ -75,11 +75,17 @@ export function PoliticianSocialsTab({ politicianId, politician }: Props) {
   );
 }
 
+type SocialStatus = "live" | "dead" | "unknown" | "unverified";
+
 function SocialCard({ social: s }: { social: PoliticianSocial }) {
   const label = platformLabel(s.platform);
   const handle = s.handle ?? deriveHandle(s.url, s.platform);
   const neverVerified = s.last_verified_at === null;
-  const status = neverVerified ? "unverified" : s.is_live ? "live" : "dead";
+  const status: SocialStatus =
+    neverVerified ? "unverified"
+    : s.is_live === true ? "live"
+    : s.is_live === false ? "dead"
+    : "unknown";
 
   return (
     <a
@@ -104,12 +110,23 @@ function SocialCard({ social: s }: { social: PoliticianSocial }) {
 function StatusBadge({
   status, lastVerifiedAt,
 }: {
-  status: "live" | "dead" | "unverified";
+  status: SocialStatus;
   lastVerifiedAt: string | null;
 }) {
   if (status === "unverified") {
     return (
       <span className="pol-social-card__badge pol-social-card__badge--unverified" title="Never verified">
+        ?
+      </span>
+    );
+  }
+  if (status === "unknown") {
+    const when = lastVerifiedAt ? new Date(lastVerifiedAt).toLocaleDateString() : null;
+    return (
+      <span
+        className="pol-social-card__badge pol-social-card__badge--unknown"
+        title={when ? `Couldn't verify on ${when} — try the link` : "Couldn't verify — try the link"}
+      >
         ?
       </span>
     );

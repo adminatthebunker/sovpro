@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { PoliticianCore } from "../hooks/usePolitician";
-import { FollowPoliticianButton } from "./FollowPoliticianButton";
+import { MonitorPoliticianButton } from "./MonitorPoliticianButton";
 
 interface Props {
   politician: PoliticianCore;
@@ -55,7 +55,7 @@ export function PoliticianDetailHeader({ politician: p }: Props) {
           </div>
 
           <div className="pol-detail__actions">
-            <FollowPoliticianButton politicianId={p.id} politicianName={p.name} />
+            <MonitorPoliticianButton politicianId={p.id} politicianName={p.name} />
             <Link
               to={`/corrections?subject_type=politician&subject_id=${p.id}`}
               className="pol-detail__report"

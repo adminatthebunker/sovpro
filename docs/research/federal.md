@@ -41,7 +41,7 @@ The trade-off: we depend on openparliament's continued operation. If it goes dow
 ### Pipeline: `ingest-federal-hansard`
 
 ```
-docker compose run --rm scanner python -m scanner ingest-federal-hansard \
+docker compose run --rm scanner python -m src ingest-federal-hansard \
     --parliament 44 --session 1 [--since YYYY-MM-DD] [--until YYYY-MM-DD]
 ```
 

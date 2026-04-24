@@ -44,9 +44,13 @@ interface SearchDashboardProps {
   /** Total match count from the /speeches endpoint, used to contextualize
    *  "Analyzed top 200 of N matches". Pass -1 to indicate unknown. */
   totalMatches?: number;
+  /** Render the <details> element open by default. Callers hosting the
+   *  dashboard as the sole content of a tab want this; the inline usage
+   *  (where the dashboard sits alongside a result list) leaves it closed. */
+  defaultOpen?: boolean;
 }
 
-export function SearchDashboard({ filter, enabled, totalMatches }: SearchDashboardProps) {
+export function SearchDashboard({ filter, enabled, totalMatches, defaultOpen }: SearchDashboardProps) {
   const { data, loading, error } = useSpeechFacets(filter, enabled);
 
   if (!enabled) return null;
@@ -68,7 +72,7 @@ export function SearchDashboard({ filter, enabled, totalMatches }: SearchDashboa
   if (!data || data.analyzed_count === 0) return null;
 
   return (
-    <details className="dashboard">
+    <details className="dashboard" open={defaultOpen ?? undefined}>
       <summary className="dashboard__summary">
         <DashboardHeadline data={data} totalMatches={totalMatches} />
       </summary>

@@ -82,6 +82,79 @@ const PLATFORM_FILTERS: Array<{ param: keyof z.infer<typeof listQuery>; platform
 
 export default async function politicianRoutes(app: FastifyInstance) {
   // Recent politician-level changes (party switches, retirements, etc.).
+  // Minimal batched resolver: given N ids (comma-separated, max 20),
+  // return `{id, name, photo_url, slug}` for each that exists. Used by
+  // the search page to render politician-pin chips when the user arrives
+  // via a URL carrying `?politician_id=<uuid>` values — we know the
+  // UUIDs from the URL but need names to label the chips.
+  // Registered before /:id so the static path wins routing.
+  app.get("/resolve", async (req, reply) => {
+    const raw = (req.query as { ids?: string }).ids ?? "";
+    const ids = raw.split(",").map(s => s.trim()).filter(Boolean);
+    if (ids.length === 0) return { items: [] };
+    if (ids.length > 20) return reply.badRequest("max 20 ids per request");
+    const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!ids.every(id => UUID.test(id))) return reply.badRequest("invalid uuid");
+    const rows = await query<{
+      id: string;
+      name: string;
+      photo_url: string | null;
+      photo_path: string | null;
+      openparliament_slug: string | null;
+    }>(
+      `SELECT id, name, photo_url, photo_path, openparliament_slug
+         FROM politicians WHERE id = ANY($1::uuid[])`,
+      [ids],
+    );
+    return {
+      items: rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        photo_url: resolvePhotoUrl(r),
+        slug: r.openparliament_slug,
+      })),
+    };
+  });
+
+  // Lightweight typeahead for the pin picker: name-prefix match, tiny
+  // projection, capped at 10 rows. Distinct from `/` (full listing w/
+  // socials/offices joins — heavy, wrong shape for a dropdown).
+  app.get("/search", async (req, reply) => {
+    const q = ((req.query as { q?: string }).q ?? "").trim();
+    if (q.length < 2) return { items: [] };
+    if (q.length > 64) return reply.badRequest("q too long");
+    const rows = await query<{
+      id: string;
+      name: string;
+      photo_url: string | null;
+      photo_path: string | null;
+      openparliament_slug: string | null;
+      party: string | null;
+      level: string | null;
+      province_territory: string | null;
+    }>(
+      `SELECT id, name, photo_url, photo_path, openparliament_slug,
+              party, level, province_territory
+         FROM politicians
+        WHERE is_active = true
+          AND name ILIKE $1
+        ORDER BY name
+        LIMIT 10`,
+      [`%${q}%`],
+    );
+    return {
+      items: rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        photo_url: resolvePhotoUrl(r),
+        slug: r.openparliament_slug,
+        party: r.party,
+        level: r.level,
+        province_territory: r.province_territory,
+      })),
+    };
+  });
+
   // Registered before /:id so the static path wins routing.
   app.get("/changes", async (req, reply) => {
     const q = changesQuery.safeParse(req.query);

@@ -3,6 +3,11 @@ import type { PoliticianSearchGroup, PoliticianSort } from "../hooks/useSpeechSe
 export interface PoliticianQuickNavProps {
   groups: PoliticianSearchGroup[];
   sort: PoliticianSort;
+  /** Set of politician IDs currently pinned. When provided, each card
+   *  renders a pin toggle. Omit to disable pinning. */
+  pinnedIds?: Set<string>;
+  onTogglePin?: (id: string) => void;
+  pinCapReached?: boolean;
 }
 
 function formatMetric(g: PoliticianSearchGroup, sort: PoliticianSort): string {
@@ -26,8 +31,15 @@ function formatMetric(g: PoliticianSearchGroup, sort: PoliticianSort): string {
   }
 }
 
-export function PoliticianQuickNav({ groups, sort }: PoliticianQuickNavProps) {
+export function PoliticianQuickNav({
+  groups,
+  sort,
+  pinnedIds,
+  onTogglePin,
+  pinCapReached,
+}: PoliticianQuickNavProps) {
   if (groups.length === 0) return null;
+  const pinEnabled = Boolean(pinnedIds && onTogglePin);
 
   const onJump = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
     // Prevent the hash from being written to the URL (keeps back-button
@@ -50,6 +62,8 @@ export function PoliticianQuickNav({ groups, sort }: PoliticianQuickNavProps) {
         {groups.map((g) => {
           const { politician } = g;
           const metric = formatMetric(g, sort);
+          const isPinned = pinEnabled && pinnedIds!.has(politician.id);
+          const disablePin = pinEnabled && !isPinned && pinCapReached;
           return (
             <li key={politician.id} className="politician-nav-grid__item">
               <a
@@ -80,6 +94,35 @@ export function PoliticianQuickNav({ groups, sort }: PoliticianQuickNavProps) {
                   <span className="politician-nav-grid__metric">{metric}</span>
                 </span>
               </a>
+              {pinEnabled && (
+                <button
+                  type="button"
+                  className={
+                    isPinned
+                      ? "politician-nav-grid__pin politician-nav-grid__pin--on"
+                      : "politician-nav-grid__pin"
+                  }
+                  onClick={() => onTogglePin!(politician.id)}
+                  disabled={disablePin}
+                  aria-pressed={isPinned}
+                  aria-label={
+                    isPinned
+                      ? `Unpin ${politician.name ?? "politician"}`
+                      : disablePin
+                        ? "Pin limit reached (max 10)"
+                        : `Pin ${politician.name ?? "politician"} to this search`
+                  }
+                  title={
+                    isPinned
+                      ? "Pinned — click to remove"
+                      : disablePin
+                        ? "Max 10 pins — remove one to add another"
+                        : "Pin this politician to narrow the search"
+                  }
+                >
+                  {isPinned ? "✓ Pinned" : "+ Pin"}
+                </button>
+              )}
             </li>
           );
         })}

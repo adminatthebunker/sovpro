@@ -82,14 +82,17 @@ QC ships in FR; NB ships bilingual; NU ships EN + Inuktitut + Inuinnaqtun + FR. 
 - **PII in Hansard.** Non-politician names (petitioners, witnesses, victims) are kept in the source text but not surfaced as first-class entities. Search does not expand to "find everything about citizen X."
 - **Accuracy baseline for v1.** Up to 5% misattribution acceptable; correctness improves as the corrections pipeline matures.
 
-## Current baseline (2026-04-16)
+## Current baseline (2026-04-21)
 
-- **Bills layer:** 9 of 13 sub-national legislatures live — NS, ON, BC, QC, AB, NB, NL, NT, NU. ~3,945 bills, 5,326 events, 394 sponsor rows (393 FK-linked = 99.7%). Federal bills partial via openparliament.ca mirror.
-- **Remaining bills work:** 4 jurisdictions blocked in two pairs —
-  - MB + SK (PDF-only, needs pdfplumber investment; same tooling unlocks AB Hansard)
+- **Bills layer:** 10 of 13 sub-national legislatures live — NS, ON, BC, QC, AB, NB, NL, NT, NU, MB. **18,863 bills** across the ten, 13,714 sponsor rows (921 FK-linked to politicians; the lower raw ratio reflects legislatures that still lack a canonical member-ID column — see CLAUDE.md convention #1). Federal bills partial via openparliament.ca mirror.
+- **Remaining bills work:** 3 jurisdictions blocked in two groups —
+  - SK (PDF-only, needs pdfplumber investment; same tooling would unlock AB Hansard historical)
   - PE + YT (WAF/CAPTCHA, needs Playwright track)
-- **Semantic layer:** schema migrations 0014–0017 + 0019–0021 applied. `speeches` / `speech_chunks` / `speech_references` / `jurisdiction_sources` / `correction_submissions` tables exist. pgvector 0.8.2 + unaccent installed. `0018_votes.sql` held until real NT/NU data informs the consensus-gov't model.
-- **Not yet:** zero speeches ingested. No embeddings generated. BGE-M3 not yet deployed.
+- **Semantic layer — schema:** migrations 0014–0017, 0019–0029 applied. `speeches` / `speech_chunks` / `speech_references` / `jurisdiction_sources` / `correction_submissions` / `scanner_jobs` / `scanner_schedules` / `users` / `saved_searches` / `login_tokens` tables exist. pgvector 0.8.2 + unaccent installed. `0018_votes.sql` still held until real NT/NU data informs the consensus-gov't model.
+- **Semantic layer — data:** **2,035,283 speeches** (federal + QC + AB + BC + MB Hansard ingested), **2,697,652 chunks, 100 % embedded** with Qwen3-Embedding-0.6B 1024-dim vectors in `speech_chunks.embedding` with an HNSW cosine index.
+- **Embed stack:** HuggingFace TEI serving Qwen3-Embedding-0.6B on RTX 4050 Mobile at fp16. Migrated off BGE-M3 on 2026-04-19 after the three-way eval in `docs/plans/embedding-model-comparison.md` picked Qwen3-0.6B (+13% NDCG@10, +9% Recall@20, ~1.6× throughput) with an acceptable cross-lingual regression.
+- **Federal Hansard pipeline:** `ingest-federal-hansard` → `chunk-speeches` → `embed-speech-chunks` Click commands shipped and exercised end-to-end; next-day freshness cron is wired through `scanner_schedules`.
+- **Not yet:** provincial Hansard ingesters; hybrid retrieval API endpoint (dense HNSW is live against the `embedding` column, tsvector populated, but no `/api/v1/search` route yet); corrections-inbox email ingest.
 
 ## Success criteria for phase 1
 
@@ -97,7 +100,7 @@ QC ships in FR; NB ships bilingual; NU ships EN + Inuktitut + Inuinnaqtun + FR. 
 2. Provincial Hansard live for at least 3 provinces including ON and QC (the two largest non-federal caucuses).
 3. Every search result is traceable to a source URL + date + speaker.
 4. A corrections inbox exists and has been used at least once.
-5. A bootstrapped self-hosted embedding pipeline (BGE-M3 on local hardware) is stable enough to run daily.
+5. A bootstrapped self-hosted embedding pipeline (Qwen3-Embedding-0.6B via TEI on local hardware) is stable enough to run daily.
 6. API design for paid tiers is sketched (not necessarily launched).
 
 ## What's explicitly deferred

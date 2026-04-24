@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   buildSpeechSearchQuery,
+  effectivePoliticianIds,
   type SpeechSearchFilter,
   type SpeechSearchItem,
   type TimelineSearchResponse,
@@ -30,7 +31,7 @@ function isEmptyFilter(f: SpeechSearchFilter): boolean {
     (f.q && f.q.trim()) ||
     f.level ||
     f.province_territory ||
-    f.politician_id ||
+    effectivePoliticianIds(f).length > 0 ||
     f.party ||
     f.from ||
     f.to
@@ -78,15 +79,15 @@ export function SaveSearchButton({ filter }: Props) {
         lang = "any",
         level,
         province_territory,
-        politician_id,
         party,
         from,
         to,
       } = filter;
+      const pids = effectivePoliticianIds(filter);
       const payload: Record<string, unknown> = { q, lang };
       if (level) payload.level = level;
       if (province_territory) payload.province_territory = province_territory;
-      if (politician_id) payload.politician_id = politician_id;
+      if (pids.length > 0) payload.politician_ids = pids;
       if (party) payload.party = party;
       if (from) payload.from = from;
       if (to) payload.to = to;

@@ -10,7 +10,7 @@
 | [Uptime Kuma](https://uptimekuma.org/) | Uptime monitoring | MIT |
 | Hand-curated | Referendum organizations + their websites | n/a (public web) |
 
-## Provincial bills + stage events (9 of 13 jurisdictions live)
+## Provincial bills + stage events (10 of 13 jurisdictions live)
 
 | Jurisdiction | Primary source | Format | License |
 |---|---|---|---|
@@ -23,8 +23,9 @@
 | Newfoundland & Labrador | `assembly.nl.ca/HouseBusiness/Bills/ga{GA}session{S}/` | HTML table | Crown copyright (NL) |
 | Northwest Territories | `ntassembly.ca/documents-proceedings/bills/{slug}` | Drupal 9 HTML | Crown copyright (NWT) |
 | Nunavut | `assembly.nu.ca/bills-and-legislation` | Drupal 9 HTML view | Crown copyright (Nunavut) |
+| Manitoba | `web2.gov.mb.ca/bills/{P}-{S}/index.php` + `billstatus.pdf` | HTML (roster) + PDF (stage events via Poppler) | Crown copyright (Manitoba) |
 
-**Deferred:** Manitoba + Saskatchewan are PDF-only (bill status documents), awaiting a `pdfplumber`-based extraction tool. PEI is behind Radware ShieldSquare; Yukon behind Cloudflare Bot Management — both awaiting a Playwright-based browser automation track.
+**Deferred:** Saskatchewan is PDF-only (bill status documents), awaiting the same PDF-extraction investment that powered MB. PEI is behind Radware ShieldSquare; Yukon behind Cloudflare Bot Management — both awaiting a Playwright-based browser automation track.
 
 Per-jurisdiction probe history, endpoint findings, and module pointers live in [`research/`](research/) — one self-contained dossier per jurisdiction (see [`research/overview.md`](research/overview.md) for the shared schema log + probe hierarchy).
 

@@ -82,13 +82,15 @@ export function PostalLookup() {
           value={code}
           onChange={e => setCode(e.target.value)}
           aria-label="Canadian postal code"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "postal-error" : undefined}
           maxLength={7}
         />
         <button type="submit" disabled={loading || code.trim().length < 6}>
           {loading ? "Looking up…" : "Look up"}
         </button>
       </form>
-      {error && <p className="postal__error">{error}</p>}
+      {error && <p id="postal-error" className="postal__error" role="alert">{error}</p>}
 
       {data && (
         <div className="postal__results">

@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MapView } from "../components/MapView";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { MapHostingDashboard } from "../components/MapHostingDashboard";
 import { ReferendumSpotlight } from "../components/ReferendumSpotlight";
 import { ChangesFeed } from "../components/ChangesFeed";
 import { Filters, type FilterState } from "../components/Filters";
@@ -55,6 +56,7 @@ export default function MapPage() {
 
       {activeTab === "map" && (
         <section className="shell__map-section">
+          <MapHostingDashboard />
           <div className="map-toolbar">
             <PostalLookupBar
               activePostalCode={postalResult?.postal_code ?? null}
@@ -78,6 +80,11 @@ export default function MapPage() {
           </div>
           <p className="map-hint" role="note">
             💡 Click any riding to see the politician&apos;s full hosting profile, socials, and offices.
+          </p>
+          <p className="map-hint map-hint--kbd">
+            <span aria-hidden="true">⌨️</span>{" "}
+            <span className="map-hint--kbd__sr">Keyboard shortcuts: </span>
+            Arrow keys to pan · <kbd>+</kbd> / <kbd>−</kbd> to zoom · <kbd>Tab</kbd> to step through markers · <kbd>Enter</kbd> to open.
           </p>
           <div className={`map-with-drawer ${(reportParty || postalResult) ? "is-open" : ""}`}>
             <div className="map-with-drawer__map">

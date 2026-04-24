@@ -23,6 +23,7 @@ interface UserRow {
   display_name: string | null;
   created_at: string;
   last_login_at: string | null;
+  is_admin: boolean;
 }
 
 const patchBody = z.object({
@@ -41,6 +42,7 @@ const savedSearchCreateBody = z.object({
 const savedSearchPatchBody = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   alert_cadence: z.enum(["none", "daily", "weekly"]).optional(),
+  filter_payload: baseFilterSchema.optional(),
 });
 
 interface SavedSearchRow {
@@ -75,7 +77,7 @@ export default async function meRoutes(app: FastifyInstance) {
     if (!claims) return reply.code(401).send({ error: "not signed in" });
 
     const row = await queryOne<UserRow>(
-      `SELECT id, email, display_name, created_at, last_login_at
+      `SELECT id, email, display_name, created_at, last_login_at, is_admin
          FROM users WHERE id = $1`,
       [claims.sub]
     );
@@ -101,7 +103,7 @@ export default async function meRoutes(app: FastifyInstance) {
 
     const rows = await query<UserRow>(
       `UPDATE users SET display_name = $1 WHERE id = $2
-       RETURNING id, email, display_name, created_at, last_login_at`,
+       RETURNING id, email, display_name, created_at, last_login_at, is_admin`,
       [display_name ?? null, claims.sub]
     );
     if (!rows[0]) return reply.code(404).send({ error: "user not found" });
@@ -219,10 +221,50 @@ export default async function meRoutes(app: FastifyInstance) {
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
       }
-      const { name, alert_cadence } = parsed.data;
+      const { name, alert_cadence, filter_payload } = parsed.data;
+
+      // If the caller is updating filter_payload, we may need to re-embed.
+      // TEI is never called by the alerts worker (see CLAUDE.md), so the
+      // vector *must* be refreshed here whenever the query text changes.
+      // Decision table:
+      //   q unchanged (trim-normalized)  → leave query_embedding alone
+      //   q → empty                       → set query_embedding = NULL
+      //   q → new non-empty               → re-embed; on TEI failure, keep
+      //                                     the stale vector (stale > none)
+      let updateEmbedding = false;
+      let newEmbeddingLiteral: string | null = null;
+      if (filter_payload !== undefined) {
+        const existing = await queryOne<{ filter_payload: z.infer<typeof baseFilterSchema> }>(
+          `SELECT filter_payload FROM saved_searches WHERE id = $1 AND user_id = $2`,
+          [req.params.id, claims.sub]
+        );
+        if (!existing) return reply.code(404).send({ error: "not found" });
+
+        const oldQ = (existing.filter_payload.q ?? "").trim();
+        const newQ = (filter_payload.q ?? "").trim();
+        if (oldQ !== newQ) {
+          if (newQ.length === 0) {
+            updateEmbedding = true;
+            newEmbeddingLiteral = null;
+          } else {
+            try {
+              const vec = await encodeQuery(newQ);
+              updateEmbedding = true;
+              newEmbeddingLiteral = toPgVector(vec);
+            } catch (err) {
+              req.log.error(
+                { err },
+                "[saved-searches] TEI embed failed on PATCH; keeping prior embedding"
+              );
+            }
+          }
+        }
+      }
 
       // Dynamic UPDATE: only touch columns the caller sent. Keeps the
       // touch_updated_at trigger honest (no-op PATCHes don't stamp).
+      // last_checked_at / last_notified_at are deliberately left alone —
+      // edits reshape *future* alerts, not history.
       const sets: string[] = [];
       const params: (string | null)[] = [];
       if (name !== undefined) {
@@ -232,6 +274,14 @@ export default async function meRoutes(app: FastifyInstance) {
       if (alert_cadence !== undefined) {
         params.push(alert_cadence);
         sets.push(`alert_cadence = $${params.length}`);
+      }
+      if (filter_payload !== undefined) {
+        params.push(JSON.stringify(filter_payload));
+        sets.push(`filter_payload = $${params.length}::jsonb`);
+      }
+      if (updateEmbedding) {
+        params.push(newEmbeddingLiteral);
+        sets.push(`query_embedding = $${params.length}::vector`);
       }
       if (sets.length === 0) {
         return reply.code(400).send({ error: "no fields to update" });

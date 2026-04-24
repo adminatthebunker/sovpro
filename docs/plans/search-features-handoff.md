@@ -18,7 +18,7 @@ Read `docs/goals.md` and `docs/plans/semantic-layer.md` first — those are the 
 - **Bilingual**: 76% English (184,221), 24% French (57,793).
 - **Speaker-resolved** to the `politicians` FK on 69.9% of chunks (the rest are Speakers/Chairs/procedural staff — intentional).
 - Chunks have denormalised filter columns already: `level`, `province_territory`, `spoken_at`, `party_at_time`, `session_id`, `politician_id`. Indexed.
-- Historical Parliaments 38-43 are now ingested — the full federal corpus sits at **1,716,550 speeches / 2,144,232 chunks** (2026-04-19) with 2,067,709 (96.4%) embedded.
+- Historical Parliaments 38-43 are ingested and provincial Hansard pipelines (QC / AB / BC / MB) are live — the full corpus sits at **2,035,283 speeches / 2,697,652 chunks** (2026-04-21) with 100 % embedded.
 
 ### One vector column
 
@@ -26,7 +26,7 @@ The blue-green migration completed on 2026-04-18 and the legacy column was dropp
 
 | Column | Model | Dim | Status |
 |---|---|---:|---|
-| `embedding` | Qwen3-Embedding-0.6B fp16 | 1024 | 2,067,709 / 2,144,232 chunks populated (96.4%) |
+| `embedding` | Qwen3-Embedding-0.6B fp16 | 1024 | 2,697,652 / 2,697,652 chunks populated (100%) |
 
 HNSW index `idx_chunks_embedding` (`vector_cosine_ops`, `m=16, ef_construction=64`). The model tag is stored on each row in `embedding_model` (`qwen3-embedding-0.6b`); check it before mixing vectors across any future model swap. **Do not reintroduce `_next` suffixed columns** — one canonical column, one HNSW index going forward.
 

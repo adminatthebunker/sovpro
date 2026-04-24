@@ -9,9 +9,17 @@ const STATUS_LABEL: Record<CoverageJurisdiction["bills_status"], string> = {
   none: "Pending",
 };
 
+const STATUS_SYMBOL: Record<CoverageJurisdiction["bills_status"], string> = {
+  live: "✓",
+  partial: "◐",
+  blocked: "⛔",
+  none: "…",
+};
+
 function StatusPill({ status }: { status: CoverageJurisdiction["bills_status"] }) {
   return (
     <span className={`coverage__pill coverage__pill--${status}`}>
+      <span className="coverage__pill-symbol" aria-hidden="true">{STATUS_SYMBOL[status]}</span>
       {STATUS_LABEL[status]}
     </span>
   );
@@ -56,8 +64,9 @@ export default function CoveragePage() {
       <header className="coverage__header">
         <h2 className="coverage__title">Coverage</h2>
         <p className="coverage__subtitle">
-          Every Canadian legislature we track, with the current status of each data layer — bills,
-          Hansard, votes, committees. Blocked jurisdictions are flagged with the specific reason.
+          Every Canadian legislature we track, with the current status of each data layer — bills,{" "}
+          <abbr title="The official transcript of what was said in the legislature">Hansard</abbr>,{" "}
+          votes, committees. Blocked jurisdictions are flagged with the specific reason.
         </p>
         <div className="coverage__summary" role="group" aria-label="Coverage summary">
           <CountCell value={summary.live} label="live" />
@@ -74,10 +83,18 @@ export default function CoveragePage() {
             <tr>
               <th scope="col">Jurisdiction</th>
               <th scope="col">Seats</th>
-              <th scope="col">Bills</th>
-              <th scope="col">Hansard</th>
-              <th scope="col">Votes</th>
-              <th scope="col">Committees</th>
+              <th scope="col">
+                <abbr title="Draft laws introduced in this legislature">Bills</abbr>
+              </th>
+              <th scope="col">
+                <abbr title="The official transcript of what was said in the legislature">Hansard</abbr>
+              </th>
+              <th scope="col">
+                <abbr title="How members voted on bills and motions">Votes</abbr>
+              </th>
+              <th scope="col">
+                <abbr title="Working groups of members that review bills and hold hearings">Committees</abbr>
+              </th>
               <th scope="col">Notes</th>
             </tr>
           </thead>
@@ -106,13 +123,9 @@ export default function CoveragePage() {
       </div>
 
       <footer className="coverage__footer">
+        <p>Counts refresh hourly.</p>
         <p>
-          Last verified row-by-row in <code>jurisdiction_sources</code>. Row counts (bills, speeches,
-          votes) refresh on an hourly job once ingest pipelines report.
-        </p>
-        <p>
-          Difficulty ratings 1–5 where 1 is a documented API, 5 is blocked or unavailable. See{" "}
-          <a href="/blog">the blog</a> for updates as new jurisdictions come online.
+          See <a href="/blog">the blog</a> for updates as new jurisdictions come online.
         </p>
       </footer>
     </section>

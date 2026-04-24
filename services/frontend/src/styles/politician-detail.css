@@ -241,6 +241,11 @@
   background: var(--panel-2);
   color: var(--ink-muted);
 }
+.pol-social-card__badge--unknown {
+  background: var(--panel-2);
+  color: var(--ink-muted);
+  border-color: rgba(148, 163, 184, .35);
+}
 .pol-social-card--dead .pol-social-card__handle { text-decoration: line-through; opacity: .7; }
 
 /* ── Offices tab ────────────────────────────────────── */

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAdminFetch } from "../../hooks/useAdminFetch";
 import { useDocumentTitle } from "../../hooks/useDocumentTitle";
 import { adminFetch } from "../../api";
+import { safeHttpHref } from "../../lib/safe-href";
 import "../../styles/admin.css";
 
 interface CoverageResp {
@@ -180,17 +181,23 @@ export default function AdminSocialsReview() {
                   </td>
                   <td><code>{r.platform}</code></td>
                   <td>
-                    <a href={r.url} target="_blank" rel="noreferrer">
-                      {r.handle || r.url}
-                    </a>
+                    {safeHttpHref(r.url) ? (
+                      <a href={safeHttpHref(r.url)} target="_blank" rel="noreferrer">
+                        {r.handle || r.url}
+                      </a>
+                    ) : (
+                      <code title="non-http(s) URL — not rendered as a link">{r.handle || r.url}</code>
+                    )}
                   </td>
                   <td>{r.confidence == null ? "—" : Number(r.confidence).toFixed(2)}</td>
                   <td><code>{r.source || "—"}</code></td>
                   <td>
-                    {r.evidence_url ? (
-                      <a href={r.evidence_url} target="_blank" rel="noreferrer">
+                    {safeHttpHref(r.evidence_url) ? (
+                      <a href={safeHttpHref(r.evidence_url)} target="_blank" rel="noreferrer">
                         ↗ link
                       </a>
+                    ) : r.evidence_url ? (
+                      <code title="non-http(s) URL — not rendered as a link">{r.evidence_url}</code>
                     ) : (
                       "—"
                     )}

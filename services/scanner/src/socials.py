@@ -544,6 +544,10 @@ async def verify_liveness(
     console.print(f"[cyan]Verifying liveness for {len(rows)} social rows[/cyan]")
 
     sem = asyncio.Semaphore(8)
+    # Facebook and LinkedIn rate-limit aggressively; 2-wide keeps us below
+    # the anti-bot threshold so we can harvest real HTML bodies instead of
+    # getting 400/999 responses that leave rows stuck at is_live = NULL.
+    antibot_sem = asyncio.Semaphore(2)
     stats = Counter()
     flips_to_dead: list[dict] = []
 
@@ -567,14 +571,32 @@ async def verify_liveness(
             task = progress.add_task("Checking", total=len(rows))
 
             async def handle(row) -> None:
+                platform = row["platform"]
+                # FB/LinkedIn rate-limit on concurrent bot traffic; hold a
+                # narrow extra gate so at most 2 of those probes fire at once.
+                is_antibot = platform in ("facebook", "linkedin")
                 async with sem:
-                    prior_live = row["is_live"]
-                    if row["platform"] == "bluesky":
-                        classification, status = await _classify_bluesky(
-                            client, row["handle"], row["url"],
-                        )
-                    else:
-                        classification, status = await _classify(client, row["url"])
+                    if is_antibot:
+                        await antibot_sem.acquire()
+                    try:
+                        prior_live = row["is_live"]
+                        if platform == "bluesky":
+                            classification, status = await _classify_bluesky(
+                                client, row["handle"], row["url"],
+                            )
+                        elif platform == "facebook":
+                            classification, status = await _classify_facebook(
+                                client, row["url"],
+                            )
+                        elif platform == "linkedin":
+                            classification, status = await _classify_linkedin(
+                                client, row["url"],
+                            )
+                        else:
+                            classification, status = await _classify(client, row["url"])
+                    finally:
+                        if is_antibot:
+                            antibot_sem.release()
                     try:
                         if classification == "live":
                             await db.execute(
@@ -683,6 +705,68 @@ async def _classify_bluesky(
         # App View returns 400 "Profile not found" for missing handles.
         return "dead", r.status_code
     return "transient", r.status_code
+
+
+_OG_TITLE_RE = re.compile(
+    r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+
+# Facebook serves browser-UA bot traffic a login wall that looks identical
+# whether the profile exists or not. It honours declared crawlers (for SEO),
+# so Googlebot UA gets served the real profile HTML. This is not evasion —
+# it's the contract FB publishes for crawlers in its robots.txt.
+_GOOGLEBOT_UA = (
+    "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+)
+
+
+async def _classify_facebook(
+    client: httpx.AsyncClient, url: str,
+) -> tuple[str, Optional[int]]:
+    """Live signal: final URL stays on the profile path and an og:title
+    meta tag is present. That holds even when FB is partially rate-limiting.
+
+    Dead is genuinely hard for Facebook: nonexistent handles and rate-limited
+    live handles both redirect to `/login/?next=…` with no og:title. So the
+    only dead signal we trust is an explicit HTTP 404, which FB almost never
+    returns but is unambiguous when it does. Everything ambiguous stays
+    transient — the UI surfaces that as "unknown", not "dead".
+    """
+    try:
+        r = await client.get(url, headers={"User-Agent": _GOOGLEBOT_UA})
+    except httpx.HTTPError:
+        return "transient", None
+    status = r.status_code
+    path_is_login = r.url.path.startswith("/login")
+    og = _OG_TITLE_RE.search(r.text)
+    has_og = bool(og and og.group(1).strip())
+    if not path_is_login and has_og:
+        return "live", status
+    if status == 404:
+        return "dead", status
+    return "transient", status
+
+
+async def _classify_linkedin(
+    client: httpx.AsyncClient, url: str,
+) -> tuple[str, Optional[int]]:
+    """LinkedIn returns HTTP 999 ("unavailable for legal reasons" repurposed
+    as anti-bot) to most non-browser traffic. That is not a liveness signal,
+    so we only classify live when we actually get a 2xx with an og:title
+    meta tag. 404 is authoritative dead; everything else (including 999)
+    stays transient so the row isn't mis-labelled.
+    """
+    try:
+        r = await client.get(url)
+    except httpx.HTTPError:
+        return "transient", None
+    status = r.status_code
+    if status == 404:
+        return "dead", status
+    if status in _LIVE_CODES and _OG_TITLE_RE.search(r.text):
+        return "live", status
+    return "transient", status
 
 
 async def _classify(client: httpx.AsyncClient, url: str) -> tuple[str, Optional[int]]:

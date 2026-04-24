@@ -50,7 +50,6 @@ services:
       API_CORS_ORIGIN: ${API_CORS_ORIGIN:-*}
       DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
       CHANGE_WEBHOOK_SECRET: ${WEBHOOK_SECRET}
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
       JWT_SECRET: ${JWT_SECRET:-}
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:5173}
       SMTP_HOST: ${SMTP_HOST:-smtp.protonmail.ch}
@@ -58,6 +57,14 @@ services:
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      # AI contradictions analysis (grouped search). Unset OPENROUTER_API_KEY
+      # → feature disabled, button greys out in the UI.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://canadianpoliticaldata.ca}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-Canadian Political Data}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-30000}
     restart: unless-stopped
     networks: [sw]
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const SHARE_URL = "https://canadianpoliticaldata.ca";
 const SHARE_TITLE = "Canadian Political Data";
-const SHARE_TEXT = "Where do Canadian politicians actually host their data?";
+const SHARE_TEXT = "Canada's open source for political data.";
 
 interface Target {
   key: string;

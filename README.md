@@ -123,7 +123,7 @@ See [`docs/architecture.md`](docs/architecture.md) for service-by-service detail
 ```bash
 # 1. Configure environment
 cp .env.example .env
-# edit .env — at minimum set DB_PASSWORD, WEBHOOK_SECRET, ADMIN_TOKEN
+# edit .env — at minimum set DB_PASSWORD, WEBHOOK_SECRET, JWT_SECRET, and SMTP
 
 # 2. Download GeoLite2 databases
 # Create a free MaxMind account and place these files in ./data/

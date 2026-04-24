@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
+  effectivePoliticianIds,
+  MAX_POLITICIAN_PINS,
   useSpeechSearch,
   useSpeechSearchMeta,
   type PoliticianSort,
@@ -13,6 +15,7 @@ import { SearchDashboard } from "../components/SearchDashboard";
 import { SaveSearchButton } from "../components/SaveSearchButton";
 import { PoliticianResultGroup } from "../components/PoliticianResultGroup";
 import { PoliticianQuickNav } from "../components/PoliticianQuickNav";
+import { PoliticianPinChips } from "../components/PoliticianPinChips";
 import { AIContradictionAnalysis } from "../components/AIContradictionAnalysis";
 import { useAIAnalyzeMeta } from "../hooks/useAIAnalyzeMeta";
 import "../styles/hansard-search.css";
@@ -40,10 +43,22 @@ function readSort(params: URLSearchParams): PoliticianSort {
     : "mentions";
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function readFilter(params: URLSearchParams): SpeechSearchFilter {
   const lang = params.get("lang");
   const level = params.get("level");
   const view = readView(params);
+  const rawIds = params.getAll("politician_id").filter(v => UUID_RE.test(v));
+  // Dedupe while preserving order; cap at 10 to match API.
+  const seen = new Set<string>();
+  const politician_ids: string[] = [];
+  for (const id of rawIds) {
+    if (!seen.has(id) && politician_ids.length < 10) {
+      seen.add(id);
+      politician_ids.push(id);
+    }
+  }
   return {
     q: params.get("q") ?? "",
     lang: (lang === "en" || lang === "fr" || lang === "any" ? lang : "any") as SpeechSearchFilter["lang"],
@@ -51,6 +66,7 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
       ? level
       : undefined) as SpeechSearchFilter["level"],
     province_territory: params.get("province") ?? undefined,
+    politician_ids: politician_ids.length > 0 ? politician_ids : undefined,
     party: params.get("party") ?? undefined,
     from: params.get("from") ?? undefined,
     to: params.get("to") ?? undefined,
@@ -71,6 +87,11 @@ function writeFilter(f: SpeechSearchFilter, view: ViewMode): URLSearchParams {
   if (f.party) p.set("party", f.party);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
+  if (f.politician_ids && f.politician_ids.length > 0) {
+    for (const id of f.politician_ids) p.append("politician_id", id);
+  } else if (f.politician_id) {
+    p.set("politician_id", f.politician_id);
+  }
   if (f.page && f.page > 1) p.set("page", String(f.page));
   if (view === "politician") p.set("view", "politician");
   if (view === "analysis") p.set("view", "analysis");
@@ -136,13 +157,43 @@ export default function HansardSearchPage() {
     applyPatch({ q: qDraft, page: 1 });
   };
 
+  const pinnedIds = effectivePoliticianIds(filter);
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds.join(",")]);
+  const pinCapReached = pinnedIds.length >= MAX_POLITICIAN_PINS;
+
+  const togglePin = (id: string) => {
+    const next = pinnedSet.has(id)
+      ? pinnedIds.filter(p => p !== id)
+      : pinnedIds.length < MAX_POLITICIAN_PINS
+        ? [...pinnedIds, id]
+        : pinnedIds;
+    applyPatch({
+      politician_ids: next.length > 0 ? next : undefined,
+      politician_id: undefined,
+      page: 1,
+    });
+  };
+
+  const clearPins = () => {
+    applyPatch({ politician_ids: undefined, politician_id: undefined, page: 1 });
+  };
+
   const hasAnyFilter = Boolean(
-    filter.level || filter.province_territory || filter.party || filter.from || filter.to,
+    filter.level ||
+      filter.province_territory ||
+      filter.party ||
+      filter.from ||
+      filter.to ||
+      pinnedIds.length > 0,
   );
   const hasQuery = Boolean(filter.q && filter.q.trim());
   // Grouped mode is semantic-only (the API 400s on a q-less grouped call).
   // Timeline still allows filter-only searches.
   const enabled = view === "politician" ? hasQuery : (hasQuery || hasAnyFilter);
+  // Pins filter all three views so the results visibly narrow. To keep
+  // "I can add more pins" possible even when the grid has collapsed to
+  // just the pinned cards, the chip row hosts a typeahead picker
+  // (PoliticianPinChips → PoliticianPinPicker).
   const { data, loading, error } = useSpeechSearch(filter, enabled);
   const meta = useSpeechSearchMeta();
   // Single meta fetch for the whole page (cached module-level), so
@@ -196,6 +247,13 @@ export default function HansardSearchPage() {
         </form>
         {enabled && <SaveSearchButton filter={filter} />}
       </div>
+
+      <PoliticianPinChips
+        ids={pinnedIds}
+        onAdd={togglePin}
+        onRemove={togglePin}
+        onClearAll={clearPins}
+      />
 
       <SpeechFilters value={filter} onChange={applyPatch} />
 
@@ -368,6 +426,9 @@ export default function HansardSearchPage() {
             <PoliticianQuickNav
               groups={grouped.groups}
               sort={filter.sort ?? "mentions"}
+              pinnedIds={pinnedSet}
+              onTogglePin={togglePin}
+              pinCapReached={pinCapReached}
             />
 
             <div className="hansard-search__summary">

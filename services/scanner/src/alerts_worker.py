@@ -136,10 +136,16 @@ def _build_filter_sql(payload: dict[str, Any], param_offset: int) -> tuple[str, 
     if pt:
         params.append(pt)
         clauses.append(f"s.province_territory = ${param_offset + len(params)}")
-    pol = payload.get("politician_id")
-    if pol:
-        params.append(pol)
-        clauses.append(f"s.politician_id = ${param_offset + len(params)}")
+    # Canonical multi-select: politician_ids (array). Accept legacy
+    # singular politician_id and fold it in — older saved_searches rows
+    # still have that shape in their filter_payload JSONB.
+    pol_ids = payload.get("politician_ids") or []
+    legacy_pol = payload.get("politician_id")
+    if legacy_pol and legacy_pol not in pol_ids:
+        pol_ids = [*pol_ids, legacy_pol]
+    if pol_ids:
+        params.append(pol_ids)
+        clauses.append(f"s.politician_id = ANY(${param_offset + len(params)}::uuid[])")
     party = payload.get("party")
     if party:
         params.append(party)
@@ -291,6 +297,11 @@ def _html_escape(s: str) -> str:
 async def process_due_searches(db: Database) -> int:
     """One pass: process every saved_search that's due. Returns count
     of digests sent (not counting no-match short-circuits)."""
+    # Bounced users are skipped here: email_bounced_at gets set when
+    # the SMTP relay synchronously refuses a recipient (see
+    # _deliver_digest). Async bounces (DSN emails back to our From:)
+    # still slip through Proton's submit-then-relay flow; a bounce-
+    # inbox parser is the follow-up that would close that gap.
     rows = await db.fetch(
         """
         SELECT s.id, s.user_id, s.name, s.filter_payload, s.query_embedding,
@@ -298,6 +309,7 @@ async def process_due_searches(db: Database) -> int:
           FROM saved_searches s
           JOIN users u ON u.id = s.user_id
          WHERE s.alert_cadence <> 'none'
+           AND u.email_bounced_at IS NULL
            AND (
              s.last_checked_at IS NULL
              OR (s.alert_cadence = 'daily'  AND s.last_checked_at < now() - interval '1 day')
@@ -361,6 +373,45 @@ async def process_due_searches(db: Database) -> int:
                     "sent digest saved_search=%s user=%s matches=%d",
                     row["id"], row["email"], len(matches),
                 )
+            except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as e:
+                # Synchronous hard-reject at RCPT/MAIL FROM. Mark the
+                # user bounced and advance the watermark so we don't
+                # re-enter this branch forever. Alerts will be off for
+                # this user until an operator clears email_bounced_at.
+                log.warning(
+                    "hard-bounce: user=%s saved_search=%s err=%s — suppressing further alerts",
+                    row["email"], row["id"], e,
+                )
+                await db.execute(
+                    "UPDATE users SET email_bounced_at = now() WHERE id = $1",
+                    row["user_id"],
+                )
+                await db.execute(
+                    "UPDATE saved_searches SET last_checked_at = now() WHERE id = $1",
+                    row["id"],
+                )
+            except smtplib.SMTPResponseException as e:
+                # 5xx permanent failures → treat as hard-bounce; 4xx
+                # transients → retry next tick.
+                if 500 <= int(e.smtp_code) < 600:
+                    log.warning(
+                        "hard-bounce (5xx %d): user=%s saved_search=%s — suppressing further alerts",
+                        e.smtp_code, row["email"], row["id"],
+                    )
+                    await db.execute(
+                        "UPDATE users SET email_bounced_at = now() WHERE id = $1",
+                        row["user_id"],
+                    )
+                    await db.execute(
+                        "UPDATE saved_searches SET last_checked_at = now() WHERE id = $1",
+                        row["id"],
+                    )
+                else:
+                    log.warning(
+                        "transient SMTP %d for %s — will retry: %s",
+                        e.smtp_code, row["email"], e,
+                    )
+                    # Do NOT advance watermark — we want to retry.
             except Exception as e:  # noqa: BLE001
                 log.exception("digest send failed for %s: %s", row["email"], e)
                 # Do NOT advance watermark — we want to retry.

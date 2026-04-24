@@ -62,6 +62,18 @@ function formatDate(iso: string | null): string | null {
   }
 }
 
+/** English ordinal suffix: 1st, 2nd, 3rd, 4th … 11th, 12th, 13th, 21st. */
+function ordinal(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
 function chamberLabel(level: string | null, prov: string | null): string | null {
   if (!level) return null;
   if (level === "federal") return "FED";
@@ -135,7 +147,7 @@ export function SpeechResultCard({ item, hideSpeaker = false }: SpeechResultCard
         {session && (
           <span className="speech-result__session">
             {" · "}
-            {session.parliament_number}th Parl., Sess. {session.session_number}
+            {ordinal(session.parliament_number)} Parl., Sess. {session.session_number}
           </span>
         )}
         <span className="speech-result__lang">{item.language.toUpperCase()}</span>

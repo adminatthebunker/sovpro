@@ -15,16 +15,52 @@ const INSTRUCT_PREFIX =
 // the same shape; /speeches adds page+limit on top.
 // Exported so /me/saved-searches can reuse the exact validation shape —
 // single source of truth for "what's a valid search".
+// `politician_id` is the legacy singular field; `politician_ids` is the
+// canonical multi-select form. Both are accepted for backward compat
+// (existing URLs, already-stored saved_searches rows) and collapsed via
+// `effectivePoliticianIds()` at SQL-build time. New writes should use
+// `politician_ids` exclusively.
+// Fastify parses repeated URL params (`?politician_id=a&politician_id=b`)
+// as a string[]. Accept either form and let effectivePoliticianIds()
+// collapse it downstream — keeps the URL convention ergonomic without
+// forcing every caller to know about politician_ids.
+const politicianIdInput = z.union([
+  z.string().uuid(),
+  z.array(z.string().uuid()).max(10),
+]).optional();
+
 export const baseFilterSchema = z.object({
   q: z.string().trim().max(500).default(""),
   lang: z.enum(["en", "fr", "any"]).default("any"),
   level: z.enum(["federal", "provincial", "municipal"]).optional(),
   province_territory: z.string().length(2).optional(),
-  politician_id: z.string().uuid().optional(),
+  politician_id: politicianIdInput,
+  politician_ids: z.array(z.string().uuid()).max(10).optional(),
   party: z.string().max(64).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
+
+export function effectivePoliticianIds(
+  f: Pick<z.infer<typeof baseFilterSchema>, "politician_id" | "politician_ids">
+): string[] {
+  const ids: string[] = [];
+  if (f.politician_ids) ids.push(...f.politician_ids);
+  if (f.politician_id) {
+    if (Array.isArray(f.politician_id)) ids.push(...f.politician_id);
+    else ids.push(f.politician_id);
+  }
+  // Dedupe, cap at 10.
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    if (!seen.has(id) && out.length < 10) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
 
 const searchQuery = baseFilterSchema.extend({
   page: z.coerce.number().int().min(1).default(1),
@@ -110,14 +146,15 @@ export function toPgVector(vec: number[]): string {
  *  at whatever $N index they need and pass the combined array to `query`. */
 function buildFilterWhere(f: BaseFilter): {
   whereSql: string;
-  filterParams: (string | number)[];
+  filterParams: (string | number | string[])[];
 } {
   const where: string[] = ["sc.embedding IS NOT NULL"];
-  const filterParams: (string | number)[] = [];
+  const filterParams: (string | number | string[])[] = [];
   if (f.lang !== "any") { filterParams.push(f.lang); where.push(`sc.language = $${filterParams.length}`); }
   if (f.level)          { filterParams.push(f.level); where.push(`sc.level = $${filterParams.length}`); }
   if (f.province_territory) { filterParams.push(f.province_territory); where.push(`sc.province_territory = $${filterParams.length}`); }
-  if (f.politician_id)  { filterParams.push(f.politician_id); where.push(`sc.politician_id = $${filterParams.length}`); }
+  const pids = effectivePoliticianIds(f);
+  if (pids.length > 0) { filterParams.push(pids); where.push(`sc.politician_id = ANY($${filterParams.length}::uuid[])`); }
   if (f.party)          { filterParams.push(f.party); where.push(`sc.party_at_time = $${filterParams.length}`); }
   if (f.from)           { filterParams.push(f.from); where.push(`sc.spoken_at >= $${filterParams.length}`); }
   if (f.to)             { filterParams.push(f.to);   where.push(`sc.spoken_at < ($${filterParams.length}::date + interval '1 day')`); }
@@ -125,7 +162,10 @@ function buildFilterWhere(f: BaseFilter): {
 }
 
 function hasAnyStructuralFilter(f: BaseFilter): boolean {
-  return Boolean(f.politician_id || f.party || f.level || f.province_territory || f.from || f.to);
+  return Boolean(
+    effectivePoliticianIds(f).length > 0 ||
+    f.party || f.level || f.province_territory || f.from || f.to
+  );
 }
 
 type SearchInput = z.infer<typeof searchQuery>;
@@ -402,11 +442,11 @@ export default async function searchRoutes(app: FastifyInstance) {
     const offset = (page - 1) * limit;
 
     if (!q && !hasAnyStructuralFilter(parsed.data)) {
-      return reply.badRequest("provide `q` or at least one filter (politician_id, party, level, province, from, to)");
+      return reply.badRequest("provide `q` or at least one filter (politician_ids, party, level, province, from, to)");
     }
 
     const { whereSql, filterParams } = buildFilterWhere(parsed.data);
-    const params: (string | number)[] = [...filterParams];
+    const params: (string | number | string[])[] = [...filterParams];
     let orderBy: string;
     let vectorParamIndex: number | null = null;
     if (q) {
@@ -554,7 +594,7 @@ export default async function searchRoutes(app: FastifyInstance) {
     }
 
     const { whereSql, filterParams } = buildFilterWhere(parsed.data);
-    const params: (string | number)[] = [...filterParams];
+    const params: (string | number | string[])[] = [...filterParams];
 
     // Top-N CTE: 200 semantic-ranked rows when q present, else recent.
     const ANALYSIS_LIMIT = 200;

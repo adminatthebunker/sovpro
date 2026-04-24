@@ -10,6 +10,7 @@ import {
   signSessionToken,
 } from "../lib/auth-token.js";
 import { sendMagicLink, emailIsConfigured } from "../lib/email.js";
+import { checkDeliverableDomain } from "../lib/email-domain.js";
 import { generateCsrfToken, setCsrfCookie } from "../lib/csrf.js";
 
 /**
@@ -24,8 +25,7 @@ import { generateCsrfToken, setCsrfCookie } from "../lib/csrf.js";
  * cap brute-forcing of the 256-bit nonce, which is already
  * astronomically infeasible.
  *
- * If JWT_SECRET is unset both endpoints return 503, matching the
- * ADMIN_TOKEN "feature disabled" pattern from middleware/admin-auth.ts.
+ * If JWT_SECRET is unset both endpoints return 503 (feature disabled).
  */
 
 const NONCE_BYTES = 32;                      // 256 bits
@@ -83,6 +83,23 @@ export default async function authRoutes(app: FastifyInstance) {
         return reply.code(400).send({ error: "invalid email" });
       }
       const { email } = parsed.data;
+
+      // RFC 2606 reserved domains (example.com, *.test, *.invalid,
+      // *.localhost) can never receive mail. Reject at the edge so
+      // test signups don't leak into prod and we don't burn SMTP
+      // quota / reputation on guaranteed-bouncing addresses. Safe to
+      // 400 (not 202) since these domains cannot legitimately host
+      // users, so the response leaks no enumeration signal.
+      const domainCheck = checkDeliverableDomain(email);
+      if (!domainCheck.ok) {
+        req.log.info(
+          { email, reason: domainCheck.reason },
+          "[auth] request-link: rejected reserved domain"
+        );
+        return reply.code(400).send({
+          error: "that email domain cannot receive mail — please use a real address",
+        });
+      }
 
       // Per-email rate-limit: at most 3 unconsumed tokens in the last
       // hour. This runs post-IP-limit so a distributed attacker can't
@@ -195,12 +212,17 @@ export default async function authRoutes(app: FastifyInstance) {
         );
 
         // Upsert user on the email identity key. last_login_at is what
-        // the UI surfaces as "last sign in".
+        // the UI surfaces as "last sign in". We also clear
+        // email_bounced_at — a successful magic-link redemption is
+        // direct evidence the inbox is alive again (the link wouldn't
+        // have reached the user otherwise), so the alerts-worker can
+        // resume sending for this user from the next tick.
         const userRows = await client.query<UserRow>(
           `INSERT INTO users (email, last_login_at)
            VALUES ($1, now())
            ON CONFLICT (email) DO UPDATE
-             SET last_login_at = EXCLUDED.last_login_at
+             SET last_login_at = EXCLUDED.last_login_at,
+                 email_bounced_at = NULL
            RETURNING id, email, display_name`,
           [tok.email]
         );

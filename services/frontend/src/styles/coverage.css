@@ -173,7 +173,9 @@
 /* ── Status pills ────────────────────────────────────────────── */
 
 .coverage__pill {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
   padding: .2rem .55rem;
   border-radius: 999px;
   font-size: .72rem;
@@ -181,6 +183,11 @@
   text-transform: uppercase;
   letter-spacing: .05em;
   white-space: nowrap;
+}
+
+.coverage__pill-symbol {
+  font-size: .9em;
+  line-height: 1;
 }
 
 .coverage__pill--live {
@@ -203,8 +210,8 @@
 
 .coverage__pill--none {
   background: var(--panel-2);
-  color: var(--ink-muted);
-  border: 1px solid var(--border);
+  color: #cbd5e1;
+  border: 1px solid #475569;
 }
 
 /* ── Footer ─────────────────────────────────────────────────── */
