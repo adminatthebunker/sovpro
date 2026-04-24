@@ -17,15 +17,17 @@ import { query, queryOne } from "../db.js";
  * `isConfigured()` first and 503 gracefully.
  */
 
-// Pinned Stripe API version. The `stripe` SDK's bundled default
-// changes across major releases — a silent npm upgrade could shift the
-// webhook event shape (field names, nullability, multi-currency
-// handling) under us. Pinning here makes any version bump a deliberate,
-// reviewable code edit. When upgrading, re-read Stripe's changelog
-// between the old and new pin and check that checkout.session.completed
-// shape is still compatible.
-const STRIPE_API_VERSION = "2026-03-25.dahlia" as const;
-
+// Don't pin apiVersion in code. Hand-pinning a literal (e.g.
+// "2026-03-25.dahlia") goes stale as soon as the SDK publishes a
+// newer dahlia snapshot — each `stripe` npm version accepts exactly
+// one literal, and a mismatch between local node_modules and the
+// Docker build's node_modules breaks the build.
+//
+// The actual pin that matters in production is the `stripe` package
+// version in package.json (no caret — exact version). Bumping that
+// is the deliberate, reviewable act; the SDK's bundled apiVersion
+// moves with it. When upgrading, re-read Stripe's API changelog for
+// any breaking changes to checkout.session.completed.
 let cachedClient: Stripe | null = null;
 
 export function isConfigured(): boolean {
@@ -38,7 +40,6 @@ function getClient(): Stripe {
   }
   if (!cachedClient) {
     cachedClient = new Stripe(config.stripe.secretKey, {
-      apiVersion: STRIPE_API_VERSION,
       typescript: true,
     });
   }
