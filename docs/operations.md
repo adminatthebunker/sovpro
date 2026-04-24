@@ -176,6 +176,17 @@ INSERT INTO credit_ledger (user_id, delta, state, kind, reason, created_by_admin
 
 The ledger is append-only by discipline, not just by schema. Debug from `SELECT … ORDER BY created_at`; never mutate past rows.
 
+### Correction-reward flow
+
+When an admin transitions a `correction_submissions` row into `status='applied'`, a `credit_ledger` row is inserted inline with `kind='correction_reward'`, `reference_id=correction_submissions.id`, and a fire-and-forget notification email follows after the transaction commits. Key operator knobs:
+
+- `CORRECTION_REWARD_CREDITS` (env, default 10) — payout per accepted correction. Set to 0 to disable the feature without removing the code path.
+- Idempotent by the `(kind, reference_id)` partial unique index — applying the same correction twice grants and notifies exactly once.
+- Anonymous corrections (`user_id IS NULL`) skip the grant silently.
+- Email skipped when `users.email_bounced_at IS NOT NULL` (mirrors the alerts-worker suppression discipline from migration 0028).
+
+**No manual re-grant path is needed.** If you re-apply an already-applied correction, the DB constraint guarantees no duplicate row. If you need to reward outside the normal flow (e.g. an exceptional find that merits more than the flat amount), use the admin-comp flow at `/admin/users/:id/grant-credits` — that's the escape hatch by design.
+
 ## Scheduled jobs
 
 `scanner-cron` runs an hourly loop:

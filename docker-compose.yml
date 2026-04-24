@@ -65,6 +65,21 @@ services:
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://canadianpoliticaldata.ca}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-Canadian Political Data}
       OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-30000}
+      # Stripe billing rail (premium-reports phase 1a). Unset
+      # STRIPE_SECRET_KEY → /me/credits/checkout 503s and buy buttons
+      # hide; unset STRIPE_WEBHOOK_SECRET → /webhooks/stripe refuses
+      # every event (fail-closed, not fail-open). Each unset price id
+      # hides its pack individually on the frontend pack listing.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PRICE_ID_CREDIT_PACK_SMALL: ${STRIPE_PRICE_ID_CREDIT_PACK_SMALL:-}
+      STRIPE_PRICE_ID_CREDIT_PACK_MEDIUM: ${STRIPE_PRICE_ID_CREDIT_PACK_MEDIUM:-}
+      STRIPE_PRICE_ID_CREDIT_PACK_LARGE: ${STRIPE_PRICE_ID_CREDIT_PACK_LARGE:-}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL:-}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL:-}
+      # Correction-reward payout per accepted submission. Tunable
+      # without a rebuild. Zero disables the reward entirely.
+      CORRECTION_REWARD_CREDITS: ${CORRECTION_REWARD_CREDITS:-10}
     restart: unless-stopped
     networks: [sw]
 

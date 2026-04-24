@@ -1,13 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { query, queryOne } from "../db.js";
+import { pool, query, queryOne } from "../db.js";
 import { requireAdmin, getAdminEmail } from "../middleware/user-auth.js";
 import { requireCsrf } from "../lib/csrf.js";
 import {
   getBalance,
   grantAdminCredit,
+  grantCorrectionReward,
   listLedgerEntries,
 } from "../lib/credits.js";
+import { sendCorrectionApprovedEmail } from "../lib/email.js";
+import { config } from "../config.js";
 
 /**
  * Admin-panel API.
@@ -775,22 +778,166 @@ export default async function adminRoutes(app: FastifyInstance) {
       : "NULL";
     const actor = getAdminEmail(req) ?? "admin";
 
-    const row = await queryOne(
-      `
-      UPDATE correction_submissions
-         SET status         = $1,
-             reviewer_notes = $2,
-             reviewed_by    = $3,
-             resolved_at    = ${resolvedExpr}
-       WHERE id = $4
-       RETURNING id, subject_type, subject_id, issue, proposed_fix,
-                 evidence_url, status, reviewer_notes, reviewed_by,
-                 received_at, resolved_at
-      `,
-      [status, reviewer_notes ?? null, actor, id] as any,
-    );
-    if (!row) return reply.notFound();
-    return row;
+    // The whole status-flip + credit-grant is one transaction: if
+    // the reward insert fails for any reason other than the
+    // idempotency unique-violation (which the helper swallows), the
+    // status change rolls back with it. That keeps "correction is
+    // applied in DB" and "reward row exists in ledger" in lockstep.
+    interface CorrectionRowFull {
+      id: string;
+      subject_type: string;
+      subject_id: string | null;
+      issue: string;
+      proposed_fix: string | null;
+      evidence_url: string | null;
+      status: string;
+      reviewer_notes: string | null;
+      reviewed_by: string | null;
+      received_at: Date;
+      resolved_at: Date | null;
+      user_id: string | null;
+      submitter_email: string | null;
+    }
+
+    const client = await pool.connect();
+    let updated: CorrectionRowFull | null = null;
+    let rewardGranted = false;
+    let rewardAlreadyGranted = false;
+    const rewardAmount = config.corrections.rewardCredits;
+
+    try {
+      await client.query("BEGIN");
+
+      const res = await client.query<CorrectionRowFull>(
+        `
+        UPDATE correction_submissions
+           SET status         = $1,
+               reviewer_notes = $2,
+               reviewed_by    = $3,
+               resolved_at    = ${resolvedExpr}
+         WHERE id = $4
+         RETURNING id, subject_type, subject_id, issue, proposed_fix,
+                   evidence_url, status, reviewer_notes, reviewed_by,
+                   received_at, resolved_at, user_id, submitter_email
+        `,
+        [status, reviewer_notes ?? null, actor, id]
+      );
+      updated = res.rows[0] ?? null;
+
+      if (!updated) {
+        await client.query("ROLLBACK");
+        return reply.notFound();
+      }
+
+      // Grant the reward only when transitioning to applied on a
+      // non-anonymous row with a positive configured reward.
+      if (
+        status === "applied" &&
+        updated.user_id &&
+        rewardAmount > 0
+      ) {
+        const reasonNote = `Correction accepted (${updated.subject_type})`;
+        const grant = await grantCorrectionReward(
+          {
+            userId: updated.user_id,
+            correctionId: updated.id,
+            credits: rewardAmount,
+            reason: reasonNote,
+          },
+          client
+        );
+        rewardGranted = grant.ledgerEntryId !== null;
+        rewardAlreadyGranted = grant.alreadyGranted;
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // Fire-and-forget notification email. Only on fresh grants —
+    // idempotent re-runs don't re-email. Suppressed when the user's
+    // address has hard-bounced (mirrors alerts-worker discipline).
+    if (rewardGranted && updated?.user_id) {
+      void (async () => {
+        try {
+          const recipient = await queryOne<{
+            email: string;
+            display_name: string | null;
+            email_bounced_at: Date | null;
+            balance: string | null;
+          }>(
+            `SELECT u.email,
+                    u.display_name,
+                    u.email_bounced_at,
+                    (SELECT COALESCE(SUM(delta), 0)::text
+                       FROM credit_ledger
+                      WHERE user_id = u.id
+                        AND state IN ('committed','held')) AS balance
+               FROM users u
+              WHERE u.id = $1`,
+            [updated!.user_id!]
+          );
+          if (!recipient) {
+            req.log.warn(
+              { correction_id: updated!.id },
+              "[correction-reward] user row missing for notification"
+            );
+            return;
+          }
+          if (recipient.email_bounced_at) {
+            req.log.warn(
+              { correction_id: updated!.id, user_id: updated!.user_id },
+              "[correction-reward] skipping email — address has hard-bounced"
+            );
+            return;
+          }
+          await sendCorrectionApprovedEmail(
+            {
+              to: recipient.email,
+              displayName: recipient.display_name,
+              correctionIssue: updated!.issue,
+              creditsGranted: rewardAmount,
+              newBalance: Number(recipient.balance ?? 0),
+              accountUrl: `${config.publicSiteUrl}/account/credits`,
+            },
+            req.log
+          );
+          req.log.info(
+            { correction_id: updated!.id, user_id: updated!.user_id },
+            "[correction-reward] notification email dispatched"
+          );
+        } catch (err) {
+          req.log.warn(
+            { err, correction_id: updated!.id },
+            "[correction-reward] email dispatch failed — credit grant unaffected"
+          );
+        }
+      })();
+    }
+
+    // Strip user_id + submitter_email from the response — the
+    // existing admin correction list has its own enriched endpoint,
+    // and we don't need to start shipping PII here that wasn't
+    // previously returned.
+    const {
+      user_id: _uid,
+      submitter_email: _semail,
+      ...publicFields
+    } = updated;
+
+    return reply.send({
+      ...publicFields,
+      credit_reward: {
+        credits: rewardAmount,
+        granted: rewardGranted,
+        already_granted: rewardAlreadyGranted,
+        eligible: status === "applied" && Boolean(updated.user_id),
+      },
+    });
   });
 
   // ── Users (for credit grants + rate-limit tier adjustments) ────

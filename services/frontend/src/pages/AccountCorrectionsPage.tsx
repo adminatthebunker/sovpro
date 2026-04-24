@@ -72,6 +72,14 @@ export default function AccountCorrectionsPage() {
                 <span className={`cpd-correction__status cpd-correction__status--${c.status}`}>
                   {STATUS_LABEL[c.status]}
                 </span>
+                {c.credits_earned && c.credits_earned > 0 ? (
+                  <span
+                    className="cpd-auth__reward-badge"
+                    title="Credits granted for this accepted correction"
+                  >
+                    +{c.credits_earned} credits
+                  </span>
+                ) : null}
                 <span className="cpd-correction__date">
                   {new Date(c.received_at).toLocaleDateString()}
                 </span>

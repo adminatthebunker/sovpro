@@ -210,6 +210,22 @@ Per-route rate limit: 5/min. Creates a Stripe Checkout Session for the given SKU
 { "url": "https://checkout.stripe.com/c/pay/cs_test_…", "session_id": "cs_test_…" }
 ```
 
+## Me — corrections
+
+### `GET /me/corrections`
+The caller's own correction submissions (up to 200, newest first). Extends the public `CorrectionSubmission` shape with `credits_earned` (integer, 0 when no reward has landed):
+```json
+{
+  "corrections": [
+    { "id": "uuid", "subject_type": "politician", "subject_id": "uuid",
+      "issue": "…", "proposed_fix": "…", "evidence_url": null,
+      "status": "applied", "reviewer_notes": "Fixed.",
+      "received_at": "2026-04-24T…", "resolved_at": "2026-04-24T…",
+      "credits_earned": 10 }
+  ]
+}
+```
+
 ## Rate-limit requests
 
 ### `GET /me/rate-limit-requests`
@@ -244,6 +260,19 @@ Admin comp flow. Body: `{ "amount": <1..100_000>, "reason": "<3..500 chars>" }`.
 
 ### `PATCH /admin/users/:id`
 Body: `{ "rate_limit_tier": "default" | "extended" | "unlimited" | "suspended" }`. Suspending a user takes effect on their next request via `requireUser`'s re-read.
+
+### `PATCH /admin/corrections/:id`
+Body: `{ "status": Status, "reviewer_notes"?: string | null }`. On transition to `status='applied'` for a non-anonymous correction, the submitter receives a `credit_ledger` grant (kind `correction_reward`, amount = `CORRECTION_REWARD_CREDITS`) and a notification email. Idempotent via the `(kind, reference_id)` partial unique index — re-applying the same correction does not double-grant and does not re-notify. Response extends the updated correction with a `credit_reward` block:
+```json
+{
+  "credit_reward": {
+    "credits": 10,
+    "granted": true,          // a fresh ledger row was inserted
+    "already_granted": false, // true on idempotent re-applies
+    "eligible": true          // true when status=applied and user_id is set
+  }
+}
+```
 
 ### `GET /admin/rate-limit-requests`
 Query: `?status=pending|approved|denied&limit=<n>`. Queue of user-submitted increase requests.

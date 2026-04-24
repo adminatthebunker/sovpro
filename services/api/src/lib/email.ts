@@ -92,4 +92,64 @@ export async function sendAlertDigest(
   await sendMail(args, logger);
 }
 
+/**
+ * Notify a user that their correction was accepted and credits were
+ * granted. Called fire-and-forget from the admin PATCH handler — a
+ * failure here must not roll back the ledger grant.
+ *
+ * Callers suppress by checking users.email_bounced_at before invoking
+ * (same discipline as the alerts worker).
+ */
+export async function sendCorrectionApprovedEmail(
+  args: {
+    to: string;
+    displayName: string | null;
+    correctionIssue: string;
+    creditsGranted: number;
+    newBalance: number;
+    accountUrl: string;
+  },
+  logger?: { info: (o: object, m: string) => void }
+): Promise<void> {
+  const greeting = args.displayName?.trim()
+    ? `Hi ${args.displayName.trim()},`
+    : "Hi,";
+  const issueSnippet =
+    args.correctionIssue.length > 240
+      ? `${args.correctionIssue.slice(0, 240)}…`
+      : args.correctionIssue;
+
+  const subject = `Your correction was accepted — +${args.creditsGranted} credits`;
+
+  const text =
+    `${greeting}\n\n` +
+    `Thank you for helping improve Canadian Political Data.\n\n` +
+    `We've reviewed and applied the correction you submitted:\n\n` +
+    `  "${issueSnippet}"\n\n` +
+    `As a thank-you, we've added ${args.creditsGranted} credits to your account. ` +
+    `Your new balance is ${args.newBalance} credits.\n\n` +
+    `Credits can be spent on premium features at ${args.accountUrl}\n\n` +
+    `Keep the corrections coming — every fix makes the public record more accurate.\n\n` +
+    `— Canadian Political Data\n`;
+
+  const safeIssue = issueSnippet
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const html =
+    `<p>${greeting}</p>` +
+    `<p>Thank you for helping improve <strong>Canadian Political Data</strong>.</p>` +
+    `<p>We've reviewed and applied the correction you submitted:</p>` +
+    `<blockquote style="margin:0.75em 0;padding:0.5em 1em;border-left:3px solid #e11d48;color:#4a5a75;">` +
+    safeIssue +
+    `</blockquote>` +
+    `<p>As a thank-you, we've added <strong>${args.creditsGranted} credits</strong> to your account. ` +
+    `Your new balance is <strong>${args.newBalance} credits</strong>.</p>` +
+    `<p>Credits can be spent on premium features at <a href="${args.accountUrl}">${args.accountUrl}</a>.</p>` +
+    `<p>Keep the corrections coming — every fix makes the public record more accurate.</p>` +
+    `<p style="color:#6a7a95;font-size:0.9em;">— Canadian Political Data</p>`;
+
+  await sendMail({ to: args.to, subject, text, html }, logger);
+}
+
 export const emailIsConfigured = isConfigured;

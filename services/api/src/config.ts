@@ -57,8 +57,19 @@ const schema = z.object({
   STRIPE_PRICE_ID_CREDIT_PACK_SMALL: z.string().optional(),
   STRIPE_PRICE_ID_CREDIT_PACK_MEDIUM: z.string().optional(),
   STRIPE_PRICE_ID_CREDIT_PACK_LARGE: z.string().optional(),
-  STRIPE_SUCCESS_URL: z.string().url().optional(),
-  STRIPE_CANCEL_URL: z.string().url().optional(),
+  // Preprocess empty string → undefined so docker-compose's
+  // `${VAR:-}` pattern (empty string when unset) doesn't trip .url()
+  // validation. Consistent with how the other optional strings
+  // behave under the same passthrough.
+  STRIPE_SUCCESS_URL: z
+    .preprocess((v) => (v === "" ? undefined : v), z.string().url().optional()),
+  STRIPE_CANCEL_URL: z
+    .preprocess((v) => (v === "" ? undefined : v), z.string().url().optional()),
+  // Credits granted to a user whose correction transitions to
+  // status='applied'. See docs/plans/premium-reports.md (correction
+  // rewards section) for the rationale; tune this value without code
+  // changes by setting CORRECTION_REWARD_CREDITS in .env.
+  CORRECTION_REWARD_CREDITS: z.coerce.number().int().min(0).default(10),
 });
 
 export const config = (() => {
@@ -123,6 +134,9 @@ export const config = (() => {
       enabled:
         (env.STRIPE_SECRET_KEY ?? "").length > 0 &&
         (env.STRIPE_WEBHOOK_SECRET ?? "").length > 0,
+    },
+    corrections: {
+      rewardCredits: env.CORRECTION_REWARD_CREDITS,
     },
   };
 })();

@@ -34,6 +34,7 @@ interface LedgerEntry {
   kind:
     | "stripe_purchase"
     | "admin_credit"
+    | "correction_reward"
     | "report_hold"
     | "report_commit"
     | "report_refund";
@@ -66,6 +67,7 @@ interface RateRequestsResp { requests: RateLimitRequest[] }
 const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
   stripe_purchase: "Stripe purchase",
   admin_credit: "Admin grant",
+  correction_reward: "Correction reward",
   report_hold: "Report hold",
   report_commit: "Report charge",
   report_refund: "Report refund",

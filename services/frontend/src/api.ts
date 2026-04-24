@@ -140,5 +140,7 @@ export interface CorrectionSubmission {
   reviewer_notes: string | null;
   received_at: string;
   resolved_at: string | null;
+  /** Present only on /me/corrections — 0 when no reward has landed. */
+  credits_earned?: number;
 }
 

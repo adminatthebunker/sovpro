@@ -236,6 +236,10 @@ Same pattern as `JWT_SECRET` / `OPENROUTER_API_KEY`. Phase-1a code ships with `S
 
 Admins can grant credits directly via `POST /admin/users/:id/grant-credits` (hard-capped at 100,000 per call, zod-checked positive integers only). The grant produces a normal `credit_ledger` row with `kind='admin_credit'` and `created_by_admin_id` set — no parallel "free credits" system exists. Same audit discipline as `is_admin`: psql-only promotion, flipping the flag takes effect on the next request via `requireAdmin`'s per-request re-read.
 
+### Correction-reward flow
+
+Corrections that reach `status='applied'` grant `CORRECTION_REWARD_CREDITS` (default 10, tune via env) to the submitter via `grantCorrectionReward` in `services/api/src/lib/credits.ts`. The grant is a normal ledger row with `kind='correction_reward'` and `reference_id=correction_submissions.id`. The existing `uniq_credit_ledger_kind_ref` partial unique index makes re-applies idempotent — flipping a correction applied→triaged→applied grants once, not twice. Anonymous corrections (`user_id IS NULL`) skip the grant silently. **No clawback**: once earned, credits stay even if an admin later reverses the status. The PATCH handler wraps UPDATE + ledger-insert in a single transaction so partial grants are impossible; the follow-up email is fire-and-forget after the commit (email failure does NOT roll back the grant).
+
 ### Rate-limit tier
 
 `users.rate_limit_tier ∈ ('default','extended','unlimited','suspended')`. `requireUser` re-reads this every request (same DB-read discipline as `requireAdmin`) and 403s `suspended` users immediately. Users can submit an increase request via `POST /me/rate-limit-requests` (one-pending-per-user guard at the app layer); admins resolve in the `/admin/users` queue. Tier enforcement for the non-suspended bands (per-report, per-credit rates) is phase 1b — the DB column is in place but only `suspended` is currently enforced.
@@ -263,6 +267,7 @@ Admins can grant credits directly via `POST /admin/users/:id/grant-credits` (har
 - **Do not accept negative credit amounts** in any route. Zod `z.number().int().positive()` at the route + `<= 0` throw in the lib.
 - **Do not build a second Stripe integration.** Subscriptions (dev-API plan) reuse `services/api/src/lib/stripe.ts` + `stripe_webhook_events`. One Stripe customer per user, one webhook endpoint, one client wrapper.
 - **Do not bypass the "one pending rate-limit request per user" guard** without adding a DB-level partial unique index. App-level check is the minimum.
+- **Do not send the correction-reward email on idempotent re-applies.** The grant helper returns `alreadyGranted: true` when the ledger row already exists; the admin PATCH handler only dispatches the email on a fresh insert, otherwise a user gets N emails for N applied→triaged→applied cycles.
 
 ## Blog (MDX-in-repo)
 
@@ -357,6 +362,7 @@ docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrat
 - `0031_unique_ab_assembly_mid.sql` — unique constraint on `ab_assembly_mid`.
 - `0032_unique_mb_assembly_slug.sql` — unique constraint on `mb_assembly_slug`.
 - `0033_billing_rail.sql` — billing rail phase 1a: `users.stripe_customer_id` + `users.rate_limit_tier`, `stripe_webhook_events`, `credit_ledger`, `credit_purchases`, `rate_limit_increase_requests`.
+- `0034_correction_reward_kind.sql` — adds `'correction_reward'` to the `credit_ledger.kind` CHECK constraint; enables the correction-reward flow.
 
 **Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
 

@@ -140,6 +140,55 @@ export async function grantStripePurchase(params: {
 }
 
 /**
+ * Correction reward — grant credits when a user's correction
+ * submission transitions to status='applied'. Idempotent by the
+ * uniq_credit_ledger_kind_ref partial unique index on
+ * (kind, reference_id): a second call for the same correctionId
+ * hits SQLSTATE 23505 and returns `alreadyGranted: true` so the
+ * caller can distinguish fresh grants (send email, show toast)
+ * from idempotent re-runs (no-op).
+ *
+ * This helper should be invoked inside a transaction that also
+ * does the correction_submissions UPDATE — if the ledger insert
+ * fails for any non-23505 reason, the status change should roll
+ * back too. See PATCH /admin/corrections/:id in routes/admin.ts.
+ */
+export async function grantCorrectionReward(
+  params: {
+    userId: string;
+    correctionId: string;
+    credits: number;
+    reason: string;
+  },
+  client?: { query: typeof pool.query }
+): Promise<{ ledgerEntryId: string | null; alreadyGranted: boolean }> {
+  if (params.credits <= 0) {
+    // A zero reward is a valid ops state (admin set the env to 0 to
+    // disable the feature) — not an error, just a no-op.
+    return { ledgerEntryId: null, alreadyGranted: false };
+  }
+  const exec = client ?? pool;
+  try {
+    const res = await exec.query<{ id: string }>(
+      `INSERT INTO credit_ledger
+           (user_id, delta, state, kind, reference_id, reason)
+         VALUES ($1, $2, 'committed', 'correction_reward', $3, $4)
+         RETURNING id`,
+      [params.userId, params.credits, params.correctionId, params.reason]
+    );
+    const row = res.rows[0];
+    if (!row) throw new Error("correction reward insert returned no row");
+    return { ledgerEntryId: row.id, alreadyGranted: false };
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "23505") {
+      return { ledgerEntryId: null, alreadyGranted: true };
+    }
+    throw err;
+  }
+}
+
+/**
  * Admin comp — grant credits directly, bypassing Stripe. Inserts a
  * ledger row with kind='admin_credit'; the reason and the granting
  * admin are persisted for audit.

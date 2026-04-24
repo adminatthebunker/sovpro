@@ -79,7 +79,14 @@ export default function AdminCorrections() {
     if (destructive && !confirm(`Mark "${c.issue.slice(0, 60)}…" as ${status}?`)) return;
     setBusy(c.id);
     try {
-      await adminFetch(`/corrections/${c.id}`, {
+      const res = await adminFetch<{
+        credit_reward?: {
+          credits: number;
+          granted: boolean;
+          already_granted: boolean;
+          eligible: boolean;
+        };
+      }>(`/corrections/${c.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -87,6 +94,21 @@ export default function AdminCorrections() {
           reviewer_notes: reviewer_notes?.trim() || null,
         }),
       });
+      // Surface the credit outcome on apply transitions. Silent for
+      // triage / reject / duplicate / spam since no reward involved.
+      if (status === "applied" && res.credit_reward) {
+        const cr = res.credit_reward;
+        if (cr.granted && c.user_id) {
+          const who = c.user_email || c.user_display_name || "the submitter";
+          alert(`Applied. +${cr.credits} credits granted to ${who}.`);
+        } else if (cr.already_granted) {
+          alert(`Applied. Credits were already granted for this correction — no duplicate.`);
+        } else if (cr.eligible && !cr.granted) {
+          // Configured reward is zero, or an edge case. Log-level info.
+          alert("Applied. (Reward skipped — configured to zero or edge case.)");
+        }
+        // else: anonymous submission; no credit path, status-change succeeded.
+      }
       list.refresh();
       stats.refresh();
       setExpanded(null);
@@ -96,6 +118,12 @@ export default function AdminCorrections() {
       setBusy(null);
     }
   }
+
+  // Mirrors CORRECTION_REWARD_CREDITS in services/api/src/config.ts.
+  // Hardcoded to avoid a second network round-trip on every render;
+  // if the amount changes, update both this and the CorrectionsPage
+  // callout (see services/frontend/src/pages/CorrectionsPage.tsx).
+  const REWARD_CREDITS = 10;
 
   return (
     <section className="admin__panel">
@@ -232,7 +260,16 @@ export default function AdminCorrections() {
                               type="button"
                               disabled={busy === c.id}
                               onClick={() => setStatus(c, "applied", notes[c.id])}
-                            >Mark applied</button>
+                              title={
+                                c.user_id
+                                  ? `Applying will grant ${REWARD_CREDITS} credits to the submitter`
+                                  : "Anonymous submission — no credit grant"
+                              }
+                            >
+                              {c.user_id
+                                ? `Mark applied (+${REWARD_CREDITS} credits)`
+                                : "Mark applied"}
+                            </button>
                             <button
                               type="button"
                               disabled={busy === c.id}

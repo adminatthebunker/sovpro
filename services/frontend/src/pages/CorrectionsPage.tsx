@@ -102,6 +102,26 @@ export default function CorrectionsPage() {
           : <> Include an email so we can reach you if we need clarification.</>}
       </p>
 
+      {/* Reward callout — amount mirrors CORRECTION_REWARD_CREDITS in
+          services/api/src/config.ts (default 10). Hardcoded here to
+          avoid a second network round-trip on this already-public page;
+          if the amount changes, update both. */}
+      <div className="cpd-auth__reward-callout">
+        <span className="cpd-auth__reward-chip">+10</span>
+        <div>
+          <strong>Applied corrections earn 10 credits.</strong>{" "}
+          {user ? (
+            <>Credits land on your account automatically when a reviewer confirms the fix.</>
+          ) : (
+            <>
+              <a href="/login?from=/corrections">Sign in</a> or{" "}
+              <a href="/login?from=/corrections">create an account</a> to earn
+              credits — anonymous submissions are welcome but can't be credited.
+            </>
+          )}
+        </div>
+      </div>
+
       <form className="cpd-auth__form" onSubmit={onSubmit}>
         <label>
           <span>What are you correcting?</span>

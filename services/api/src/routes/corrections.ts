@@ -54,6 +54,17 @@ interface CorrectionRow {
   resolved_at: string | null;
 }
 
+interface OwnCorrectionRow extends CorrectionRow {
+  /**
+   * Credits granted to this user for this specific correction (the
+   * credit_ledger row with kind='correction_reward' and
+   * reference_id=correction.id). 0 if no reward has landed yet —
+   * either because the correction isn't applied, or because it was
+   * applied before the reward feature shipped (no backfill).
+   */
+  credits_earned: number;
+}
+
 export default async function correctionsRoutes(app: FastifyInstance) {
   // ── POST /api/v1/corrections ──────────────────────────────────
   app.post(
@@ -113,12 +124,18 @@ export async function meCorrectionsRoutes(app: FastifyInstance) {
   app.get("/corrections", { preHandler: requireUser }, async (req, reply) => {
     const claims = getUser(req);
     if (!claims) return reply.code(401).send({ error: "not signed in" });
-    const rows = await query<CorrectionRow>(
-      `SELECT id, subject_type, subject_id, issue, proposed_fix,
-              evidence_url, status, reviewer_notes, received_at, resolved_at
-         FROM correction_submissions
-        WHERE user_id = $1
-        ORDER BY received_at DESC
+    const rows = await query<OwnCorrectionRow>(
+      `SELECT cs.id, cs.subject_type, cs.subject_id, cs.issue, cs.proposed_fix,
+              cs.evidence_url, cs.status, cs.reviewer_notes,
+              cs.received_at, cs.resolved_at,
+              COALESCE(cl.delta, 0)::int AS credits_earned
+         FROM correction_submissions cs
+         LEFT JOIN credit_ledger cl
+                ON cl.reference_id = cs.id::text
+               AND cl.kind = 'correction_reward'
+               AND cl.state IN ('committed','held')
+        WHERE cs.user_id = $1
+        ORDER BY cs.received_at DESC
         LIMIT 200`,
       [claims.sub]
     );

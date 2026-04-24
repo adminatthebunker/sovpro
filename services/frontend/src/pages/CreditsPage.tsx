@@ -27,6 +27,7 @@ interface LedgerEntry {
   kind:
     | "stripe_purchase"
     | "admin_credit"
+    | "correction_reward"
     | "report_hold"
     | "report_commit"
     | "report_refund";
@@ -57,6 +58,7 @@ interface PacksResponse {
 const KIND_LABEL: Record<LedgerEntry["kind"], string> = {
   stripe_purchase: "Credit pack purchase",
   admin_credit: "Granted by admin",
+  correction_reward: "Correction reward",
   report_hold: "Report hold",
   report_commit: "Report charge",
   report_refund: "Report refund",
@@ -168,7 +170,7 @@ export default function CreditsPage() {
     <section className="cpd-auth cpd-auth--credits">
       <h2>Your credits</h2>
       <p className="cpd-auth__muted">
-        <Link to="/account">← Back to account</Link>
+        <Link to="/account" className="cpd-auth__linklike">← Back to account</Link>
       </p>
 
       {purchaseParam === "success" && (
@@ -232,14 +234,16 @@ export default function CreditsPage() {
                     )}
                   </div>
                   <div className="cpd-auth__pack-credits">
-                    {p.credits} credits
+                    {p.credits.toLocaleString()} credits
                   </div>
                   <button
                     type="button"
                     onClick={() => void onBuy(p.sku)}
                     disabled={checkingOutSku !== null}
                   >
-                    {checkingOutSku === p.sku ? "Redirecting…" : "Buy"}
+                    {checkingOutSku === p.sku
+                      ? "Redirecting…"
+                      : `Buy ${p.display_price}`}
                   </button>
                 </li>
               ))}
@@ -258,6 +262,7 @@ export default function CreditsPage() {
                   <th scope="col">State</th>
                   <th scope="col" style={{ textAlign: "right" }}>Amount</th>
                   <th scope="col">Note</th>
+                  <th scope="col" aria-label="Actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -275,6 +280,18 @@ export default function CreditsPage() {
                       {row.delta > 0 ? "+" : ""}{row.delta}
                     </td>
                     <td>{row.reason ?? ""}</td>
+                    <td>
+                      {row.kind === "stripe_purchase" && (
+                        <Link
+                          to={`/account/credits/invoice/${row.id}`}
+                          target="_blank"
+                          rel="noopener"
+                          className="cpd-auth__ledger-action"
+                        >
+                          Invoice →
+                        </Link>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

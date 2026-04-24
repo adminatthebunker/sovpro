@@ -121,9 +121,154 @@
   border: 0;
   padding: 0;
   color: var(--accent, #4a9eff);
-  text-decoration: underline;
+  text-decoration: none;
   font: inherit;
   cursor: pointer;
+}
+
+.cpd-auth__linklike:hover,
+.cpd-auth__linkbtn:hover {
+  text-decoration: underline;
+}
+
+/* ── Account page header: avatar + name ───────────────────────── */
+
+.cpd-auth__header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cpd-auth__avatar {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  display: grid;
+  place-items: center;
+  background: var(--accent, #e11d48);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: .01em;
+  text-transform: uppercase;
+}
+
+.cpd-auth__header-body { min-width: 0; flex: 1; }
+
+.cpd-auth__header h2 {
+  margin: 0;
+  font-size: 1.3rem;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
+.cpd-auth__header-sub {
+  margin: .15rem 0 0;
+  color: var(--ink-muted);
+  font-size: .88rem;
+  word-break: break-all;
+}
+
+/* ── Account action tiles ─────────────────────────────────────── */
+
+.cpd-auth__tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: .75rem;
+  margin: 1.25rem 0 .25rem;
+}
+
+.cpd-auth__tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .95rem 1rem 1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 8px;
+  color: var(--ink);
+  text-decoration: none;
+  transition: border-color .15s ease, transform .15s ease, background-color .15s ease;
+}
+
+.cpd-auth__tile:hover {
+  border-color: rgba(225, 29, 72, 0.55);
+  background: rgba(225, 29, 72, 0.06);
+  transform: translateY(-1px);
+}
+
+.cpd-auth__tile-title {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-weight: 600;
+  font-size: .98rem;
+  color: var(--ink);
+}
+
+.cpd-auth__tile-sub {
+  color: var(--ink-muted);
+  font-size: .82rem;
+  line-height: 1.4;
+}
+
+.cpd-auth__tile-arrow {
+  position: absolute;
+  top: .85rem;
+  right: .95rem;
+  color: var(--ink-muted);
+  font-size: 1rem;
+  transition: transform .15s ease, color .15s ease;
+}
+
+.cpd-auth__tile:hover .cpd-auth__tile-arrow {
+  transform: translateX(3px);
+  color: var(--accent, #e11d48);
+}
+
+.cpd-auth__tile-chip {
+  display: inline-block;
+  min-width: 1.75rem;
+  padding: .08rem .55rem;
+  background: rgba(225, 29, 72, 0.16);
+  color: var(--accent, #e11d48);
+  border: 1px solid rgba(225, 29, 72, 0.4);
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Account footer row (sign out, etc) ───────────────────────── */
+
+.cpd-auth__footer-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #3a4658;
+}
+
+.cpd-auth__signout {
+  background: none;
+  border: 1px solid #3a4658;
+  color: var(--ink-muted);
+  padding: .4rem .85rem;
+  border-radius: 6px;
+  font: inherit;
+  font-size: .88rem;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
+}
+
+.cpd-auth__signout:hover {
+  border-color: rgba(225, 29, 72, 0.55);
+  color: #fff;
 }
 
 /* Header sign-in indicator */
@@ -594,3 +739,237 @@
 
 .cpd-correction__fix,
 .cpd-correction__note { color: var(--ink-muted); }
+
+/* ── Credits page (/account/credits) ──────────────────────────────
+ * Wider card so the 3 pack tiles fit side-by-side on desktop without
+ * wrapping; the max-width comes back down to the normal auth card
+ * size on mobile via the shared media query at the bottom.
+ */
+.cpd-auth--credits { max-width: 52rem; }
+
+.cpd-auth--credits h3 {
+  margin: 1.5rem 0 .75rem;
+  font-size: 1.05rem;
+  color: var(--ink);
+  letter-spacing: .01em;
+}
+
+/* Balance chip on /account */
+.cpd-auth__chip {
+  display: inline-block;
+  min-width: 1.5rem;
+  padding: .08rem .45rem;
+  margin: 0 .25rem;
+  background: rgba(74, 158, 255, 0.15);
+  color: var(--accent, #4a9eff);
+  border: 1px solid rgba(74, 158, 255, 0.35);
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.cpd-auth__warn {
+  color: #f5b96d;
+  background: rgba(245, 185, 109, 0.08);
+  border: 1px solid rgba(245, 185, 109, 0.3);
+  padding: .6rem .8rem;
+  border-radius: 6px;
+  margin: 0 0 1rem;
+  font-size: .9rem;
+}
+
+/* Pack grid — three side-by-side cards that collapse to one column
+ * on narrow viewports. No default <ul> bullets or margins. */
+.cpd-auth__packs {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .85rem;
+}
+
+.cpd-auth__pack {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+  padding: 1rem 1rem 1.1rem;
+  background: var(--panel-2, #242a38);
+  border: 1px solid #3a4658;
+  border-radius: 8px;
+  position: relative;
+  transition: border-color .15s ease, transform .15s ease;
+}
+
+.cpd-auth__pack:hover {
+  border-color: rgba(74, 158, 255, 0.55);
+  transform: translateY(-1px);
+}
+
+.cpd-auth__pack-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+  margin-bottom: .15rem;
+}
+
+.cpd-auth__pack-price {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+
+.cpd-auth__pack-bonus {
+  display: inline-block;
+  padding: .1rem .45rem;
+  background: rgba(121, 212, 141, 0.15);
+  color: #79d48d;
+  border: 1px solid rgba(121, 212, 141, 0.35);
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cpd-auth__pack-credits {
+  color: var(--ink-muted);
+  font-size: .95rem;
+  margin-bottom: .6rem;
+}
+
+.cpd-auth__pack button {
+  margin-top: auto;
+  padding: .5rem .9rem;
+  background: var(--accent, #4a9eff);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s ease;
+}
+
+.cpd-auth__pack button:hover:not(:disabled) {
+  background: #3d8be3;
+}
+
+.cpd-auth__pack button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+/* Ledger history table */
+.cpd-auth__ledger {
+  width: 100%;
+  border-collapse: collapse;
+  margin: .5rem 0 1rem;
+  font-size: .88rem;
+}
+
+.cpd-auth__ledger thead th {
+  text-align: left;
+  padding: .45rem .6rem;
+  color: var(--ink-muted);
+  font-weight: 500;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid #3a4658;
+}
+
+.cpd-auth__ledger tbody td {
+  padding: .5rem .6rem;
+  border-bottom: 1px solid rgba(58, 70, 88, 0.4);
+  color: var(--ink);
+  vertical-align: top;
+}
+
+.cpd-auth__ledger tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.cpd-auth__ledger tbody td:first-child {
+  color: var(--ink-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cpd-auth__ledger-action {
+  color: var(--accent, #4a9eff);
+  text-decoration: none;
+  font-size: .82rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cpd-auth__ledger-action:hover {
+  text-decoration: underline;
+}
+
+/* ── Correction reward callout ────────────────────────────────── */
+
+.cpd-auth__reward-callout {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  margin: 0 0 1.25rem;
+  background: rgba(225, 29, 72, 0.07);
+  border: 1px solid rgba(225, 29, 72, 0.3);
+  border-radius: 8px;
+  font-size: .92rem;
+  line-height: 1.45;
+}
+
+.cpd-auth__reward-callout a {
+  color: var(--accent, #e11d48);
+  text-decoration: none;
+}
+
+.cpd-auth__reward-callout a:hover {
+  text-decoration: underline;
+}
+
+.cpd-auth__reward-chip {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  padding: 0 .5rem;
+  background: var(--accent, #e11d48);
+  color: #fff;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Correction reward badge (AccountCorrectionsPage row) ────── */
+
+.cpd-auth__reward-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .1rem .5rem;
+  background: rgba(121, 212, 141, 0.15);
+  color: #79d48d;
+  border: 1px solid rgba(121, 212, 141, 0.4);
+  border-radius: 999px;
+  font-size: .72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .cpd-auth__packs { grid-template-columns: 1fr; }
+  .cpd-auth__ledger { font-size: .82rem; }
+  .cpd-auth__ledger thead th,
+  .cpd-auth__ledger tbody td { padding: .35rem .4rem; }
+}
