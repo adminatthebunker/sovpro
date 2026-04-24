@@ -59,6 +59,7 @@ import orjson
 
 from ..db import Database
 from . import mb_hansard_parse as parse_mod
+from . import mb_hansard_parse_w97 as parse_w97
 
 log = logging.getLogger(__name__)
 
@@ -120,11 +121,26 @@ class SittingRef:
     url: str                 # Transcript URL
 
 _VOL_HREF_RE = re.compile(
-    # Tolerates fragments/queries after .html — index anchors are
-    # typically href="vol_01/summary.html#html".
-    r'href="vol_(?P<vol>\d+[a-z]?)/summary(?:_[a-z])?\.html(?:[#?][^"]*)?"',
+    # Two shapes across the MB Hansard archive:
+    #   * Modern (legs 39+): href="vol_01/summary.html#html"
+    #     or "vol_01a/summary_a.html#html"
+    #   * Word 97 era (legs 37-38): href="vol_01/index.html"
+    #     with mixed case ("Vol_002", "vol_005", "vol_010a").
+    # Tolerates fragments/queries after the .html. Captures the full
+    # directory name (including case) so W97 URL reconstruction
+    # doesn't silently lowercase "Vol_002" to "vol_002" (which 404s).
+    r'href="(?P<dir>[Vv]ol_\d+[a-z]?)/(?P<leaf>summary(?:_[a-z])?|index)\.html(?:[#?][^"]*)?"',
     re.IGNORECASE,
 )
+# W97 per-volume index pages link out to one or more transcript files
+# shaped like h{NN}.html or h{NN}_1.html / h{NN}_2.html (split
+# sittings). Match the hrefs inside a vol dir's index page so we can
+# enumerate all transcript parts.
+_W97_TRANSCRIPT_HREF_RE = re.compile(
+    r'href="(?P<leaf>h\d+[a-z]?(?:_\d+)?\.html)(?:#[^"]*)?"',
+    re.IGNORECASE,
+)
+
 
 # Build a transcript URL from a volume key: "vol_01" → "vol_01/h01.html".
 def _transcript_url(base: str, vol: str) -> str:
@@ -144,11 +160,48 @@ async def discover_sitting_refs(
     refs: list[SittingRef] = []
     base = index_url.rsplit("/", 1)[0] + "/"
     for m in _VOL_HREF_RE.finditer(html):
-        vol = m.group("vol").lower()
-        if vol in seen:
+        dir_name = m.group("dir")       # e.g. "Vol_002", "vol_005", "vol_01a"
+        leaf = m.group("leaf").lower()  # "summary" or "index"
+        vol = re.match(r"[Vv]ol_(\d+[a-z]?)", dir_name).group(1).lower()
+        if dir_name in seen:
             continue
-        seen.add(vol)
-        refs.append(SittingRef(volume=vol, url=_transcript_url(base, vol)))
+        seen.add(dir_name)
+        if leaf.startswith("summary"):
+            # Modern path — deterministic transcript URL derivation.
+            refs.append(SittingRef(volume=vol, url=f"{base}{dir_name}/h{vol}.html"))
+            continue
+        # W97 path — fetch the per-volume index.html to enumerate
+        # transcript parts. Silently skip dead-link volumes (some
+        # 37-1 / 38-1 session indices carry a leftover vol_01 link
+        # that 302→404 on manitoba.ca).
+        vol_index_url = f"{base}{dir_name}/index.html"
+        try:
+            rv = await _get_with_retry(client, vol_index_url)
+            if rv.status_code != 200 or "Resource Not Found" in rv.text:
+                log.debug("w97 vol skipped (404): %s", vol_index_url)
+                continue
+        except Exception as exc:
+            log.debug("w97 vol fetch failed %s: %s", vol_index_url, exc)
+            continue
+        parts = []
+        for hm in _W97_TRANSCRIPT_HREF_RE.finditer(rv.text):
+            parts.append(hm.group("leaf"))
+        if not parts:
+            # Fall back to the modern deterministic URL — some volumes
+            # have hNN.html without an index-page link to it.
+            parts = [f"h{vol}.html"]
+        for part in parts:
+            part_lower = part.lower()
+            # Use (vol, part_lower) as composite key so split sittings
+            # each get their own ref.
+            key = f"{dir_name}/{part_lower}"
+            if key in seen:
+                continue
+            seen.add(key)
+            refs.append(SittingRef(
+                volume=f"{vol}_{part_lower}" if "_" in part_lower else vol,
+                url=f"{base}{dir_name}/{part}",
+            ))
     # Preserve source ordering (index lists sittings chronologically,
     # newest-first in recent months; we sort by volume ascending to
     # match the numeric day order).
@@ -486,7 +539,14 @@ async def ingest(
                 continue
 
             try:
-                result = parse_mod.extract_speeches(page_html, ref.url)
+                # Legs 37-38 use Microsoft Word 97 HTML export (no
+                # MsoNormal classes, uppercase tags). Dispatch on
+                # detection — everything else goes through the
+                # modern parser.
+                if parse_w97.is_word97(page_html):
+                    result = parse_w97.extract_speeches_w97(page_html, ref.url)
+                else:
+                    result = parse_mod.extract_speeches(page_html, ref.url)
             except Exception as exc:
                 log.warning("sitting %s: parse failed: %s", ref.url, exc)
                 stats.parse_errors += 1
