@@ -69,7 +69,7 @@ The data and inference layer are shipped:
 - ~2.6M speeches ingested across federal + AB + BC + QC + MB + NS + NB + NL Hansard; ~3.4M chunks generated and **100% embedded**.
 - `speeches`, `speech_chunks`, `speech_references`, `jurisdiction_sources`, `correction_submissions` tables live; presiding-officer speech attributions resolved to the politician occupying the chair at the time.
 
-Remaining for v1: hybrid (dense + Postgres tsvector) retrieval API, public search UI, provincial Hansard expansion to ON/SK/PE/YT/NT/NU, and corrections-inbox SMTP ingest. See [`docs/plans/semantic-layer.md`](docs/plans/semantic-layer.md) and [`docs/plans/search-features-handoff.md`](docs/plans/search-features-handoff.md) for the phased rollout.
+Remaining for v1: hybrid (dense + Postgres tsvector) retrieval API, public search UI, provincial Hansard expansion to ON/SK/PE/YT/NT/NU, and corrections-inbox SMTP ingest. See [`docs/plans/semantic-layer-rollout.md`](docs/plans/semantic-layer-rollout.md) and [`docs/plans/search-features-handoff.md`](docs/plans/search-features-handoff.md) for the phased rollout, [`docs/plans/semantic-layer-schema.md`](docs/plans/semantic-layer-schema.md) for the schema of record.
 
 ---
 

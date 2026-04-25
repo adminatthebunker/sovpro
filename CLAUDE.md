@@ -12,12 +12,12 @@ The project is becoming **the definitive source of Canadian political data** —
 
 1. `docs/goals.md` — north star, audience, non-goals
 2. `docs/timeline.md` — current direction in horizons (Now / Next / Later) + the four standing priorities, in order
-3. `docs/plans/semantic-layer.md` — schema, vector store, embedding plan, phased rollout
+3. `docs/plans/semantic-layer-schema.md` — schema of record (tables, indexes, decisions of record, capacity). Pair: `docs/plans/semantic-layer-rollout.md` — ingest + retrieval pipelines, phased rollout, open follow-ups.
 4. `docs/research/` — one self-contained research dossier per jurisdiction (federal + 13 provinces/territories), plus `overview.md` for cross-cutting schema log, probe hierarchy, research-handoff protocol, and known blockers
 5. `docs/architecture.md` — service-by-service runtime architecture
 6. `docs/scanner.md`, `docs/api.md`, `docs/operations.md` — per-component references
 
-If you find yourself guessing at product direction, the goals doc is the authority. If you find yourself guessing at schema, the semantic-layer doc is the authority. If you find yourself guessing at *what to work on next*, the timeline doc is the authority.
+If you find yourself guessing at product direction, the goals doc is the authority. If you find yourself guessing at schema, the semantic-layer-schema doc is the authority. If you find yourself guessing at *what to work on next*, the timeline doc is the authority.
 
 ### Priority check on task assignment (do this every time)
 
@@ -370,7 +370,7 @@ docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrat
 - `0032_unique_mb_assembly_slug.sql` — unique constraint on `mb_assembly_slug`.
 - `0033_billing_rail.sql` — billing rail phase 1a: `users.stripe_customer_id` + `users.rate_limit_tier`, `stripe_webhook_events`, `credit_ledger`, `credit_purchases`, `rate_limit_increase_requests`.
 
-**Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
+**Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer-schema.md` § Migration 0018 for the rationale per file.
 
 ## Command reference
 

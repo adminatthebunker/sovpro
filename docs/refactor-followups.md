@@ -6,8 +6,7 @@ Each entry: **Problem** → **Proposed fix**. One pass at a time; don't bundle.
 
 ## Splits
 
-- **`docs/plans/semantic-layer.md`** is doing two jobs (schema / migration log + retrieval rollout plan).
-  - **Fix:** split into `semantic-layer-schema.md` (tables, columns, migration history) and `semantic-layer-rollout.md` (HNSW build, retrieval-quality phases). Cross-link from both.
+- ~~**`docs/plans/semantic-layer.md`** is doing two jobs (schema / migration log + retrieval rollout plan).~~ **Done 2026-04-25.** Split into `semantic-layer-schema.md` (273 lines: goals, infrastructure, stack decisions, migrations 0014-0020, person/constituency over time, scale + perf, architecture decisions of record) and `semantic-layer-rollout.md` (153 lines: ingest + retrieval pipelines, chunking, dedup, multilingual, corrections operational flow, phased rollout, open follow-ups). Both cross-link to the other and to `search-features-handoff.md`. Live cross-references updated in CLAUDE.md, timeline.md, README.md, and search-features-handoff.md.
 
 ## Trims
 

@@ -6,7 +6,7 @@ You're taking over to design and build the search API + UI for Canadian Politica
 
 ## What Canadian Political Data is
 
-Read `docs/goals.md` and `docs/plans/semantic-layer.md` first — those are the product + schema authorities. One-line summary: it's becoming the definitive source of Canadian political data, and the feature you're building is the "single search box over what politicians have said" surfaced in the goals doc.
+Read `docs/goals.md` and `docs/plans/semantic-layer-schema.md` first — those are the product + schema authorities. The pipeline-and-rollout side is in `docs/plans/semantic-layer-rollout.md`. One-line summary: it's becoming the definitive source of Canadian political data, and the feature you're building is the "single search box over what politicians have said" surfaced in the goals doc.
 
 ---
 
@@ -142,7 +142,7 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 
 1. `CLAUDE.md` — project-wide conventions, schema rules, don't-break list.
 2. `docs/goals.md` — product intent.
-3. `docs/plans/semantic-layer.md` — schema of record for everything you're querying.
+3. `docs/plans/semantic-layer-schema.md` — schema of record for everything you're querying. (Pair: `docs/plans/semantic-layer-rollout.md` for ingest + retrieval pipelines.)
 4. `docs/archive/embedding-eval-2026-04.md` — why Qwen3-0.6B, known quality deltas, decisions log.
 5. `services/embed/eval/REPORT.md` — measured retrieval numbers to regress against.
 6. `db/migrations/0017_speech_chunks.sql` + `0023_embedding_next.sql` + `0025_drop_legacy_embedding_column.sql` — the final shape of the vector column you'll query (blue-green migration finished in 0025).

@@ -7,5 +7,5 @@ Nothing in this directory is authoritative. If you find yourself relying on some
 ## Contents
 
 - [`scoping-q-a-2026-04.md`](./scoping-q-a-2026-04.md) — early national-expansion scoping Q&A. Outcomes live in `docs/goals.md`, `docs/timeline.md`, and the per-jurisdiction research dossiers.
-- [`embedding-eval-2026-04.md`](./embedding-eval-2026-04.md) — Qwen3 vs BGE-M3 evaluation harness and selection rationale. Outcome (Qwen3-Embedding-0.6B) is documented in `CLAUDE.md` and `docs/plans/semantic-layer.md`.
+- [`embedding-eval-2026-04.md`](./embedding-eval-2026-04.md) — Qwen3 vs BGE-M3 evaluation harness and selection rationale. Outcome (Qwen3-Embedding-0.6B) is documented in `CLAUDE.md` and `docs/plans/semantic-layer-schema.md`.
 - [`recovery-logs/`](./recovery-logs/) — point-in-time incident-recovery notes from the 2026-04 reboot cycle.
