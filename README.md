@@ -17,7 +17,7 @@ The public site is **free, requires no account, and never will**. Enter a postal
 This project takes that seriously. Three principles fall out of it:
 
 1. **Free and frictionless for the public.** No accounts, no paywalls, no dark patterns on the public site. Postal-code lookup is the front door. Search is the next one.
-2. **Open source to the core.** Every ingester, every schema decision, every upstream quirk and blocker lives in this repo under MIT. Per-jurisdiction research dossiers under [`docs/research/`](docs/research/) document exactly how each legislature's data was sourced, what's reliable, and what's not. If we got something wrong, you can see where.
+2. **Source-available to the core.** Every ingester, every schema decision, every upstream quirk and blocker lives in this repo under [PolyForm Noncommercial 1.0.0](./LICENSE) — free for personal, research, educational, and other noncommercial use. Per-jurisdiction research dossiers under [`docs/research/`](docs/research/) document exactly how each legislature's data was sourced, what's reliable, and what's not. If we got something wrong, you can see where.
 3. **Honest about gaps.** Coverage holes are surfaced on the public [`/coverage`](https://canadianpoliticaldata.ca/coverage) dashboard rather than hidden. Four provincial bills pipelines are still blocked (MB/SK PDFs; PEI/YT WAFs); the dashboard says so.
 
 The project is **not apolitical**. It's rooted in democratic values, civic transparency, and progressive stances on access to information. See [`docs/goals.md`](docs/goals.md) for the full framing.
@@ -211,7 +211,7 @@ Read [`CLAUDE.md`](CLAUDE.md) for project-level conventions (jurisdiction-specif
 
 ## License + attribution
 
-MIT. See [LICENSE](./LICENSE).
+[PolyForm Noncommercial 1.0.0](./LICENSE) — free for personal, research, educational, and other noncommercial use. Commercial use requires a separate license; contact The Bunker Operations.
 
 This project uses data from:
 
