@@ -11,12 +11,24 @@ The project is becoming **the definitive source of Canadian political data** —
 ## Architectural docs — read in this order
 
 1. `docs/goals.md` — north star, audience, non-goals
-2. `docs/plans/semantic-layer.md` — schema, vector store, embedding plan, phased rollout
-3. `docs/research/` — one self-contained research dossier per jurisdiction (federal + 13 provinces/territories), plus `overview.md` for cross-cutting schema log, probe hierarchy, research-handoff protocol, and known blockers
-4. `docs/architecture.md` — service-by-service runtime architecture
-5. `docs/scanner.md`, `docs/api.md`, `docs/operations.md` — per-component references
+2. `docs/timeline.md` — current direction in horizons (Now / Next / Later) + the four standing priorities, in order
+3. `docs/plans/semantic-layer.md` — schema, vector store, embedding plan, phased rollout
+4. `docs/research/` — one self-contained research dossier per jurisdiction (federal + 13 provinces/territories), plus `overview.md` for cross-cutting schema log, probe hierarchy, research-handoff protocol, and known blockers
+5. `docs/architecture.md` — service-by-service runtime architecture
+6. `docs/scanner.md`, `docs/api.md`, `docs/operations.md` — per-component references
 
-If you find yourself guessing at product direction, the goals doc is the authority. If you find yourself guessing at schema, the semantic-layer doc is the authority.
+If you find yourself guessing at product direction, the goals doc is the authority. If you find yourself guessing at schema, the semantic-layer doc is the authority. If you find yourself guessing at *what to work on next*, the timeline doc is the authority.
+
+### Priority check on task assignment (do this every time)
+
+When the user assigns a task, before you start work:
+
+1. **Locate the task in `docs/timeline.md`.** Which horizon (Now / Next / Later / Always-on)? Which of the four standing priorities (database / chat / accessibility-incl-voice / UI) does it fall under, if any?
+2. **Tell the user where it lands** in one sentence — "this is in the *Next #1 — database* bucket" or "this isn't on the timeline; closest neighbour is *Later — public dev API*."
+3. **If the task is below something more urgent on the timeline, say so** and confirm before proceeding. Don't refuse — the user can always reorder priorities — but make the tradeoff visible. Off-timeline asks are fine; surface that they're off-timeline so the user can decide whether to add them or treat them as a one-off.
+4. **If the task is in scope and on-priority, just go.** Don't make this a ceremony — one sentence of orientation is the whole ritual.
+
+The point is to keep the timeline in active rotation, not stale. If the user says "yeah ignore the timeline for this one," that's a valid answer — but they should be the one saying it, not Claude assuming.
 
 ## Stack
 

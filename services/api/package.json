@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Canadian Political Data API — Fastify service",
   "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
