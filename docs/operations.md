@@ -273,6 +273,18 @@ Trade-off: plain SQL gzipped is **single-threaded on restore**. On the live 124 
 | `/media/bunker-admin/Internal/canadian-political-data-backups/` | ext4 on internal NVMe | Primary backup. Always dump here first. |
 | `/media/bunker-admin/<usb-label>/` | LUKS2 + ext4 on USB | Secondary mirror. Requires unlock + mount each time. |
 
+#### Automation (cron)
+
+The runbook below is wrapped by `scripts/backup-database.sh` and runs daily from the `bunker-admin` user crontab:
+
+```
+30 4 * * * /home/bunker-admin/sovpro/scripts/backup-database.sh >/dev/null 2>&1
+```
+
+The script flock-guards itself, writes a per-run log next to the dump (`sovereignwatch-<TS>.log`), validates the new dump with `pg_restore --list` before touching any older one, then **demotes prior uncompressed dumps to `.tar.zst` (zstd -19)** and prunes anything beyond `BACKUP_RETENTION` (default 7) total units. Latest dump always stays uncompressed and restore-ready; older history is compressed to fit the internal drive.
+
+Override knobs via env vars: `BACKUP_DEST`, `BACKUP_RETENTION`, `BACKUP_COMPRESS_LEVEL`, `BACKUP_PARALLEL_JOBS`, `SOVPRO_REPO`. To restore a compacted backup, `tar -I zstd -xf sovereignwatch-<TS>.tar.zst` first, then follow the directory-format restore steps below.
+
 #### One-shot procedure
 
 ```bash

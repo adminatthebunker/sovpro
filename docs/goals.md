@@ -29,7 +29,7 @@ Free public UI + paid API tiers for institutional users + grant funding for long
 ## Positioning
 
 - **Hosting sovereignty** is no longer the lede — it becomes one lens among many on the landing page and in politician detail views.
-- **"Definitive political data of Canada"** is the brand framing going forward.
+- **"Definitive political data of Canada"** is the brand framing.
 - The Alberta independence referendum (2026-10-19) is a soft forcing function for the sovereignty narrative but not for semantic search v1.
 - Semantic search itself is the lure for wider adoption — the "you can finally search what your MP actually said" moment.
 

@@ -2,11 +2,13 @@
 
 Project-level instructions for any AI agent working in this repo. Read before writing code.
 
+This file describes how the codebase is *shaped*, not its day-to-day state. For current row counts, ingestion coverage, or what's shipped, query the DB or read the docs it points at — don't trust numbers in this file.
+
 ## One-line purpose
 
-**SovereignWatch** is the internal / codebase name. **Canadian Political Data** (domain: `canadianpoliticaldata.ca`) is the public-facing brand — use CPD in blog posts, LinkedIn, and external copy, and in commit messages, migrations, and internal docs.
+**SovereignWatch** is the internal / codebase name. **Canadian Political Data** (domain: `canadianpoliticaldata.ca`) is the public-facing brand — use CPD in blog posts, LinkedIn, external copy, commit messages, migrations, and internal docs.
 
-The project is becoming **the definitive source of Canadian political data** — who represents whom, what they've said, how they've voted, where their infrastructure lives. See `docs/goals.md` for the full product framing. It is **not apolitical**; it takes progressive and democratic stances rooted in access-to-information principles.
+Project goal: **the definitive source of Canadian political data** — who represents whom, what they've said, how they've voted, where their infrastructure lives. See `docs/goals.md` for the full product framing. It is **not apolitical**; it takes progressive and democratic stances rooted in access-to-information principles.
 
 ## Architectural docs — read in this order
 
@@ -25,10 +27,10 @@ When the user assigns a task, before you start work:
 
 1. **Locate the task in `docs/timeline.md`.** Which horizon (Now / Next / Later / Always-on)? Which of the four standing priorities (database / chat / accessibility-incl-voice / UI) does it fall under, if any?
 2. **Tell the user where it lands** in one sentence — "this is in the *Next #1 — database* bucket" or "this isn't on the timeline; closest neighbour is *Later — public dev API*."
-3. **If the task is below something more urgent on the timeline, say so** and confirm before proceeding. Don't refuse — the user can always reorder priorities — but make the tradeoff visible. Off-timeline asks are fine; surface that they're off-timeline so the user can decide whether to add them or treat them as a one-off.
-4. **If the task is in scope and on-priority, just go.** Don't make this a ceremony — one sentence of orientation is the whole ritual.
+3. **If the task is below something more urgent on the timeline, say so** and confirm before proceeding. Don't refuse — the user can always reorder priorities — but make the tradeoff visible.
+4. **If the task is in scope and on-priority, just go.** One sentence of orientation is the whole ritual.
 
-The point is to keep the timeline in active rotation, not stale. If the user says "yeah ignore the timeline for this one," that's a valid answer — but they should be the one saying it, not Claude assuming.
+If the user says "ignore the timeline for this one," that's a valid answer — but they should be the one saying it.
 
 ## Stack
 
@@ -40,11 +42,10 @@ The point is to keep the timeline in active rotation, not stale. If the user say
 - **Frontend:** React 18 + Vite + Leaflet + React Router 6, `services/frontend/`.
 - **Scanner:** Python 3.13 + asyncio + Click, `services/scanner/`.
 - **Embed service:** HuggingFace **Text Embeddings Inference (TEI)** serving **Qwen3-Embedding-0.6B** (1024-dim, fp16 on GPU). Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9`, compose service `tei`, reachable inside compose at `http://tei:80` (OpenAI-compatible `POST /v1/embeddings` + TEI-native `POST /embed`).
-  - **Switched from BGE-M3 on 2026-04-19.** The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) lives on disk at `services/embed/` for rollback only; no compose service references it. The legacy `embedding` column on `speech_chunks` was dropped in migration 0025 after the 1.48 M-chunk corpus was re-embedded with Qwen3 (see `docs/linkedin-embedding-rebuild-post.md` and `memory/project_embed_regression.md` for the incident that preceded the migration).
+  - The legacy custom FastAPI + FlagEmbedding wrapper (BGE-M3 + reranker) lives on disk at `services/embed/` for rollback only; no compose service references it.
   - **GPU attach:** `deploy.resources.reservations.devices` (driver `nvidia`, capabilities `[gpu]`). `TEI_MEMORY` caps host memory at 6 GiB; VRAM sits well under the RTX 4050's 6 GiB at `--max-batch-tokens=16384`. `docker compose stop tei` releases the card cleanly.
-  - **Model cache:** `embedmodels` named volume mounted at `/data` (TEI expects HF_HOME-style layout there). First boot pulls ~1.3 GB from HuggingFace; subsequent boots are seconds. Volume is shared with the legacy embed layout so a rollback wouldn't re-download.
-  - **Reranker:** **gone** from the critical path. Qwen3 retrieval quality on multilingual Hansard proved strong enough that the cross-encoder rerank stage was removed. If you re-introduce reranking, do it as a separate service — don't resurrect the FlagEmbedding wrapper just for it.
-  - **Throughput (2026-04-18 re-embed, RTX 4050 Mobile):** 242 k chunks in 1 h 19 m = **50.9 chunks/sec** end-to-end through the scanner's batched-UNNEST write path; pure GPU throughput ~75 chunks/sec. The end-to-end number is the one that matters for capacity planning; pure-GPU figures ignore DB write contention.
+  - **Model cache:** `embedmodels` named volume mounted at `/data` (TEI expects HF_HOME-style layout there). First boot pulls ~1.3 GB from HuggingFace; subsequent boots are seconds.
+  - **Reranker:** not in the critical path. Qwen3 retrieval quality on multilingual Hansard is strong enough that the cross-encoder rerank stage was removed. If reranking is reintroduced, do it as a separate service — don't resurrect the FlagEmbedding wrapper just for it.
   - **Env the scanner reads:** `EMBED_URL` (default `http://tei:80`), `EMBED_MODEL_TAG` (default `qwen3-embedding-0.6b`, stored in `speech_chunks.embedding_model`), `EMBED_BATCH` (default 32).
 - **Orchestration:** Docker Compose, single host, Pangolin tunnel to public.
 - **Public edge:** nginx → api / frontend / uptime-kuma.
@@ -61,8 +62,9 @@ Every upstream legislature that ships a stable integer or slug ID for its member
 - BC: `lims_member_id` (int)
 - Quebec: `qc_assnat_id` (int)
 - Alberta: `ab_assembly_mid` (zero-padded text)
+- Manitoba: `mb_assembly_slug`
 
-When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. NS now joins the "both bills and Hansard live via the jurisdiction-specific ID column" tier alongside federal, BC, ON, QC, and AB. Current state: 1,075 of 14,929 `bill_sponsors` rows are FK-linked to politicians — the raw percentage is low because sub-national legislatures with sparse structured rosters (QC, NB, NL, NT, NU) dominate the denominator, while federal + NS + BC + ON + AB sponsor resolution remains >99% where the canonical-ID pattern is in place. Closing the gap means adding ID columns for the remaining legislatures, not rewriting the resolver.
+When adding a new jurisdiction, **find and persist its canonical member ID first**. It replaces name-fuzz with exact FK joins and makes sponsor / speaker resolution trivial. Sub-national legislatures with sparse structured rosters drag the global FK ratio on `bill_sponsors` down — closing the gap means adding ID columns for the remaining legislatures, not rewriting the resolver.
 
 ### 2. Discriminated tables, not per-jurisdiction tables
 
@@ -70,7 +72,7 @@ One `bills` table, one `speeches` table, one `votes` table — all discriminated
 
 ### 3. Store `raw_html` / `raw_text` alongside parsed fields
 
-Pattern from `bills.raw_html` — persist the upstream artifact, not just the parsed derivative. Re-parsing is cheaper than re-fetching and often the only option under WAFs (see NS budget below).
+Pattern from `bills.raw_html` — persist the upstream artifact, not just the parsed derivative. Re-parsing is cheaper than re-fetching and often the only option under WAFs.
 
 ### 4. Probe hierarchy before writing a scraper
 
@@ -86,13 +88,13 @@ Before building any new ingestion pipeline, check in order:
 
 **Before starting any new provincial pipeline, pause and ask the user for their research pass.** No probing, no migration, no code until the user has either shared their findings or explicitly said "probe yourself."
 
-As of 2026-04-24 the rule still applies to the three unbuilt bills pipelines (**SK, PE, YT**) and to every *provincial* Hansard pipeline that isn't yet live. Live provincial Hansards: AB, BC, QC, MB (now full 1999-present), NS, NB, NL, ON (shipped 2026-04-24 via name-based resolution + parens-name extraction). Remaining Hansard builds gated on research-handoff: NT, NU, SK, PE, YT. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
+Applies to every provincial pipeline (bills + Hansard) that is not already live. Check `jurisdiction_sources` and `docs/research/<slug>.md` to confirm what's shipped before assuming. Federal Hansard is shipped, so research-handoff is no longer gating federal work.
 
-Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
+Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md`, the per-jurisdiction dossier under `docs/research/<slug>.md`, and `feedback_research_handoff.md` for the full protocol.
 
 ### 6. Rate-limit and cache persistently
 
-Log every upstream request by URL + etag. Re-runs should be free. NS WAF cost us 3,500 re-fetches we did not need; don't repeat that.
+Log every upstream request by URL + etag. Re-runs should be free. Past WAF incidents have cost thousands of unnecessary re-fetches; don't repeat that.
 
 ### 7. Idempotent Click subcommands for ingest
 
@@ -113,7 +115,7 @@ UPDATE users SET is_admin = true  WHERE email = 'you@example.com';
 UPDATE users SET is_admin = false WHERE email = 'you@example.com';
 ```
 
-If no user has `is_admin = true` the admin surface is simply unreachable (403 for any signed-in non-admin, login redirect for anonymous). Collapsed from the old `ADMIN_TOKEN` flow on 2026-04-20 after the corrections-XSS review showed that localStorage-held admin tokens amplified any same-origin XSS into full admin takeover.
+If no user has `is_admin = true` the admin surface is simply unreachable (403 for any signed-in non-admin, login redirect for anonymous).
 
 ### Execution pipeline
 
@@ -122,13 +124,13 @@ If no user has `is_admin = true` the admin surface is simply unreachable (403 fo
 3. Spawns `python -m src <cli> [flags]` as subprocess (same scanner image), captures last 4 KB of stdout/stderr into `stdout_tail` / `stderr_tail`.
 4. Flips status to `succeeded` / `failed` with `exit_code` and `finished_at`.
 
-Schedules table (`scanner_schedules`) is expanded by the same worker — enabled rows whose `next_run_at <= now()` enqueue a new job, then `next_run_at` is advanced via `croniter`. Bash `scripts/scanner-cron.sh` schedules coexist for v1; migrating them into the DB is a deferred task.
+Schedules table (`scanner_schedules`) is expanded by the same worker — enabled rows whose `next_run_at <= now()` enqueue a new job, then `next_run_at` is advanced via `croniter`.
 
-**Daily-ingest schedule** (live as of 2026-04-24, ~39 rows; bills + Hansard + speaker resolvers across federal + 10 provinces/territories): staggered one-jurisdiction-per-UTC-hour with intra-hour offsets for each chain. ON gained Hansard rows on 2026-04-24 (3 new rows in the 18:00 slot), packing all 6 ON commands inside the same hour. Defined idempotently by `scripts/seed-daily-ingest-schedules.sql` — re-run the script to update; `created_by='daily-ingest-rollout'` scopes the seed's row ownership. Pre-existing NS rows (12:00-13:30 UTC) are intentionally untouched. Auto-current-session resolution: `services/scanner/src/legislative/current_session.py` reads the latest `(parliament_number, session_number)` from `legislative_sessions` for each jurisdiction, so schedule rows pass empty `args={}` and don't break at prorogation. Scheduled bills ingest always precedes Hansard in each jurisdiction's chain so the legislative_sessions row is fresh before Hansard tries to attribute speeches.
+**Daily-ingest schedule** is defined idempotently by `scripts/seed-daily-ingest-schedules.sql` — re-run the script to update; `created_by='daily-ingest-rollout'` scopes the seed's row ownership. Auto-current-session resolution in `services/scanner/src/legislative/current_session.py` reads the latest `(parliament_number, session_number)` from `legislative_sessions` for each jurisdiction, so schedule rows pass empty `args={}` and don't break at prorogation. Scheduled bills ingest always precedes Hansard in each jurisdiction's chain so the legislative_sessions row is fresh before Hansard tries to attribute speeches.
 
 ### Curated command whitelist
 
-The admin UI exposes a subset of the 123 scanner commands. Catalog lives in **two places that must stay in sync**:
+The admin UI exposes a subset of scanner commands. The catalog lives in **two places that must stay in sync**:
 
 - `services/scanner/src/jobs_catalog.py` (authoritative for the worker, maps `key` → `{cli, args}`)
 - The `COMMAND_CATALOG` constant near the top of `services/api/src/routes/admin.ts` (served to the frontend form generator verbatim)
@@ -159,7 +161,7 @@ If they diverge the worker refuses the command with `unknown command` — the UI
 
 ## User accounts
 
-Public passwordless auth surface. The admin panel piggybacks on this flow via the `users.is_admin` flag (see the Admin panel section above) — there is only one session system.
+Public passwordless auth surface. The admin panel piggybacks on this flow via the `users.is_admin` flag — there is only one session system.
 
 ### Auth model
 
@@ -186,15 +188,13 @@ The `services/api/src/lib/auth-token.ts` module is the designated IdP-swap seam:
 
 ### Saved searches
 
-`saved_searches` stores `filter_payload` (the same 12-field struct `/search/speeches` validates) plus a cached `query_embedding VECTOR(1024)` computed once at save time from TEI. The alerts worker reads the cached vector directly — **TEI is never called by the worker.**
+`saved_searches` stores `filter_payload` (the same struct `/search/speeches` validates) plus a cached `query_embedding VECTOR(1024)` computed once at save time from TEI. The alerts worker reads the cached vector directly — **TEI is never called by the worker.**
 
 The create-endpoint reuses `baseFilterSchema` exported from `services/api/src/routes/search.ts` — single source of truth for "what's a valid search." Do not fork the shape.
 
 ### Alerts worker
 
 Separate compose service `alerts-worker` (Python, same scanner image). Poll interval `ALERTS_POLL_INTERVAL` (default 300s). Every tick: fetch `saved_searches` due by cadence (`alert_cadence != 'none'` and `last_checked_at` older than the cadence), re-run the HNSW query constrained to `spoken_at > last_checked_at`, send digest if matches, advance watermarks. Digest renders both text/plain and text/html.
-
-Complexity ceiling: O(users × saved-searches) HNSW queries per day. At 1000 × 3 = 3000 queries/day, trivial on the existing DB.
 
 ### Files involved
 
@@ -226,7 +226,7 @@ Complexity ceiling: O(users × saved-searches) HNSW queries per day. At 1000 × 
 
 ## Premium reports / billing rail
 
-Phase 1a landed 2026-04-23. Adds one-time Stripe credit purchases, an append-only credit ledger, and an admin comp flow. The report-generation feature (phase 1b) is not yet built — phase 1a ships the payment rail alone, deliberately, so future premium features (full reports, bulk exports, dev-API tiers from `docs/plans/public-developer-api.md`) plug into the same ledger without a second billing redesign. See `docs/plans/premium-reports.md` for the full design + deployment sequence.
+One-time Stripe credit purchases, an append-only credit ledger, an admin comp flow, and an LLM-driven report generator that spends credits. See `docs/plans/premium-reports.md` for the full design.
 
 ### The ledger discipline (do not break)
 
@@ -238,7 +238,7 @@ Idempotency is **two-layer** by design:
 
 ### Graceful-degrade ergonomics
 
-Same pattern as `JWT_SECRET` / `OPENROUTER_API_KEY`. Phase-1a code ships with `STRIPE_SECRET_KEY` unset in production by default — the buy-credits UI hides its purchase buttons, the webhook returns 200-discard, and zero payment surface is exposed. Stripe enablement is a second, smaller deploy documented in the plan.
+Same pattern as `JWT_SECRET` / `OPENROUTER_API_KEY`: with `STRIPE_SECRET_KEY` unset the buy-credits UI hides its purchase buttons, the webhook returns 200-discard, and zero payment surface is exposed. Stripe enablement is a separate, smaller deploy.
 
 ### Webhook security — non-negotiable invariants
 
@@ -252,15 +252,15 @@ Admins can grant credits directly via `POST /admin/users/:id/grant-credits` (har
 
 ### Correction-reward flow
 
-Corrections that reach `status='applied'` grant `CORRECTION_REWARD_CREDITS` (default 10, tune via env) to the submitter via `grantCorrectionReward` in `services/api/src/lib/credits.ts`. The grant is a normal ledger row with `kind='correction_reward'` and `reference_id=correction_submissions.id`. The existing `uniq_credit_ledger_kind_ref` partial unique index makes re-applies idempotent — flipping a correction applied→triaged→applied grants once, not twice. Anonymous corrections (`user_id IS NULL`) skip the grant silently. **No clawback**: once earned, credits stay even if an admin later reverses the status. The PATCH handler wraps UPDATE + ledger-insert in a single transaction so partial grants are impossible; the follow-up email is fire-and-forget after the commit (email failure does NOT roll back the grant).
+Corrections that reach `status='applied'` grant `CORRECTION_REWARD_CREDITS` (default 10, tune via env) to the submitter via `grantCorrectionReward` in `services/api/src/lib/credits.ts`. The grant is a normal ledger row with `kind='correction_reward'` and `reference_id=correction_submissions.id`. The `uniq_credit_ledger_kind_ref` partial unique index makes re-applies idempotent — flipping a correction applied→triaged→applied grants once, not twice. Anonymous corrections (`user_id IS NULL`) skip the grant silently. **No clawback**: once earned, credits stay even if an admin later reverses the status. The PATCH handler wraps UPDATE + ledger-insert in a single transaction so partial grants are impossible; the follow-up email is fire-and-forget after the commit (email failure does NOT roll back the grant).
 
 ### Rate-limit tier
 
 `users.rate_limit_tier ∈ ('default','extended','unlimited','suspended')`. `requireUser` re-reads this every request (same DB-read discipline as `requireAdmin`) and 403s `suspended` users immediately. Users can submit an increase request via `POST /me/rate-limit-requests` (one-pending-per-user guard at the app layer); admins resolve in the `/admin/users` queue. Per-day report caps (`REPORTS_RATE_LIMIT_DEFAULT_PER_DAY` / `REPORTS_RATE_LIMIT_EXTENDED_PER_DAY`) are enforced inside `POST /reports`; `unlimited` tier bypasses the cap entirely.
 
-### Phase 1b: report generation
+### Report generation
 
-The first credit *spender*. A queued `report_jobs` row debits the user's spendable balance via `holdCredits` (a -delta `held` ledger row); the `reports-worker` Python service polls the table, runs an LLM map-reduce over **every** matching `speech_chunk` for the (politician, query) pair via OpenRouter, persists sanitised HTML on the row, and either `commitHold`s on success (the row flips `held → committed`) or `releaseHold`s on failure (`held → refunded`, balance restored). The user is emailed a "your report is ready" link; the viewer page at `/reports/:id` renders the persisted HTML inside a print-clean standalone layout.
+A queued `report_jobs` row debits the user's spendable balance via `holdCredits` (a -delta `held` ledger row); the `reports-worker` Python service polls the table, runs an LLM map-reduce over **every** matching `speech_chunk` for the (politician, query) pair via OpenRouter, persists sanitised HTML on the row, and either `commitHold`s on success (the row flips `held → committed`) or `releaseHold`s on failure (`held → refunded`, balance restored). The user is emailed a "your report is ready" link; the viewer page at `/reports/:id` renders the persisted HTML inside a print-clean standalone layout.
 
 Stale-claim re-queue: a job stuck in `running` past 15 minutes is considered abandoned by a crashed worker and re-queued with the **same** hold still in place. Idempotent state-flip semantics on `commitHold`/`releaseHold` mean re-runs cannot double-debit.
 
@@ -272,8 +272,8 @@ Refund discipline: a refund **before** the worker commits is a state-flip on the
 
 | Concern | Path |
 |---|---|
-| Migration (phase 1a) | `db/migrations/0033_billing_rail.sql` |
-| Migration (phase 1b) | `db/migrations/0035_report_jobs.sql` |
+| Migration (billing rail) | `db/migrations/0033_billing_rail.sql` |
+| Migration (report jobs) | `db/migrations/0035_report_jobs.sql` |
 | Stripe SDK wrapper | `services/api/src/lib/stripe.ts` |
 | Credit ledger helpers | `services/api/src/lib/credits.ts` |
 | Shared OpenRouter client | `services/api/src/lib/openrouter.ts` |
@@ -283,9 +283,9 @@ Refund discipline: a refund **before** the worker commits is a state-flip on the
 | Admin additions | `services/api/src/routes/admin.ts` (appended) |
 | Suspended enforcement | `services/api/src/middleware/user-auth.ts` (`requireUser`) |
 | Reports worker (Python) | `services/scanner/src/reports_worker.py` |
-| Frontend user pages | `services/frontend/src/pages/CreditsPage.tsx`, `services/frontend/src/pages/ReportsListPage.tsx`, `services/frontend/src/pages/ReportViewerPage.tsx`, balance chip in `AccountPage.tsx` |
-| Frontend report button + modal | `services/frontend/src/components/AIFullReportButton.tsx`, `services/frontend/src/components/FullReportConfirmModal.tsx` |
-| Frontend admin pages | `services/frontend/src/pages/admin/AdminUsers.tsx`, `services/frontend/src/pages/admin/AdminReports.tsx` |
+| Frontend user pages | `services/frontend/src/pages/CreditsPage.tsx`, `ReportsListPage.tsx`, `ReportViewerPage.tsx`; balance chip in `AccountPage.tsx` |
+| Frontend report button + modal | `services/frontend/src/components/AIFullReportButton.tsx`, `FullReportConfirmModal.tsx` |
+| Frontend admin pages | `services/frontend/src/pages/admin/AdminUsers.tsx`, `AdminReports.tsx` |
 
 ### What not to do
 
@@ -296,9 +296,9 @@ Refund discipline: a refund **before** the worker commits is a state-flip on the
 - **Do not accept negative credit amounts** in any route. Zod `z.number().int().positive()` at the route + `<= 0` throw in the lib.
 - **Do not build a second Stripe integration.** Subscriptions (dev-API plan) reuse `services/api/src/lib/stripe.ts` + `stripe_webhook_events`. One Stripe customer per user, one webhook endpoint, one client wrapper.
 - **Do not bypass the "one pending rate-limit request per user" guard** without adding a DB-level partial unique index. App-level check is the minimum.
-- **Do not send the correction-reward email on idempotent re-applies.** The grant helper returns `alreadyGranted: true` when the ledger row already exists; the admin PATCH handler only dispatches the email on a fresh insert, otherwise a user gets N emails for N applied→triaged→applied cycles.
+- **Do not send the correction-reward email on idempotent re-applies.** The grant helper returns `alreadyGranted: true` when the ledger row already exists; the admin PATCH handler only dispatches the email on a fresh insert.
 - **Do not place the report hold outside the `report_jobs` insert transaction.** The hold's reference_id is the job id; both rows must commit together. If the hold insert fails (insufficient balance, unique-violation on duplicate enqueue), the job row must roll back too.
-- **Do not skip server-side HTML sanitisation on the report's stored html.** `bleach.clean` runs in the worker before persistence; the viewer renders via `dangerouslySetInnerHTML` and trusts that pass-through. Skipping the sanitiser would be an XSS vector against any future authenticated viewer (operator looking at someone else's report on /admin/reports, etc.).
+- **Do not skip server-side HTML sanitisation on the report's stored html.** `bleach.clean` runs in the worker before persistence; the viewer renders via `dangerouslySetInnerHTML` and trusts that pass-through.
 - **Do not duplicate the OpenRouter error mapping** in `lib/reports.ts`. Both contradictions and reports route through `lib/openrouter.ts:callJsonObjectModel`. If you find yourself copying the 401/429/timeout switch, you've drifted from the shared client.
 - **Do not let the worker call the api over HTTP.** The worker speaks straight to Postgres for chunk selection, ledger flips, and `report_jobs` updates. The api is the user-facing surface; the worker is its own service.
 
@@ -345,30 +345,32 @@ Post filename convention: `YYYY-MM-DD-short-slug.mdx`. Sort is by frontmatter `d
 
 ## Database reference
 
+For current row counts, ingestion coverage, or what's shipped: query the DB or read `jurisdiction_sources`. Don't trust counts in this file.
+
 ### Core tables
 
-- `politicians` — 4,768 rows, per-jurisdiction slug columns (see convention #1). Recent growth: AB historical backfill (+901 former MLAs, 2026-04-22) and MB historical backfill (+764 former MLAs, 2026-04-23) together moved the count from 3,086 → 4,768.
+- `politicians` — per-jurisdiction slug columns (see convention #1).
 - `politician_terms` — role / party / level / constituency over time.
-- `politician_socials` — platform handles, no content. Provenance columns added in 0026.
+- `politician_socials` — platform handles, no content.
 - `politician_committees`, `politician_offices` — supporting detail.
 - `politician_changes` — audit trail of mutations to the politicians table.
-- `organizations` — referendum orgs, advocacy, media (20 seeded).
+- `organizations` — referendum orgs, advocacy, media.
 - `websites`, `infrastructure_scans`, `scan_changes` — the hosting-sovereignty layer.
-- `constituency_boundaries` — temporal (`effective_from` / `effective_to`) as of 0021.
+- `constituency_boundaries` — temporal (`effective_from` / `effective_to`).
 
-### Legislative tables (current row counts, 2026-04-23)
+### Legislative tables
 
 - `legislative_sessions` — jurisdiction + parliament + session.
-- `bills` / `bill_events` / `bill_sponsors` — **18,863 bills** across AB (11,133) / NS (3,522) / BC (2,276) / NL (1,193) / QC (497) / ON (104) / MB (81) / NB (33) / NT (20) / NU (4). 13,714 sponsor rows; 921 FK-linked to politicians (see convention #1 for why that ratio is not a regression).
-- `speeches` / `speech_chunks` / `speech_references` — **2,568,359 speeches, 3,398,197 chunks, 100 % embedded** with Qwen3-Embedding-0.6B vectors in `speech_chunks.embedding` (vector(1024), HNSW index `idx_chunks_embedding`). Federal + QC + AB + BC + MB + NS + NB + NL Hansard ingested. MB Hansard now spans **legs 37-43 (1999-11-26 → 2026-04-16, 407,695 speeches across 2,325 sittings)** — dispatches between modern (MsoNormal) and Word-97-era parsers at ingest time. ON / NT / NU / SK / PE / YT Hansard pipelines are the next build-out.
-- `votes` / `vote_positions` — **still does not exist.** `0018_votes.sql` remains on disk and intentionally unapplied pending real NT/NU consensus-gov't data.
-- `jurisdiction_sources` — coverage + blockers (seeded with all 14 jurisdictions). Feeds the public coverage dashboard. Refreshed by `refresh-coverage-stats` scanner command.
+- `bills` / `bill_events` / `bill_sponsors` — discriminated by `level` + `province_territory`. FK to `politicians` via the per-jurisdiction ID column when available.
+- `speeches` / `speech_chunks` / `speech_references` — Hansard text, chunked and embedded with Qwen3-Embedding-0.6B vectors in `speech_chunks.embedding` (`vector(1024)`, HNSW index `idx_chunks_embedding`).
+- `votes` / `vote_positions` — **not yet in the DB.** `0018_votes.sql` is on disk and intentionally unapplied pending real NT/NU consensus-gov't data.
+- `jurisdiction_sources` — coverage + blockers (one row per jurisdiction). Feeds the public coverage dashboard. Refreshed by `refresh-coverage-stats` scanner command. **Check this before assuming a data source is live.**
 - `correction_submissions` — corrections inbox (web + email sources).
 - `scanner_jobs` / `scanner_schedules` — admin queue + cron (see Admin panel section).
 
 ### Embedding column naming
 
-`speech_chunks` currently has a single vector column named `embedding` (plus `embedding_model` / `embedded_at`). The earlier blue-green `embedding_next` column from the Qwen3 migration (0023) was renamed back to `embedding` in 0025 once the BGE-M3 column was dropped. Do **not** reintroduce `_next` suffixes — one canonical column, one HNSW index.
+`speech_chunks` has a single vector column named `embedding` (plus `embedding_model` / `embedded_at`). One canonical column, one HNSW index. Do **not** introduce `_next` suffixes or parallel vector columns for re-embed work — a previous blue-green column was renamed back and dropped, and recreating it would re-introduce the same coordination cost.
 
 ### Materialized views
 
@@ -382,23 +384,10 @@ Numbered sequentially under `db/migrations/`. No automated runner — apply manu
 docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrations/<file>.sql
 ```
 
-**Latest applied migrations (2026-04-23):**
-- `0022_scanner_jobs_and_schedules.sql` — admin queue + cron table.
-- `0023_embedding_next.sql` — parallel Qwen3 vector column for blue-green re-embed.
-- `0024_fix_federal_session_tagging.sql` — retag federal speeches into correct parliaments.
-- `0025_drop_legacy_embedding_column.sql` — drop BGE-M3 column, rename `embedding_next` → `embedding`.
-- `0026_politician_photo_local.sql` and `0026_politician_socials_provenance.sql` — two files share the `0026` number (accidental collision; both applied). When adding the next migration bump past the conflict; do not back-renumber.
-- `0027_users_and_saved_searches.sql` — magic-link users, login_tokens, saved_searches; hook on correction_submissions.user_id.
-- `0028_users_email_bounces.sql` — users.email_bounced_at; alerts-worker suppresses sending to hard-bounced addresses.
-- `0029_users_is_admin.sql` — users.is_admin; collapses the old ADMIN_TOKEN flow into the user-session flow.
-- `0030_politician_mb_assembly_slug.sql` — MB Manitoba assembly member slug column.
-- `0031_unique_ab_assembly_mid.sql` — unique constraint on `ab_assembly_mid`.
-- `0032_unique_mb_assembly_slug.sql` — unique constraint on `mb_assembly_slug`.
-- `0033_billing_rail.sql` — billing rail phase 1a: `users.stripe_customer_id` + `users.rate_limit_tier`, `stripe_webhook_events`, `credit_ledger`, `credit_purchases`, `rate_limit_increase_requests`.
-- `0034_correction_reward_kind.sql` — adds `'correction_reward'` to the `credit_ledger.kind` CHECK constraint; enables the correction-reward flow.
-- `0035_report_jobs.sql` — premium-reports phase 1b: `report_jobs` (queue + output blob) + `report_bug_reports` (user-flagged report quality issues).
-
-**Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
+Rules:
+- **Forward-only.** Bump the next number; don't edit an applied migration.
+- **One file per number, normally.** History contains one accidental `0026_*` collision (two files share the number, both applied). When you write the next migration, bump past the highest number on disk; do not back-renumber to fill gaps.
+- **Read the file before relying on it.** `docs/plans/semantic-layer.md` carries the rationale for any migration that intentionally hasn't shipped (notably `0018_votes.sql`).
 
 ## Command reference
 
@@ -415,7 +404,7 @@ sovpro doctor             # sanity-check all services
 docker compose run --rm scanner python -m src <subcommand>
 ```
 
-The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **123 `@cli.command` decorators** as of 2026-04-24. Recent additions: `ingest-on-hansard` + `resolve-on-speakers` (ON Hansard via ola.org JSON node, name-based resolution with parens-name extraction); `ingest-federal-bills` (closes the federal bills_status='partial' gap; openparliament.ca JSON, FK via `openparliament_slug`); `ingest-ab-former-mlas`, `resolve-ab-speakers`, `ingest-mb-former-mlas`, `resolve-mb-speakers-dated` (historical-roster + date-windowed-resolver pattern, 2026-04-22). Grep there for the full list.
+The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py`. Grep there for the full list.
 
 ## Development workflow
 
