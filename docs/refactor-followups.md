@@ -12,8 +12,7 @@ Each entry: **Problem** → **Proposed fix**. One pass at a time; don't bundle.
 ## Trims
 
 - ~~**`docs/operations.md`** has duplicated embedding + billing content that lives authoritatively in `CLAUDE.md`.~~ **Done 2026-04-25** (228 → 167 lines). Billing rail section collapsed to a 2-line cross-link to the new runbook. Embedding-section dedup tracked in the next followup item.
-- **`docs/plans/apify-social-deep-enrichment.md`** carries legal/policy minutiae mixed with the technical plan.
-  - **Fix:** move the consent / DSAR / TOS-compliance discussion into a sibling `docs/governance/social-enrichment-policy.md` (or fold it into the unwritten governance doc). Target plan-doc length: ~200 lines.
+- ~~**`docs/plans/apify-social-deep-enrichment.md`** carries legal/policy minutiae mixed with the technical plan.~~ **Done 2026-04-25.** Created `docs/governance/social-enrichment-policy.md` (and the `docs/governance/` directory with a README). Plan-doc §10 (legal/ethical guardrails table + universal rules) and §6's reverse-WHOIS posture both replaced with cross-links to the governance doc. Plan now 365 lines (was 386); the 200 target was aspirational — the per-platform actor table, cost estimate, and data model are genuine plan content. The bigger win is clean separation: policy is now readable as policy, the plan as a plan.
 - ~~**`docs/plans/premium-reports.md`** still includes the phase-1a billing-rail design that has now shipped and is summarized in `CLAUDE.md`.~~ **Done 2026-04-25** (302 → 120 lines). Phase-1a marked shipped, verbatim SQL replaced with prose pointing at the migration file, deployment sequence + verification SQL extracted to the new billing-rail-operations runbook, file list collapsed to a `CLAUDE.md` cross-ref.
 
 ## Dedup across files

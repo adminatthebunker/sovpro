@@ -126,10 +126,7 @@ Goal: given a politician's known personal email and full name, return the list o
 
 ### Legal / ethical posture
 
-- WHOIS data is **public record** by design. Reverse lookups don't break that.
-- BUT: surfacing an undisclosed personal domain is a meaningful editorial act. Before publishing or even displaying any discovered domain in the public-facing UI, an admin should manually review and confirm relevance.
-- Discovered domains go into `politician_domains` with `verified_by_admin = false` by default. The frontend only renders verified entries. The scanner pipeline can run against unverified ones, but findings are admin-only until reviewed.
-- Domains owned by family members / unrelated namesakes will be in the result set — explicitly require human review.
+WHOIS is public by design, but surfacing an undisclosed personal domain is an editorial act. The reverse-WHOIS specifics — `verified_by_admin` defaults, frontend-only-renders-verified, family-member filter requirement — are documented in the governance doc cross-linked in §10. The data-model defaults (`verified_by_admin = false`, `verified_at`, `notes`) match those policy requirements.
 
 ---
 
@@ -247,27 +244,9 @@ Cost reporting: poll `GET /v2/actor-runs/{id}` after completion to read `usageTo
 
 ## 10. Legal + ethical guardrails
 
-| Platform | Public ToS posture on scraping | Our posture |
-|---|---|---|
-| Twitter / X | Hostile in ToS, but the official API exists; widely accepted that public profile scraping is tolerated. *hiQ v. LinkedIn* (9th Cir. 2022) supports scraping public data is not a CFAA violation. | Proceed via Apify; document each scrape; admin-triggered only. |
-| Facebook (Meta) | Hostile. Scraping prohibited, account/IP ban risk. | Page metadata only. Defer post scraping pending counsel. |
-| Instagram (Meta) | Hostile. Same as Facebook. | Limited public-profile pulls only; cap depth at most-recent N posts. |
-| TikTok | Discouraged, low enforcement on public data. | Proceed; admin-triggered. |
-| LinkedIn | Hostile + technically blocks. Cookie-based scrapers risk account loss. | **Defer entirely.** Get counsel sign-off first. |
-| YouTube | Official Data API offered; scraping the site discouraged. | Use official API only. Skip Apify. |
-| Bluesky | Public AT Protocol explicitly invites public clients. | Free use, attribute the data source. |
-| Mastodon | Federated, instance-specific; public timelines explicitly public. | Free use, respect per-instance limits. |
-| Threads | API still maturing. Apify scrapers exist. | Proceed cautiously, low volume. |
-| WHOIS data | Public by design. | OK to query; admin-review before publishing discovered domains. |
+Policy lives in [`docs/governance/social-enrichment-policy.md`](../governance/social-enrichment-policy.md): scope, universal rules (civic-transparency framing, public-data-only, PIPEDA, no automated engagement, audit trail), per-platform ToS posture, reverse-WHOIS handling, and counsel-review status. Read that before adding a new actor or surfacing data publicly.
 
-Universal rules:
-
-- **Civic-transparency framing only.** This is for journalists, researchers, and the voting public — not advertising, not opposition research-as-a-service.
-- **Public data only.** No DMs, no private accounts, no follower graphs.
-- **Personal data minimization.** PIPEDA (federal) and provincial private-sector privacy laws apply. We retain only what serves the transparency purpose; raw API dumps live in `social_posts.raw` for forensic auditability but are not surfaced publicly.
-- **DSAR / takedown workflow.** Need a documented process for politicians (or their staff) to request correction/deletion. Should be in place before this feature ships publicly, not after.
-- **No automated engagement.** Read-only, always.
-- **Audit trail.** Every job logged in `apify_jobs` with admin user ID, timestamp, cost, result count.
+This plan defers to the governance doc on what is and isn't allowed; new platform integrations land in the policy table there before code is written here.
 
 ---
 
