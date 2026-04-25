@@ -18,8 +18,7 @@ Each entry: **Problem** → **Proposed fix**. One pass at a time; don't bundle.
 
 ## Dedup across files
 
-- **Embedding-model facts** — the Qwen3-Embedding-0.6B switch is described in `README.md`, `CLAUDE.md`, `docs/operations.md`, and `docs/plans/search-features-handoff.md`. Drift between them is inevitable.
-  - **Fix:** make `CLAUDE.md`'s "Stack" section the single authoritative statement. Reduce the others to a one-line link back. (Consider this when next touching any of those files.)
+- ~~**Embedding-model facts** — the Qwen3-Embedding-0.6B switch is described in `README.md`, `CLAUDE.md`, `docs/operations.md`, and `docs/plans/search-features-handoff.md`. Drift between them is inevitable.~~ **Done 2026-04-25.** README.md's embed-stack bullet trimmed to a 2-line summary that points at CLAUDE.md + operations.md. operations.md drops the cutover-history paragraph and throughput numbers (now in CLAUDE.md), keeps operator-only material (env overrides, monitoring, query-wrapper). Stale chunk-count + speech-count numbers in README.md updated alongside the trim.
 
 ## Stub research dossiers
 

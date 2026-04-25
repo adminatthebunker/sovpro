@@ -35,8 +35,8 @@ The project is **not apolitical**. It's rooted in democratic values, civic trans
 | **Websites tracked** | ~2,350 | Personal sites, campaign sites, official handles |
 | **Provincial bills** | ~18,800 | NS + ON + BC + QC + AB + NB + NL + NT + NU (9 of 13 sub-national legislatures). Federal bills aren't in the `bills` table — they surface via the openparliament.ca mirror on each MP's detail page |
 | **Bill stage events** | ~21,300 | Full Westminster progression per bill (1R / 2R / Committee / 3R / Royal Assent ± `comes_into_force` for AB) |
-| **Hansard speeches** | ~1.7M | Federal (1994+, via openparliament.ca) + AB (assembly.ab.ca) + BC (hansard-bc), speaker-resolved including presiding-officer attributions |
-| **Speech chunks (semantic-search ready)** | ~2.1M | ~74% embedded with Qwen3-Embedding-0.6B (1024-dim, multilingual EN/FR), HNSW-indexed in pgvector — historical backfill still running, embedding rate trailing chunk generation |
+| **Hansard speeches** | ~2.6M | Federal + AB + BC + QC + MB + NS + NB + NL Hansard ingested, speaker-resolved including presiding-officer attributions |
+| **Speech chunks (semantic-search ready)** | ~3.4M | 100% embedded with Qwen3-Embedding-0.6B (multilingual EN/FR, 1024-dim), HNSW-indexed in pgvector |
 
 Coverage is built jurisdiction-by-jurisdiction via dedicated ingesters — Open North where available, then per-legislature scrapers for everything else. Bills are ingested from a mix of Socrata APIs, Drupal JSON, GraphQL backends, official CSVs, and server-rendered HTML. Each province is its own beast, and each one has a self-contained dossier in [`docs/research/`](docs/research/) (plus [`docs/research/overview.md`](docs/research/overview.md) for the cross-cutting probe hierarchy and schema log).
 
@@ -65,11 +65,11 @@ Federal MPs additionally get a lazily-mirrored **Parliament** tab backed by a lo
 The data and inference layer are shipped:
 
 - pgvector 0.8.2 in Postgres with HNSW indexes (`hnsw.iterative_scan = relaxed_order`, `ef_search = 200`) so filtered semantic queries — e.g. "BC speeches about housing" — actually return rows
-- **Hugging Face TEI** (Text Embeddings Inference) container serving **Qwen3-Embedding-0.6B** (1024-dim, multilingual, fp16) on a local NVIDIA RTX 4050 — ~75 chunks/sec pure GPU, **50.9 chunks/sec end-to-end** through the scanner's batched-UNNEST writes. Cutover from BGE-M3 + BGE-reranker landed 2026-04-19; eval comparison lives in [`services/embed/eval/REPORT.md`](services/embed/eval/REPORT.md). No paid API in the critical path.
-- ~1.7M speeches ingested (federal 1994+ via openparliament.ca mirror, AB via assembly.ab.ca, BC via hansard-bc), ~2.1M chunks generated, **~1.6M (~74%) embedded** — historical backfill + embedding are still running concurrently, so chunk generation is ahead of embedding and both numbers climb daily
-- `speeches`, `speech_chunks`, `speech_references`, `jurisdiction_sources`, `correction_submissions` tables live; presiding-officer speech attributions resolved to the politician occupying the chair at the time
+- **Hugging Face TEI** serving **Qwen3-Embedding-0.6B** (1024-dim multilingual, fp16) on a local NVIDIA RTX 4050. Self-hosted; no paid API in the critical path. Throughput, env vars, query-time instruction wrapper, and the BGE-M3 → Qwen3 cutover are documented in [`CLAUDE.md`](CLAUDE.md) § Stack and [`docs/operations.md`](docs/operations.md) § Embedding service.
+- ~2.6M speeches ingested across federal + AB + BC + QC + MB + NS + NB + NL Hansard; ~3.4M chunks generated and **100% embedded**.
+- `speeches`, `speech_chunks`, `speech_references`, `jurisdiction_sources`, `correction_submissions` tables live; presiding-officer speech attributions resolved to the politician occupying the chair at the time.
 
-Remaining for v1: hybrid (dense + Postgres tsvector) retrieval API, public search UI, provincial Hansard expansion beyond AB/BC, and corrections-inbox SMTP ingest. See [`docs/plans/semantic-layer.md`](docs/plans/semantic-layer.md) and [`docs/plans/search-features-handoff.md`](docs/plans/search-features-handoff.md) for the phased rollout.
+Remaining for v1: hybrid (dense + Postgres tsvector) retrieval API, public search UI, provincial Hansard expansion to ON/SK/PE/YT/NT/NU, and corrections-inbox SMTP ingest. See [`docs/plans/semantic-layer.md`](docs/plans/semantic-layer.md) and [`docs/plans/search-features-handoff.md`](docs/plans/search-features-handoff.md) for the phased rollout.
 
 ---
 

@@ -37,12 +37,9 @@ sovpro logs scanner-cron
 
 ## Embedding service
 
-The `tei` service runs HuggingFace **Text Embeddings Inference** serving **Qwen3-Embedding-0.6B** (1024-dim, fp16) on the RTX 4050 GPU. Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9`. Reachable inside the compose network as `http://tei:80`.
+The `tei` service runs HuggingFace Text Embeddings Inference serving Qwen3-Embedding-0.6B (1024-dim, fp16) on the RTX 4050 GPU. Image, compose wiring, throughput numbers, and the BGE-M3 → Qwen3 cutover history live in `CLAUDE.md` § Stack. Operator details below.
 
-The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) was retired on 2026-04-19 after a 3-way eval (see `docs/archive/embedding-eval-2026-04.md`). Its code still lives at `services/embed/` for rollback; no compose service references it.
-
-- **Model cache.** First request pulls ~1.3 GB into the `embedmodels` named volume (mounted at `/data`; TEI expects HF_HOME-style layout there). The volume was shared with the legacy BGE-M3 layout so a rollback wouldn't re-download either model.
-- **GPU attachment.** Compose uses `deploy.resources.reservations.devices` with `driver: nvidia, capabilities: [gpu]`. Confirm via:
+- **Health check.**
   ```bash
   docker exec sw-tei curl -s http://localhost:80/health
   docker logs sw-tei 2>&1 | head  # expect "Starting Qwen3 model on Cuda" near the top
@@ -61,17 +58,12 @@ The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) w
   - `POST /embed` (TEI-native) — body `{"inputs": ["..."], "normalize": true}` → bare JSON array of float arrays.
   - `POST /v1/embeddings` (OpenAI-compatible) — body `{"input": [...], "model": "..."}` → `{data: [{embedding: [...]}, ...]}`.
   - `GET /health` — minimal liveness; weights load on first request (lazy).
-- **Throughput (RTX 4050 Mobile, 2026-04-18 re-embed, Qwen3-Embedding-0.6B fp16).**
-  - Pure GPU: ~75 chunks/sec.
-  - End-to-end through the scanner's batched-UNNEST write path: **50.9 chunks/sec**. 242 k chunks re-embedded in 1 h 19 m.
-  - End-to-end is the capacity-planning number; pure-GPU ignores DB write contention.
 - **Query-time instruction wrapper (critical).** Qwen3-Embedding needs queries prefixed with an instruction; documents are NOT prefixed. Without the wrapper NDCG drops from ~0.43 to ~0.22. Format:
   ```
   Instruct: Given a parliamentary search query, retrieve relevant Canadian Hansard speech excerpts
   Query: {user query}
   ```
   Indexing code writes documents unwrapped. See `docs/plans/search-features-handoff.md` for the full retrieval contract.
-- **Reranking.** The BGE-reranker cross-encoder is **no longer in the critical path** — Qwen3 retrieval quality cleared the bar without it. If you re-introduce reranking, run it as a separate service; don't resurrect the FlagEmbedding wrapper just for it.
 - **Scanner env.** The scanner reads `EMBED_URL` (default `http://tei:80`), `EMBED_MODEL_TAG` (default `qwen3-embedding-0.6b`, written to `speech_chunks.embedding_model`), and `EMBED_BATCH` (default 32).
 - **Monitoring.** `docker stats sw-tei --no-stream` for host-side CPU/RAM; `nvidia-smi` on the host for GPU utilisation + VRAM; `docker logs sw-tei -f` for model-load progress. `docker compose stop tei` releases the card cleanly when you need it for other work.
 
