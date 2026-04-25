@@ -1,3 +1,6 @@
+> **Archived 2026-04-25.** Decisions from this doc are reflected in `docs/timeline.md`,
+> `CLAUDE.md`, and current plan docs. Kept for historical reference.
+
 # National Political Data Expansion — Scoping Questions
 
 **Status:** Active — awaiting user answers.

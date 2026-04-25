@@ -1,3 +1,6 @@
+> **Archived 2026-04-25.** Decisions from this doc are reflected in `docs/timeline.md`,
+> `CLAUDE.md`, and current plan docs. Kept for historical reference.
+
 # Embedding Model Comparison — Eval Harness and Selection
 
 **Last updated:** 2026-04-19
