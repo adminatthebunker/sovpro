@@ -1,28 +1,75 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { MapView } from "../components/MapView";
-import type { FilterState } from "../components/Filters";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { useCoverage, type CoverageJurisdiction } from "../hooks/useCoverage";
 
-const REPO_URL = "https://github.com/adminatthebunker/CanadianPoliticalData";
-
-// Keep in sync with the postal regex used elsewhere in the app.
 const POSTAL_RE = /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/;
 
-// Pins-only filter for the backdrop. No polygons or connection lines — this
-// is a decorative layer, and heavy fetches would slow the lander.
-const BACKDROP_FILTERS: FilterState = {
-  layer: "politicians",
-  includeNoData: false,
-};
+const nf = new Intl.NumberFormat("en-CA");
+
+interface CorpusStats {
+  speeches: number;
+  bills: number;
+  politicians: number;
+  liveJurisdictions: number;
+  lastUpdate: string | null;
+}
+
+function aggregateCoverage(rows: CoverageJurisdiction[]): CorpusStats {
+  let speeches = 0;
+  let bills = 0;
+  let politicians = 0;
+  let liveJurisdictions = 0;
+  let maxVerified: number | null = null;
+  for (const r of rows) {
+    speeches += r.speeches_count || 0;
+    bills += r.bills_count || 0;
+    politicians += r.politicians_count || 0;
+    if (r.hansard_status === "live" || r.bills_status === "live") {
+      liveJurisdictions++;
+    }
+    if (r.last_verified_at) {
+      const t = new Date(r.last_verified_at).getTime();
+      if (!Number.isNaN(t) && (maxVerified === null || t > maxVerified)) {
+        maxVerified = t;
+      }
+    }
+  }
+  return {
+    speeches,
+    bills,
+    politicians,
+    liveJurisdictions,
+    lastUpdate: maxVerified ? new Date(maxVerified).toISOString() : null,
+  };
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "recently";
+  const sec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day} day${day === 1 ? "" : "s"} ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk} week${wk === 1 ? "" : "s"} ago`;
+  const mo = Math.floor(day / 30);
+  return `${mo} month${mo === 1 ? "" : "s"} ago`;
+}
 
 export default function Lander() {
-  useDocumentTitle(null); // base title only on the lander
+  useDocumentTitle(null);
   const navigate = useNavigate();
   const [postal, setPostal] = useState("");
   const [postalError, setPostalError] = useState<string | null>(null);
   const [hansard, setHansard] = useState("");
-  const [betaOpen, setBetaOpen] = useState(false);
+
+  const coverage = useCoverage();
+  const stats = coverage.data ? aggregateCoverage(coverage.data.jurisdictions) : null;
 
   function submitPostal(e: React.FormEvent) {
     e.preventDefault();
@@ -42,156 +89,92 @@ export default function Lander() {
     navigate(`/search?q=${encodeURIComponent(trimmed)}`);
   }
 
-  useEffect(() => {
-    if (!betaOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setBetaOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [betaOpen]);
+  const searchHint = stats
+    ? `Semantic search across ${nf.format(stats.speeches)} speeches.`
+    : "Search what every politician has said on the record.";
 
   return (
     <div className="lander">
-      <div className="lander__backdrop" aria-hidden="true">
-        <MapView filters={BACKDROP_FILTERS} compact height="100%" />
-        <div className="lander__scrim" />
-      </div>
-      <div className="lander__glass">
-        <button
-          type="button"
-          className="lander__beta-badge"
-          onClick={() => setBetaOpen(true)}
-          aria-haspopup="dialog"
-          aria-expanded={betaOpen}
-        >
-          In Beta
-        </button>
+      <div className="lander__inner">
         <span className="lander__logo" aria-hidden="true">🍁</span>
         <h1 className="lander__title">Canadian Political Data</h1>
+
+        {stats && stats.speeches > 0 && (
+          <div className="lander__stats" aria-label="Corpus statistics">
+            <div className="lander__stats-row">
+              <span><span className="lander__stats-num">{nf.format(stats.speeches)}</span> speeches</span>
+              <span className="lander__stats-sep" aria-hidden="true">·</span>
+              <span><span className="lander__stats-num">{nf.format(stats.bills)}</span> bills</span>
+              <span className="lander__stats-sep" aria-hidden="true">·</span>
+              <span><span className="lander__stats-num">{nf.format(stats.politicians)}</span> politicians</span>
+              <span className="lander__stats-sep" aria-hidden="true">·</span>
+              <span><span className="lander__stats-num">{stats.liveJurisdictions}</span> jurisdictions live</span>
+            </div>
+            {stats.lastUpdate && (
+              <div className="lander__stats-fresh">Updated {relativeTime(stats.lastUpdate)}</div>
+            )}
+          </div>
+        )}
+
         <p className="lander__tagline">
-          Canada's premier source for political data — where their sites are hosted, where they're posting, and what they're saying on the record.
+          Search every speech, every bill, and every vote across Canada's federal and provincial legislatures.
+        </p>
+        <p className="lander__stance">
+          Open data, public record &mdash; built to make democracy legible.
         </p>
 
-        <form className="lander__find" onSubmit={submitPostal}>
-          <label className="lander__find-label" htmlFor="lander-postal">
-            <span aria-hidden="true">📍</span> Find your data
-          </label>
-          <div className="lander__find-row">
-            <input
-              id="lander-postal"
-              type="text"
-              placeholder="Postal code (K1A 0A6)"
-              value={postal}
-              onChange={e => { setPostal(e.target.value); setPostalError(null); }}
-              aria-label="Canadian postal code"
-              aria-invalid={postalError ? true : undefined}
-              aria-describedby={postalError ? "lander-postal-error" : undefined}
-              maxLength={7}
-            />
-            <button type="submit" className="lander__btn lander__btn--primary">
-              Find →
-            </button>
-          </div>
-          {postalError && (
-            <div id="lander-postal-error" className="lander__find-error" role="alert">
-              {postalError}
-            </div>
-          )}
-          <p className="lander__find-hint">
-            We'll look up your MP, MLA, and municipal councillors and show where their sites are hosted, what they are saying, and their socials.
-          </p>
-        </form>
-
-        <form className="lander__find" onSubmit={submitHansard}>
-          <label className="lander__find-label" htmlFor="lander-hansard">
-            <span aria-hidden="true">🔎</span> Search{" "}
-            <abbr title="The official transcript of what was said in Parliament">Hansard</abbr>
-          </label>
-          <div className="lander__find-row">
-            <input
-              id="lander-hansard"
-              type="search"
-              placeholder='Search speeches (e.g. "carbon pricing")'
-              value={hansard}
-              onChange={e => setHansard(e.target.value)}
-              aria-label="Search Canadian parliamentary speeches"
-            />
-            <button type="submit" className="lander__btn lander__btn--primary">
-              Search →
-            </button>
-          </div>
-          <p className="lander__find-hint">
-            Search what every federal politician has said on the record.
-          </p>
-        </form>
-
-        <div className="lander__cta">
-          <Link to="/map" className="lander__btn">
-            Explore the full map →
-          </Link>
-          <Link to="/politicians" className="lander__btn">
-            Browse politicians →
-          </Link>
-        </div>
-      </div>
-
-      {betaOpen && (
-        <div
-          className="lander__beta-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="lander-beta-heading"
-          onClick={() => setBetaOpen(false)}
-        >
-          <div
-            className="lander__beta-modal-card"
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="lander__beta-modal-close"
-              onClick={() => setBetaOpen(false)}
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <h2 id="lander-beta-heading" className="lander__beta-modal-title">
-              Canadian Political Data is in Beta
+        <div className="lander__forms">
+          <form className="lander__form-card lander__form-card--hero" onSubmit={submitHansard}>
+            <h2 className="lander__form-heading">
+              <span aria-hidden="true">🔎</span> Search the record
             </h2>
-            <div className="lander__beta-modal-body">
-              <p>
-                Canadian Political Data is being actively developed as an open
-                project. You can follow the development path at{" "}
-                <a href={REPO_URL} target="_blank" rel="noopener noreferrer">
-                  the repo
-                </a>.
-              </p>
-              <p>
-                While we're in Beta, the site will occasionally be down, and
-                features will rapidly develop.
-              </p>
-            </div>
-            <div className="lander__beta-modal-actions">
-              <a
-                href={REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="lander__btn lander__btn--primary"
-              >
-                View on GitHub →
-              </a>
-              <button
-                type="button"
-                className="lander__btn"
-                onClick={() => setBetaOpen(false)}
-              >
-                Got it
+            <div className="lander__find-row">
+              <input
+                id="lander-hansard"
+                type="search"
+                placeholder='Try "carbon pricing" or "housing crisis"'
+                value={hansard}
+                onChange={e => setHansard(e.target.value)}
+                aria-label="Search Canadian parliamentary speeches"
+              />
+              <button type="submit" className="lander__btn lander__btn--primary">
+                Search →
               </button>
             </div>
-          </div>
+            <p className="lander__find-hint">{searchHint}</p>
+          </form>
+
+          <form className="lander__form-card" onSubmit={submitPostal}>
+            <h2 className="lander__form-heading">
+              <span aria-hidden="true">📍</span> Find your reps
+            </h2>
+            <div className="lander__find-row">
+              <input
+                id="lander-postal"
+                type="text"
+                placeholder="Postal code (K1A 0A6)"
+                value={postal}
+                onChange={e => { setPostal(e.target.value); setPostalError(null); }}
+                aria-label="Canadian postal code"
+                aria-invalid={postalError ? true : undefined}
+                aria-describedby={postalError ? "lander-postal-error" : undefined}
+                maxLength={7}
+              />
+              <button type="submit" className="lander__btn">
+                Find →
+              </button>
+            </div>
+            {postalError && (
+              <div id="lander-postal-error" className="lander__find-error" role="alert">
+                {postalError}
+              </div>
+            )}
+            <p className="lander__find-hint">
+              Look up your MP, MLA, and municipal councillors.
+            </p>
+          </form>
         </div>
-      )}
+      </div>
     </div>
   );
 }
