@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { userFetch } from "../api";
 
 export interface SpeechSearchSocial {
   platform: string;
@@ -35,6 +36,7 @@ export interface SpeechSearchItem {
   politician: SpeechSearchPolitician | null;
   speech: {
     speaker_name_raw: string;
+    speaker_role: string | null;
     source_url: string | null;
     source_anchor: string | null;
     session: SpeechSearchSession | null;
@@ -104,6 +106,11 @@ export interface SpeechSearchFilter {
   party?: string;
   from?: string;
   to?: string;
+  /** Drop speeches uttered in a presiding role (Speaker, Chair, Président)
+   *  from results. The chair-speech corpus is dominated by procedural
+   *  filler ("I declare the motion lost"), which floods semantic search
+   *  for unrelated phrases. */
+  exclude_presiding?: boolean;
   page?: number;
   limit?: number;
   group_by?: "timeline" | "politician";
@@ -146,6 +153,7 @@ export function buildSpeechSearchQuery(f: SpeechSearchFilter): string {
   if (f.party) p.set("party", f.party);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
+  if (f.exclude_presiding) p.set("exclude_presiding", "true");
   p.set("page", String(f.page ?? 1));
   p.set("limit", String(f.limit ?? 20));
   if (f.group_by && f.group_by !== "timeline") p.set("group_by", f.group_by);
@@ -200,6 +208,43 @@ export function useSpeechSearch(filter: SpeechSearchFilter, enabled = true): Asy
   }, [qs, enabled]);
 
   return state;
+}
+
+/** Fetch every chunk a single politician has matching the parent search's
+ *  query + filters. Backs the "Show all N matching quotes" expand
+ *  affordance on /search's politician view. Hits the gated
+ *  /search/politician-quotes endpoint, which requires a signed-in
+ *  session — anon callers get UserUnauthorizedError before this resolves.
+ *
+ *  Returns the same TimelineSearchResponse shape as a regular timeline
+ *  search so the caller can append items to its existing chunk list
+ *  without an adapter. */
+export async function fetchPoliticianQuotes(
+  politicianId: string,
+  parentFilter: SpeechSearchFilter,
+  page: number,
+  options: { limit?: number; minSimilarity?: number } = {},
+): Promise<TimelineSearchResponse> {
+  const { limit = 50, minSimilarity } = options;
+  const p = new URLSearchParams();
+  p.set("politician_id", politicianId);
+  if (parentFilter.q) p.set("q", parentFilter.q);
+  if (parentFilter.lang && parentFilter.lang !== "any") p.set("lang", parentFilter.lang);
+  if (parentFilter.level) p.set("level", parentFilter.level);
+  if (parentFilter.province_territory) p.set("province_territory", parentFilter.province_territory);
+  if (parentFilter.party) p.set("party", parentFilter.party);
+  if (parentFilter.from) p.set("from", parentFilter.from);
+  if (parentFilter.to) p.set("to", parentFilter.to);
+  if (parentFilter.exclude_presiding) p.set("exclude_presiding", "true");
+  // Server clamps to >= 0.45; sending a value above that tightens the
+  // floor for this request so paging reshuffles to match. Omitted when
+  // the UI is at "All matches" (default 0), to keep URLs minimal.
+  if (minSimilarity != null && minSimilarity > 0) {
+    p.set("min_similarity", String(minSimilarity));
+  }
+  p.set("page", String(page));
+  p.set("limit", String(limit));
+  return userFetch<TimelineSearchResponse>(`/search/politician-quotes?${p.toString()}`);
 }
 
 export function useSpeechSearchMeta(): AsyncState<SpeechSearchMeta> {

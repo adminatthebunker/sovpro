@@ -74,7 +74,7 @@ Before building any new ingestion pipeline, check in order:
 
 **Before starting any new provincial pipeline, pause and ask the user for their research pass.** No probing, no migration, no code until the user has either shared their findings or explicitly said "probe yourself."
 
-As of 2026-04-23 the rule still applies to the three unbuilt bills pipelines (**SK, PE, YT**) and to every *provincial* Hansard pipeline that isn't yet live. Live provincial Hansards: AB, BC, QC, MB (now full 1999-present), NS, NB, NL. Remaining Hansard builds gated on research-handoff: ON, NT, NU, SK, PE, YT. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
+As of 2026-04-24 the rule still applies to the three unbuilt bills pipelines (**SK, PE, YT**) and to every *provincial* Hansard pipeline that isn't yet live. Live provincial Hansards: AB, BC, QC, MB (now full 1999-present), NS, NB, NL, ON (shipped 2026-04-24 via name-based resolution + parens-name extraction). Remaining Hansard builds gated on research-handoff: NT, NU, SK, PE, YT. Federal Hansard ingestion **has shipped** — 1.08 M federal speeches are live — so research-handoff is no longer gating federal work.
 
 Rationale: multiple documented cases where user-led research beat agent-driven probing (ON Drupal JSON, BC LIMS JSON). See `docs/research/overview.md` (and the per-jurisdiction dossier under `docs/research/<slug>.md`) plus `feedback_research_handoff.md` for the full protocol.
 
@@ -112,9 +112,11 @@ If no user has `is_admin = true` the admin surface is simply unreachable (403 fo
 
 Schedules table (`scanner_schedules`) is expanded by the same worker — enabled rows whose `next_run_at <= now()` enqueue a new job, then `next_run_at` is advanced via `croniter`. Bash `scripts/scanner-cron.sh` schedules coexist for v1; migrating them into the DB is a deferred task.
 
+**Daily-ingest schedule** (live as of 2026-04-24, ~39 rows; bills + Hansard + speaker resolvers across federal + 10 provinces/territories): staggered one-jurisdiction-per-UTC-hour with intra-hour offsets for each chain. ON gained Hansard rows on 2026-04-24 (3 new rows in the 18:00 slot), packing all 6 ON commands inside the same hour. Defined idempotently by `scripts/seed-daily-ingest-schedules.sql` — re-run the script to update; `created_by='daily-ingest-rollout'` scopes the seed's row ownership. Pre-existing NS rows (12:00-13:30 UTC) are intentionally untouched. Auto-current-session resolution: `services/scanner/src/legislative/current_session.py` reads the latest `(parliament_number, session_number)` from `legislative_sessions` for each jurisdiction, so schedule rows pass empty `args={}` and don't break at prorogation. Scheduled bills ingest always precedes Hansard in each jurisdiction's chain so the legislative_sessions row is fresh before Hansard tries to attribute speeches.
+
 ### Curated command whitelist
 
-The admin UI exposes a subset of the 115 scanner commands. Catalog lives in **two places that must stay in sync**:
+The admin UI exposes a subset of the 123 scanner commands. Catalog lives in **two places that must stay in sync**:
 
 - `services/scanner/src/jobs_catalog.py` (authoritative for the worker, maps `key` → `{cli, args}`)
 - The `COMMAND_CATALOG` constant near the top of `services/api/src/routes/admin.ts` (served to the frontend form generator verbatim)
@@ -242,21 +244,36 @@ Corrections that reach `status='applied'` grant `CORRECTION_REWARD_CREDITS` (def
 
 ### Rate-limit tier
 
-`users.rate_limit_tier ∈ ('default','extended','unlimited','suspended')`. `requireUser` re-reads this every request (same DB-read discipline as `requireAdmin`) and 403s `suspended` users immediately. Users can submit an increase request via `POST /me/rate-limit-requests` (one-pending-per-user guard at the app layer); admins resolve in the `/admin/users` queue. Tier enforcement for the non-suspended bands (per-report, per-credit rates) is phase 1b — the DB column is in place but only `suspended` is currently enforced.
+`users.rate_limit_tier ∈ ('default','extended','unlimited','suspended')`. `requireUser` re-reads this every request (same DB-read discipline as `requireAdmin`) and 403s `suspended` users immediately. Users can submit an increase request via `POST /me/rate-limit-requests` (one-pending-per-user guard at the app layer); admins resolve in the `/admin/users` queue. Per-day report caps (`REPORTS_RATE_LIMIT_DEFAULT_PER_DAY` / `REPORTS_RATE_LIMIT_EXTENDED_PER_DAY`) are enforced inside `POST /reports`; `unlimited` tier bypasses the cap entirely.
+
+### Phase 1b: report generation
+
+The first credit *spender*. A queued `report_jobs` row debits the user's spendable balance via `holdCredits` (a -delta `held` ledger row); the `reports-worker` Python service polls the table, runs an LLM map-reduce over **every** matching `speech_chunk` for the (politician, query) pair via OpenRouter, persists sanitised HTML on the row, and either `commitHold`s on success (the row flips `held → committed`) or `releaseHold`s on failure (`held → refunded`, balance restored). The user is emailed a "your report is ready" link; the viewer page at `/reports/:id` renders the persisted HTML inside a print-clean standalone layout.
+
+Stale-claim re-queue: a job stuck in `running` past 15 minutes is considered abandoned by a crashed worker and re-queued with the **same** hold still in place. Idempotent state-flip semantics on `commitHold`/`releaseHold` mean re-runs cannot double-debit.
+
+HTML sanitisation discipline: the reduce-step model emits HTML with `CHUNK:<chunk_id>` href tokens. The worker rewrites these to real `/speeches/<speech_id>#chunk-<chunk_id>` paths against the chunk metadata it captured at fetch time, then runs the result through `bleach` (Python) — allowlist of `p / h2 / h3 / ul / ol / li / blockquote / em / strong / a[href]` only, with `a[href]` constrained to internal `/speeches/...` paths. The viewer can `dangerouslySetInnerHTML` because the input is controlled at persist time, not because user content is implicitly safe.
+
+Refund discipline: a refund **before** the worker commits is a state-flip on the `held` row (`releaseHold` path). A refund **after** commit cannot un-commit the row; the admin UI inserts a fresh compensating `admin_credit` row matching the original cost. `POST /admin/reports/:id/refund` picks the right path based on the current ledger state.
 
 ### Files involved
 
 | Concern | Path |
 |---|---|
-| Migration | `db/migrations/0033_billing_rail.sql` |
+| Migration (phase 1a) | `db/migrations/0033_billing_rail.sql` |
+| Migration (phase 1b) | `db/migrations/0035_report_jobs.sql` |
 | Stripe SDK wrapper | `services/api/src/lib/stripe.ts` |
 | Credit ledger helpers | `services/api/src/lib/credits.ts` |
-| User routes | `services/api/src/routes/credits.ts`, `services/api/src/routes/rate-limit-requests.ts` |
+| Shared OpenRouter client | `services/api/src/lib/openrouter.ts` |
+| Report cost / map-reduce / sanitise | `services/api/src/lib/reports.ts` |
+| User routes | `services/api/src/routes/credits.ts`, `services/api/src/routes/rate-limit-requests.ts`, `services/api/src/routes/reports.ts` |
 | Webhook | `services/api/src/routes/stripe-webhook.ts` |
 | Admin additions | `services/api/src/routes/admin.ts` (appended) |
 | Suspended enforcement | `services/api/src/middleware/user-auth.ts` (`requireUser`) |
-| Frontend user pages | `services/frontend/src/pages/CreditsPage.tsx`, balance chip in `AccountPage.tsx` |
-| Frontend admin page | `services/frontend/src/pages/admin/AdminUsers.tsx` |
+| Reports worker (Python) | `services/scanner/src/reports_worker.py` |
+| Frontend user pages | `services/frontend/src/pages/CreditsPage.tsx`, `services/frontend/src/pages/ReportsListPage.tsx`, `services/frontend/src/pages/ReportViewerPage.tsx`, balance chip in `AccountPage.tsx` |
+| Frontend report button + modal | `services/frontend/src/components/AIFullReportButton.tsx`, `services/frontend/src/components/FullReportConfirmModal.tsx` |
+| Frontend admin pages | `services/frontend/src/pages/admin/AdminUsers.tsx`, `services/frontend/src/pages/admin/AdminReports.tsx` |
 
 ### What not to do
 
@@ -268,6 +285,10 @@ Corrections that reach `status='applied'` grant `CORRECTION_REWARD_CREDITS` (def
 - **Do not build a second Stripe integration.** Subscriptions (dev-API plan) reuse `services/api/src/lib/stripe.ts` + `stripe_webhook_events`. One Stripe customer per user, one webhook endpoint, one client wrapper.
 - **Do not bypass the "one pending rate-limit request per user" guard** without adding a DB-level partial unique index. App-level check is the minimum.
 - **Do not send the correction-reward email on idempotent re-applies.** The grant helper returns `alreadyGranted: true` when the ledger row already exists; the admin PATCH handler only dispatches the email on a fresh insert, otherwise a user gets N emails for N applied→triaged→applied cycles.
+- **Do not place the report hold outside the `report_jobs` insert transaction.** The hold's reference_id is the job id; both rows must commit together. If the hold insert fails (insufficient balance, unique-violation on duplicate enqueue), the job row must roll back too.
+- **Do not skip server-side HTML sanitisation on the report's stored html.** `bleach.clean` runs in the worker before persistence; the viewer renders via `dangerouslySetInnerHTML` and trusts that pass-through. Skipping the sanitiser would be an XSS vector against any future authenticated viewer (operator looking at someone else's report on /admin/reports, etc.).
+- **Do not duplicate the OpenRouter error mapping** in `lib/reports.ts`. Both contradictions and reports route through `lib/openrouter.ts:callJsonObjectModel`. If you find yourself copying the 401/429/timeout switch, you've drifted from the shared client.
+- **Do not let the worker call the api over HTTP.** The worker speaks straight to Postgres for chunk selection, ledger flips, and `report_jobs` updates. The api is the user-facing surface; the worker is its own service.
 
 ## Blog (MDX-in-repo)
 
@@ -363,6 +384,7 @@ docker exec -i sw-db psql -U sw -d sovereignwatch -v ON_ERROR_STOP=1 < db/migrat
 - `0032_unique_mb_assembly_slug.sql` — unique constraint on `mb_assembly_slug`.
 - `0033_billing_rail.sql` — billing rail phase 1a: `users.stripe_customer_id` + `users.rate_limit_tier`, `stripe_webhook_events`, `credit_ledger`, `credit_purchases`, `rate_limit_increase_requests`.
 - `0034_correction_reward_kind.sql` — adds `'correction_reward'` to the `credit_ledger.kind` CHECK constraint; enables the correction-reward flow.
+- `0035_report_jobs.sql` — premium-reports phase 1b: `report_jobs` (queue + output blob) + `report_bug_reports` (user-flagged report quality issues).
 
 **Intentionally unapplied:** `0018_votes.sql` — waits on real NT/NU consensus-gov't data before landing. See `docs/plans/semantic-layer.md` for the rationale per file.
 
@@ -381,7 +403,7 @@ sovpro doctor             # sanity-check all services
 docker compose run --rm scanner python -m src <subcommand>
 ```
 
-The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **117 `@cli.command` decorators** as of 2026-04-23. Additions since 2026-04-22: `ingest-ab-former-mlas`, `resolve-ab-speakers`, `ingest-mb-former-mlas`, `resolve-mb-speakers-dated` — the historical-roster + date-windowed-resolver pattern that unlocked pre-current-session Hansard attribution. Grep there for the full list.
+The Click entrypoint is `python -m src` (module is `src`, not `scanner` — the compose mount is `./services/scanner/src:/app/src`). Every Click subcommand is in `services/scanner/src/__main__.py` — **123 `@cli.command` decorators** as of 2026-04-24. Recent additions: `ingest-on-hansard` + `resolve-on-speakers` (ON Hansard via ola.org JSON node, name-based resolution with parens-name extraction); `ingest-federal-bills` (closes the federal bills_status='partial' gap; openparliament.ca JSON, FK via `openparliament_slug`); `ingest-ab-former-mlas`, `resolve-ab-speakers`, `ingest-mb-former-mlas`, `resolve-mb-speakers-dated` (historical-roster + date-windowed-resolver pattern, 2026-04-22). Grep there for the full list.
 
 ## Development workflow
 

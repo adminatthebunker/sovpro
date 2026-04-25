@@ -55,3 +55,13 @@
 - [ ] Schema drafted
 - [ ] Ingestion prototyped — **deferred until browser automation or alternative data source viable**
 - [ ] Production ingestion live
+
+## Research-handoff items (Bills + Hansard)
+
+Per [overview.md](./overview.md) rule #5, YT pipelines are gated on user research. YT is paired with PE in the README's "WAF-blocked" tier. Specific questions to answer before any code is written:
+
+- **Civic-transparency allowlist:** Has the user contacted the Yukon Legislative Assembly (clerk@yla.gov.yk.ca or via the assembly's general contact) about a Cloudflare Bot Management exception for civic-transparency use? CF-mitigated headers are the symptom; the operator can lift the rule if they understand the use case.
+- **yukon.ca legislation portal as bill-text fallback:** The dossier flags `yukon.ca/en/your-government/legislation/order-legislative-documents` as an alternative for bill *text* (bypasses the Assembly site). Has the user verified that portal is *not* also Cloudflare-protected, and what fields it exposes vs. what the Assembly site does? Even text-only coverage with no procedural data lets us at least populate `bills.title` + `bills.raw_html`.
+- **opencivicdata `ca_yt`:** The dossier notes this scraper "may exist but is likely affected by Cloudflare." Has anyone confirmed this directly? If their scraper has solved the challenge-cookie problem, mining the approach is faster than building from scratch.
+- **Browser-automation appetite:** Same question as PE — one Playwright module covering both. If the user wants a lightweight one-jurisdiction trial first, YT (21 MLAs, smaller surface area) is a good test bed.
+- **Politician slug column:** When any source unblocks, what's the canonical per-MLA ID? Yukon Legislative Assembly publishes member pages — once reachable, harvest the slug and add `politicians.yt_assembly_slug` per CLAUDE.md convention #1 before building bills/Hansard pipelines.

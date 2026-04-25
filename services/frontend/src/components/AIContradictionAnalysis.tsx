@@ -3,11 +3,14 @@ import {
   userFetch,
   UserUnauthorizedError,
   UserAuthDisabledError,
+  type ReportsMeta,
 } from "../api";
 import { useUserAuth } from "../hooks/useUserAuth";
 import type { GroupedSearchChunk } from "../hooks/useSpeechSearch";
 import type { AIAnalyzeMeta } from "../hooks/useAIAnalyzeMeta";
+import { useFullReportSubmit } from "../hooks/useFullReportSubmit";
 import { AIConsentModal } from "./AIConsentModal";
+import { FullReportConfirmModal } from "./FullReportConfirmModal";
 
 interface AnalyzePair {
   a_chunk_id: string;
@@ -29,6 +32,7 @@ interface Props {
   query: string;
   chunks: GroupedSearchChunk[];
   meta: AIAnalyzeMeta | null;
+  reportsMeta?: ReportsMeta | null;
 }
 
 const CONSENT_KEY = "cpd_ai_analyze_consent_v1";
@@ -104,6 +108,7 @@ export function AIContradictionAnalysis({
   query,
   chunks,
   meta,
+  reportsMeta,
 }: Props) {
   const { user } = useUserAuth();
 
@@ -111,6 +116,8 @@ export function AIContradictionAnalysis({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
+
+  const fullReport = useFullReportSubmit(politicianId, query);
 
   const chunkById = useMemo(() => {
     const m = new Map<string, GroupedSearchChunk>();
@@ -286,6 +293,48 @@ export function AIContradictionAnalysis({
             This is a model-generated suggestion, not a verdict. Read the
             source quotes before drawing conclusions.
           </footer>
+
+          {reportsMeta?.enabled && (
+            <aside className="ai-analysis__upsell" aria-label="Premium upgrade">
+              <div className="ai-analysis__upsell-text">
+                <strong>Want a deeper analysis?</strong>
+                <p>
+                  This preview compared the {chunks.length} quotes shown above. A
+                  <strong> full report</strong> reads <em>every</em> quote we
+                  have from {politicianName} matching <em>"{query}"</em> and
+                  synthesises a navigable brief, with every claim linked back to
+                  its source.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ai-analysis__upsell-cta"
+                onClick={fullReport.openConfirm}
+                disabled={
+                  fullReport.estimating ||
+                  !reportsMeta?.enabled ||
+                  !user ||
+                  !query.trim()
+                }
+                title={
+                  !user
+                    ? "Sign in to generate a full report."
+                    : !query.trim()
+                    ? "Enter a search topic first."
+                    : undefined
+                }
+              >
+                {fullReport.estimating
+                  ? "Estimating…"
+                  : "Generate full report →"}
+              </button>
+              {fullReport.error && !fullReport.estimate && (
+                <p className="ai-analysis__upsell-error" role="alert">
+                  {fullReport.error}
+                </p>
+              )}
+            </aside>
+          )}
         </div>
       )}
 
@@ -294,6 +343,17 @@ export function AIContradictionAnalysis({
           model={meta.model}
           onContinue={handleContinue}
           onCancel={() => setModalOpen(false)}
+        />
+      )}
+
+      {fullReport.estimate && (
+        <FullReportConfirmModal
+          estimate={fullReport.estimate}
+          model={reportsMeta?.model ?? null}
+          loading={fullReport.submitting}
+          error={fullReport.error}
+          onConfirm={fullReport.submit}
+          onCancel={fullReport.close}
         />
       )}
     </section>

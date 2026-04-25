@@ -24,7 +24,7 @@ export interface SpeechFiltersProps {
   /** Hide filters that don't make sense in a particular context (e.g.
    *  politician-pinned search hides the level/province/party pickers
    *  because they're determined by the politician). */
-  hide?: Array<"lang" | "level" | "province" | "party" | "from" | "to">;
+  hide?: Array<"lang" | "level" | "province" | "party" | "from" | "to" | "exclude_presiding">;
 }
 
 export function SpeechFilters({ value, onChange, hide = [] }: SpeechFiltersProps) {
@@ -116,6 +116,20 @@ export function SpeechFilters({ value, onChange, hide = [] }: SpeechFiltersProps
             value={value.to ?? ""}
             onChange={(e) => onChange({ to: e.target.value || undefined, page: 1 })}
           />
+        </label>
+      )}
+
+      {shows("exclude_presiding") && (
+        <label
+          className="speech-filters__item speech-filters__item--checkbox"
+          title="Hide procedural chair speech (Speaker, Chair, Président) so substantive turns surface."
+        >
+          <input
+            type="checkbox"
+            checked={value.exclude_presiding === true}
+            onChange={(e) => onChange({ exclude_presiding: e.target.checked || undefined, page: 1 })}
+          />
+          <span className="speech-filters__label">Hide chair speech</span>
         </label>
       )}
     </div>

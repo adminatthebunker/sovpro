@@ -68,11 +68,15 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
     # from 2000-02-17). Source: Wikipedia "Speaker of the Legislative
     # Assembly of Alberta" + assembly.ab.ca.
     "AB": [
-        SpeakerTerm("Ken Kowalski",    "Ken",    "Kowalski",  date(1997, 4, 14), date(2012, 5, 23)),
-        SpeakerTerm("Gene Zwozdesky",  "Gene",   "Zwozdesky", date(2012, 5, 23), date(2015, 6, 11)),
-        SpeakerTerm("Bob Wanner",      "Bob",    "Wanner",    date(2015, 6, 11), date(2019, 5, 20)),
-        SpeakerTerm("Nathan Cooper",   "Nathan", "Cooper",    date(2019, 5, 21), date(2025, 5, 13)),
-        SpeakerTerm("Ric McIver",      "Ric",    "McIver",    date(2025, 5, 13), None),
+        # First-names below match the assembly.ab.ca member-info pages
+        # (legal names, not colloquial). The `_find_politician_id`
+        # fallback handles legacy rows with colloquial first names; the
+        # legal form is what `ingest-ab-former-mlas` writes to the DB.
+        SpeakerTerm("Kenneth R. Kowalski", "Kenneth", "Kowalski",  date(1997, 4, 14), date(2012, 5, 23)),
+        SpeakerTerm("Gene Zwozdesky",      "Gene",    "Zwozdesky", date(2012, 5, 23), date(2015, 6, 11)),
+        SpeakerTerm("Robert E. Wanner",    "Robert",  "Wanner",    date(2015, 6, 11), date(2019, 5, 20)),
+        SpeakerTerm("Nathan Cooper",       "Nathan",  "Cooper",    date(2019, 5, 21), date(2025, 5, 13)),
+        SpeakerTerm("Ric McIver",          "Ric",     "McIver",    date(2025, 5, 13), None),
     ],
     # British Columbia: Speakers #36 through current (covers Hansard
     # corpus from 2008-02-12). Source: Wikipedia "Speaker of the
@@ -175,6 +179,16 @@ SPEAKER_ROSTER: dict[str, list[SpeakerTerm]] = {
         SpeakerTerm("Derek Bennett",    "Derek",    "Bennett",  date(2021,  4, 15), date(2025, 11,  3)),
         SpeakerTerm("Paul Lane",        "Paul",     "Lane",     date(2025, 11,  3), None),
     ],
+    # Ontario: parliament 44 onwards. Modern ON Hansard markup includes
+    # the actual Speaker's name inline as parens — `<strong>The Speaker
+    # (Hon. Donna Skelly):</strong>` — so the on_hansard parser resolves
+    # most presiding-officer turns directly via the parens-name path.
+    # This roster only matters for the rarer bare "The Speaker:" rows.
+    # Initial scope: parliament 44 only. Backfill earlier Speakers as
+    # historical-Hansard ingest expands.
+    "ON": [
+        SpeakerTerm("Donna Skelly",     "Donna",    "Skelly",   date(2025, 4, 15), None),
+    ],
 }
 
 
@@ -186,7 +200,14 @@ SOURCE_TAG = "presiding_officer_seed"
 async def _find_politician_id(
     db: Database, *, province: str, first_name: str, last_name: str,
 ) -> Optional[str]:
-    """Case-insensitive lookup by (first_name, last_name) within a province."""
+    """Case-insensitive lookup by (first_name, last_name) within a province.
+
+    Falls back to last-name-only when the exact match misses *and* the
+    last-name match is unique within the province. This handles the
+    colloquial-vs-legal first-name drift that bit AB pre-2026-04-23
+    (roster says "Ken Kowalski"; DB has "Kenneth R. Kowalski"). Logs
+    fallback hits so first-name drift surfaces on review.
+    """
     row = await db.fetchrow(
         """
         SELECT id::text AS id
@@ -199,7 +220,31 @@ async def _find_politician_id(
         """,
         province, first_name, last_name,
     )
-    return row["id"] if row else None
+    if row is not None:
+        return row["id"]
+
+    # Last-name-only fallback: accept only when exactly one provincial
+    # politician has this surname. Anything ambiguous → return None so
+    # the caller falls through to seeding a stub (existing behaviour).
+    fallback_rows = await db.fetch(
+        """
+        SELECT id::text AS id, name, first_name, last_name
+          FROM politicians
+         WHERE level = 'provincial'
+           AND province_territory = $1
+           AND lower(last_name) = lower($2)
+        """,
+        province, last_name,
+    )
+    if len(fallback_rows) == 1:
+        log.warning(
+            "presiding_resolver: first-name fallback hit for "
+            "province=%s roster=(%s, %s) → DB=(%s) [%s]",
+            province, first_name, last_name,
+            fallback_rows[0]["name"], fallback_rows[0]["id"],
+        )
+        return fallback_rows[0]["id"]
+    return None
 
 
 async def _insert_minimal_politician(
@@ -336,6 +381,12 @@ _SPEAKER_ROLE_BY_PROVINCE: dict[str, tuple[str, ...]] = {
     # "SPEAKER:" (modern Word-exported era) and "MR. SPEAKER:" (legacy
     # FrontPage era) to the canonical "The Speaker" role.
     "NL": ("The Speaker",),
+    # Ontario: on_hansard parser normalises "The Speaker", "Madam
+    # Speaker", "Mr. Speaker", and "Mister Speaker" to "The Speaker".
+    # Acting / Deputy Speaker rows (Tier 2) are intentionally excluded
+    # — they're rare in modern transcripts and the parens-name path
+    # resolves them directly when the markup includes the name inline.
+    "ON": ("The Speaker",),
 }
 
 # Back-compat default for any province without an explicit mapping.

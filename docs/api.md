@@ -280,6 +280,114 @@ Query: `?status=pending|approved|denied&limit=<n>`. Queue of user-submitted incr
 ### `PATCH /admin/rate-limit-requests/:id`
 Body: `{ "status": "approved"|"denied", "admin_response": "<message to user>", "apply_tier": "extended"|"unlimited"? }`. When approved with `apply_tier`, the user's `rate_limit_tier` is bumped atomically.
 
+## Premium reports (phase 1b)
+
+All `/reports/*` and `/me/reports/*` routes (other than the public `meta`) require a signed-in session; mutating routes additionally require the `sw_csrf` header.
+
+### `GET /reports/meta`
+Public. Reports whether the feature is enabled (both `OPENROUTER_API_KEY` and `OPENROUTER_REPORT_MODEL` set), the configured model id, and the cost-formula knobs the frontend uses to render the confirm modal:
+```json
+{
+  "enabled": true,
+  "model": "anthropic/claude-sonnet-4.6",
+  "bucket_size": 10,
+  "max_chunks": 300,
+  "base_cost_credits": 5,
+  "per_chunk_bucket_cost": 1
+}
+```
+
+### `POST /reports/estimate`
+Body: `{ "politician_id": "uuid", "query": "carbon tax" }`. Returns the per-server-side cost calculation:
+```json
+{
+  "politician": { "id": "uuid", "name": "Ziad Aboultaif" },
+  "query": "carbon tax",
+  "estimated_chunks": 80,
+  "candidate_chunks": 80,
+  "estimated_credits": 13,
+  "capped": false,
+  "balance": 50,
+  "sufficient": true
+}
+```
+Pure read; no hold placed. `capped: true` indicates `candidate_chunks > REPORT_MAX_CHUNKS`.
+
+### `POST /reports`
+Per-route rate limit: 5/min. Re-runs the estimate server-side, checks the tier daily cap, then atomically inserts a `report_jobs` row + a `holdCredits` ledger row inside a single transaction. Returns:
+```json
+{ "id": "uuid", "estimated_credits": 13, "balance_after": 37 }
+```
+Error responses: `402` for insufficient credits (`{ balance, required }`); `429` if the tier daily cap is exceeded (`{ tier, limit, count }`); `400` if no candidate quotes match.
+
+### `GET /me/reports`
+Newest-50 list of caller's reports.
+```json
+{
+  "reports": [
+    {
+      "id": "uuid",
+      "politician_id": "uuid",
+      "politician_name": "Ziad Aboultaif",
+      "politician_slug": "ziad-aboultaif",
+      "query": "carbon tax",
+      "status": "succeeded",
+      "summary": "…",
+      "estimated_credits": 13,
+      "chunk_count_actual": 78,
+      "created_at": "...",
+      "finished_at": "...",
+      "error": null
+    }
+  ]
+}
+```
+
+### `GET /me/reports/:id`
+Ownership-gated viewer payload. **Returns 404 (not 403) for non-owners** to avoid id-enumeration.
+```json
+{
+  "report": {
+    "id": "uuid",
+    "politician_id": "uuid",
+    "politician_name": "...",
+    "politician_party": "Conservative",
+    "query": "carbon tax",
+    "status": "succeeded",
+    "html": "<p>…</p>",
+    "summary": "…",
+    "chunk_count_actual": 78,
+    "estimated_credits": 13,
+    "model_used": "anthropic/claude-sonnet-4.6",
+    "error": null,
+    "created_at": "...",
+    "finished_at": "..."
+  }
+}
+```
+
+### `POST /me/reports/:id/bug-report`
+Caller flags a quality issue with their own report. Body: `{ "message": "<10..2000 chars>" }`. Returns `{ id }` on 201. Does not auto-refund — admins triage at `/admin/bug-reports`.
+
+## Admin — reports (phase 1b additions)
+
+### `GET /admin/reports`
+Query: `?status=queued|running|succeeded|failed|refunded&q=<email-or-query-substring>&limit=1..200` (default 50). Operator triage view with token counts and ledger linkage.
+
+### `GET /admin/reports/:id`
+Full row including raw `html`, `error`, `tokens_in/out`, `hold_ledger_id`.
+
+### `POST /admin/reports/:id/refund`
+Body: `{ "reason": "<3..500 chars>" }`. Idempotent. Two modes:
+- If the hold is still `held` (job is queued / running / failed but worker hasn't committed): flips it to `refunded` (`releaseHold` path). Response `{ refunded: true, mode: "released_hold", credits: N }`.
+- If the hold has already `committed` (job succeeded): inserts a fresh compensating `admin_credit` row matching the original cost. Response `{ refunded: true, mode: "compensating_admin_credit", credits: N }`.
+
+### `GET /admin/bug-reports`
+Query: `?status=open|reviewing|resolved|dismissed&limit=1..200`.
+
+### `PATCH /admin/bug-reports/:id`
+Body: `{ "status": "<status>", "admin_notes"?: "<= 2000 chars or null>" }`. `resolved_at` is auto-set to `now()` on transition to `resolved` / `dismissed`.
+
 ## Health
 
 ### `GET /health`

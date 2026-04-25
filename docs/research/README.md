@@ -17,7 +17,7 @@ For the cross-cutting context — schema migrations, scanner-module conventions,
 - [Alberta](./alberta.md) — ✅ **Bills live** via Assembly Dashboard server-rendered HTML. Committees pre-existing. Hansard PDF-only.
 - [Saskatchewan](./saskatchewan.md) — ⏸️ **Deferred** (PDF-only progress-of-bills). Hansard well-indexed.
 - [Manitoba](./manitoba.md) — ⏸️ **Deferred** (PDF-only billstatus). Stage timeline locked behind `billstatus.pdf`.
-- [Ontario](./ontario.md) — ✅ **Bills live** via HTML scrape; Drupal `?_format=json` pipeline available as later upgrade.
+- [Ontario](./ontario.md) — ✅ **Bills + Hansard live** via HTML scrape (bills) and `?_format=json` JSON node (Hansard). Name-based speaker resolution; parens-name extraction handles presiding-officer attributions exactly.
 - [Quebec](./quebec.md) — ✅ **Bills live** via donneesquebec.ca CSV + RSS + detail HTML. Bilingual.
 - [New Brunswick](./new-brunswick.md) — ✅ **Bills live** via two-step legnb.ca HTML scrape.
 - [Nova Scotia](./nova-scotia.md) — ✅ **Bills live** via Socrata API (easiest source in country); per-bill HTML cache blocked by WAF budget.

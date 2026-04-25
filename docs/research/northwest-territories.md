@@ -68,3 +68,13 @@ The same goes for "voting records" in the partisan sense: there are no party-lin
 - [ ] Historical backfill (assemblies 16–19 visible in nav; URL routing not mapped)
 - [ ] Hansard (deferred — evaluate opennwt.ca mirror)
 - [ ] Votes (consensus-government model — different schema needed)
+
+## Research-handoff items (Hansard)
+
+Per [overview.md](./overview.md) rule #5, NT Hansard scraper design is gated on user research. Specific questions to answer before any code is written:
+
+- **opennwt.ca vs. official source:** Has the user validated opennwt.ca's coverage (does it span every sitting back to the date the user cares about?) and freshness (does it lag the official Hansard by hours, days, or weeks)? If freshness lags more than a sitting, the official `/documents-proceedings/hansard` is mandatory regardless of how friendly opennwt.ca's interface is.
+- **Transcript URL pattern:** Is the official Hansard URL pattern per-sitting (`/hansard/YYYY-MM-DD`) or per-session (`/hansard/{assembly}-{session}`)? A per-sitting pattern means deterministic incremental polling; per-session means re-fetching the whole transcript every day.
+- **Speaker attribution under consensus government:** All MLAs are independents — is there an `mla_id` or canonical slug we can stamp on `politicians` (the way `mb_assembly_slug` does for MB), or only names? If only names, the Speaker resolver needs date-windowed disambiguation for any historical name collisions across assemblies.
+- **Indigenous languages:** Are transcripts published in any of NT's 11 official languages besides English (Cree, Tłı̨chǫ, etc.) the way QC publishes bilingually? If yes, we need to decide whether to ingest multilingual variants as separate `speeches` rows or store the English-only canonical with translations as raw payload.
+- **Document format:** Modern HTML, PDF-only, or mixed? AB Hansard (PDF-only) is the proven template if it's PDF; ON Hansard (HTML) would be the template if HTML.

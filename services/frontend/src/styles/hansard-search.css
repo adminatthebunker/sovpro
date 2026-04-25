@@ -273,6 +273,33 @@
   cursor: default;
 }
 
+.speech-result__speaker-name-row {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+
+.speech-result__role-badge {
+  display: inline-block;
+  padding: .05rem .4rem;
+  border-radius: 999px;
+  background: var(--panel-2, rgba(148, 163, 184, .12));
+  border: 1px solid var(--border, rgba(148, 163, 184, .25));
+  color: var(--ink-muted, #94a3b8);
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+
+.speech-result__role-badge--inline {
+  margin-left: .35rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .speech-result__speaker-sub {
   font-size: .8rem;
   color: var(--ink-muted);
@@ -1561,5 +1588,344 @@
   }
   .ai-consent-modal__button {
     width: 100%;
+  }
+}
+
+/* ── Expand-quotes affordance ───────────────────────────────────────
+ * Two surfaces:
+ *  1. .hansard-search__expand-advert — page-level banner above the
+ *     politician-grouped results, shown only to anonymous visitors when
+ *     at least one card actually has more than its initial 5 quotes.
+ *     Sells the gated feature.
+ *  2. .politician-group__expand* — per-card affordance that switches
+ *     between login CTA (anon), "Show all N matching quotes" button
+ *     (signed-in, collapsed), and load-more / collapse controls
+ *     (signed-in, expanded). Inline error styling for 401/429/503.
+ */
+
+.hansard-search__expand-advert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: 0;
+  padding: .85rem 1.1rem;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-size: .9rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.hansard-search__expand-advert-body {
+  flex: 1 1 280px;
+}
+
+.hansard-search__expand-advert-cta {
+  flex: 0 0 auto;
+  padding: .4rem .85rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hansard-search__expand-advert-cta:hover {
+  filter: brightness(1.1);
+  text-decoration: none;
+}
+
+.politician-group__expand {
+  /* Sits between the chunk list and the AI footer. Dashed top border so
+   * it visually separates from the chunks but doesn't compete with the
+   * solid footer divider below. */
+  margin-top: .25rem;
+  padding-top: .75rem;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem .75rem;
+}
+
+.politician-group__expand-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+  padding: .4rem .8rem;
+  font-size: .88rem;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px dashed color-mix(in srgb, var(--accent) 50%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.politician-group__expand-cta:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  text-decoration: underline;
+  border-style: solid;
+}
+
+.politician-group__expand-button {
+  padding: .4rem .9rem;
+  font-size: .88rem;
+  font-weight: 500;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.politician-group__expand-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+  border-color: var(--accent);
+}
+
+.politician-group__expand-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.politician-group__expand-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem;
+}
+
+.politician-group__collapse-button {
+  padding: .35rem .7rem;
+  font-size: .82rem;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.politician-group__collapse-button:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.politician-group__expand-error {
+  margin: 0;
+  padding: .55rem .75rem;
+  font-size: .82rem;
+  color: var(--ink);
+  background: color-mix(in srgb, #f59e0b 10%, var(--panel));
+  border: 1px solid color-mix(in srgb, #f59e0b 50%, var(--border));
+  border-radius: 6px;
+}
+
+.politician-group__expand-error a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Expanded card view: filter bar + paginated quotes ──────────────
+ * Replaces the chunk list when the user clicks "Show all". Two-row
+ * filter bar at the top, full chunk list (replaced, not appended),
+ * Previous/Next pager, Collapse button. */
+
+.politician-group__expanded {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+
+.politician-group__filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  padding: .75rem .85rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.politician-group__filter-title {
+  font-size: .85rem;
+  color: var(--ink);
+}
+
+.politician-group__filter-title strong {
+  color: var(--ink);
+}
+
+.politician-group__filter-total {
+  color: var(--ink-muted);
+}
+
+.politician-group__filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: .5rem .75rem;
+}
+
+.politician-group__filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: .2rem;
+  min-width: 130px;
+}
+
+.politician-group__filter-item--keyword {
+  flex: 1 1 200px;
+}
+
+.politician-group__filter-label {
+  font-size: .68rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.politician-group__filter-item select,
+.politician-group__filter-item input {
+  padding: .4rem .55rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  font-size: .88rem;
+}
+
+.politician-group__filter-item select:focus,
+.politician-group__filter-item input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.politician-group__filter-item select:disabled,
+.politician-group__filter-item input:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.politician-group__filter-clear {
+  padding: .4rem .7rem;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .8rem;
+  cursor: pointer;
+}
+
+.politician-group__filter-clear:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.politician-group__filter-count {
+  font-size: .78rem;
+  color: var(--ink-muted);
+}
+
+.politician-group__expand-loading,
+.politician-group__expand-empty {
+  margin: 0;
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: .9rem;
+  background: var(--panel-2);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+/* When in expanded mode the chunk list is the full page (≤ 50 items) so
+ * give it a scroll cap on tall pages — keeps the AI footer reachable
+ * without forcing a huge scroll back up to the filter bar. */
+.politician-group__chunks--expanded {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding-right: .25rem;
+}
+
+.politician-group__pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding-top: .25rem;
+}
+
+.politician-group__pager-btn {
+  padding: .4rem .85rem;
+  background: var(--panel-2);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: .85rem;
+  cursor: pointer;
+}
+
+.politician-group__pager-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+  border-color: var(--accent);
+}
+
+.politician-group__pager-btn:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.politician-group__pager-label {
+  font-size: .85rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.politician-group__expand-foot {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: .25rem;
+  border-top: 1px dashed var(--border);
+}
+
+@media (max-width: 480px) {
+  .hansard-search__expand-advert {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .hansard-search__expand-advert-cta {
+    width: 100%;
+    text-align: center;
+  }
+  .politician-group__expand-actions {
+    width: 100%;
+  }
+  .politician-group__expand-button,
+  .politician-group__collapse-button {
+    flex: 1 1 auto;
+  }
+  .politician-group__filter-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .politician-group__filter-item {
+    min-width: 0;
+    width: 100%;
+  }
+  .politician-group__filter-item--keyword {
+    flex: 1 1 auto;
+  }
+  .politician-group__chunks--expanded {
+    max-height: none;
+  }
+  .politician-group__pager {
+    flex-wrap: wrap;
   }
 }

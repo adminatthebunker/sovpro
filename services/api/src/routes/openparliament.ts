@@ -132,7 +132,7 @@ export default async function openparliamentRoutes(app: FastifyInstance) {
     const politician = await queryOne<PoliticianRow>(
       `SELECT id, level, openparliament_slug
          FROM politicians
-        WHERE id = $1 AND is_active = true`,
+        WHERE id = $1`,
       [id]
     );
     if (!politician) return reply.notFound("Politician not found");
@@ -221,7 +221,7 @@ export default async function openparliamentRoutes(app: FastifyInstance) {
     const politician = await queryOne<PoliticianRow>(
       `SELECT id, level, openparliament_slug
          FROM politicians
-        WHERE id = $1 AND is_active = true`,
+        WHERE id = $1`,
       [id]
     );
     if (!politician) return reply.notFound("Politician not found");

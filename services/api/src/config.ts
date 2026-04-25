@@ -70,6 +70,30 @@ const schema = z.object({
   // rewards section) for the rationale; tune this value without code
   // changes by setting CORRECTION_REWARD_CREDITS in .env.
   CORRECTION_REWARD_CREDITS: z.coerce.number().int().min(0).default(10),
+  // Premium reports — phase 1b (LLM map-reduce over every matching
+  // chunk for a politician on a topic, billed via the credit ledger).
+  // Unset OPENROUTER_REPORT_MODEL or unset OPENROUTER_API_KEY → the
+  // feature reports `enabled: false`, the "Full report" button greys
+  // in the UI, and POST /reports returns 503. Tunable knobs below
+  // shape cost and worker behaviour without rebuilds.
+  OPENROUTER_REPORT_MODEL: z.string().default("anthropic/claude-sonnet-4.6"),
+  OPENROUTER_REPORT_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  // Cost formula: estimated_credits = REPORT_BASE_COST_CREDITS +
+  //               ceil(min(chunks, REPORT_MAX_CHUNKS) / REPORT_BUCKET_SIZE)
+  //               * REPORT_PER_CHUNK_BUCKET_COST.
+  // Bucket cost is the per-map-call price; base cost is the reduce
+  // pass. REPORT_MAX_CHUNKS caps the spend ceiling on a politician
+  // who has thousands of matching quotes — the user sees the cap in
+  // the cost-confirm modal.
+  REPORT_BASE_COST_CREDITS: z.coerce.number().int().min(0).default(5),
+  REPORT_PER_CHUNK_BUCKET_COST: z.coerce.number().int().min(0).default(1),
+  REPORT_BUCKET_SIZE: z.coerce.number().int().positive().default(10),
+  REPORT_MAX_CHUNKS: z.coerce.number().int().positive().default(300),
+  REPORT_HNSW_EF_SEARCH: z.coerce.number().int().positive().default(1000),
+  // Per-tier daily caps on report submissions. Suspended is enforced
+  // separately (requireUser 403s); unlimited tier bypasses entirely.
+  REPORTS_RATE_LIMIT_DEFAULT_PER_DAY: z.coerce.number().int().min(0).default(5),
+  REPORTS_RATE_LIMIT_EXTENDED_PER_DAY: z.coerce.number().int().min(0).default(20),
 });
 
 export const config = (() => {
@@ -137,6 +161,22 @@ export const config = (() => {
     },
     corrections: {
       rewardCredits: env.CORRECTION_REWARD_CREDITS,
+    },
+    reports: {
+      model: env.OPENROUTER_REPORT_MODEL,
+      timeoutMs: env.OPENROUTER_REPORT_TIMEOUT_MS,
+      baseCostCredits: env.REPORT_BASE_COST_CREDITS,
+      perChunkBucketCost: env.REPORT_PER_CHUNK_BUCKET_COST,
+      bucketSize: env.REPORT_BUCKET_SIZE,
+      maxChunks: env.REPORT_MAX_CHUNKS,
+      hnswEfSearch: env.REPORT_HNSW_EF_SEARCH,
+      rateLimitDefaultPerDay: env.REPORTS_RATE_LIMIT_DEFAULT_PER_DAY,
+      rateLimitExtendedPerDay: env.REPORTS_RATE_LIMIT_EXTENDED_PER_DAY,
+      // Feature-level enabled flag: a configured report model AND an
+      // OpenRouter key are both required to actually run map-reduce.
+      enabled:
+        env.OPENROUTER_REPORT_MODEL.length > 0 &&
+        (env.OPENROUTER_API_KEY ?? "").length > 0,
     },
   };
 })();

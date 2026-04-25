@@ -88,6 +88,8 @@ export interface PoliticianCore {
   personal_url: string | null;
   official_url: string | null;
   social_urls: Record<string, string> | null;
+  is_active: boolean;
+  latest_term_ended_at: string | null;
 }
 
 export interface PoliticianDetailResponse {

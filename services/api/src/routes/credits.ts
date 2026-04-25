@@ -31,6 +31,21 @@ interface UserEmailRow {
   email: string;
 }
 
+interface InvoiceRow {
+  ledger_id: string;
+  ledger_created_at: Date;
+  purchase_id: string;
+  stripe_checkout_id: string;
+  stripe_payment_intent_id: string | null;
+  amount_cents: number;
+  currency: string;
+  credits_granted: number;
+  status: string;
+  purchase_created_at: Date;
+  user_email: string;
+  user_display_name: string | null;
+}
+
 export default async function creditsRoutes(app: FastifyInstance) {
   // ── GET /me/credits ─────────────────────────────────────────
   // Balance + recent ledger history. A single round-trip to the
@@ -74,6 +89,86 @@ export default async function creditsRoutes(app: FastifyInstance) {
     return reply.send({
       enabled: stripeIsConfigured(),
       packs,
+    });
+  });
+
+  // ── GET /me/credits/invoice/:ledger_id ──────────────────────
+  // Returns the invoice payload for a single stripe_purchase ledger
+  // row owned by the caller. The frontend renders a standalone
+  // branded page from this JSON. 404 on:
+  //   - ledger row not owned by the caller (prevents IDOR)
+  //   - row is not a stripe_purchase (nothing to invoice)
+  //   - no matching credit_purchases row (data integrity issue —
+  //     normally every stripe_purchase ledger row has a purchase)
+  app.get("/invoice/:ledgerId", { preHandler: requireUser }, async (req, reply) => {
+    const claims = getUser(req);
+    if (!claims) return reply.code(401).send({ error: "not signed in" });
+
+    const { ledgerId } = req.params as { ledgerId: string };
+    if (!/^[0-9a-f-]{36}$/i.test(ledgerId)) {
+      return reply.code(404).send({ error: "not found" });
+    }
+
+    const row = await queryOne<InvoiceRow>(
+      `SELECT cl.id                       AS ledger_id,
+              cl.created_at               AS ledger_created_at,
+              cp.id                       AS purchase_id,
+              cp.stripe_checkout_id,
+              cp.stripe_payment_intent_id,
+              cp.amount_cents,
+              cp.currency,
+              cp.credits_granted,
+              cp.status,
+              cp.created_at               AS purchase_created_at,
+              u.email                     AS user_email,
+              u.display_name              AS user_display_name
+         FROM credit_ledger cl
+         JOIN credit_purchases cp ON cp.ledger_entry_id = cl.id
+         JOIN users u             ON u.id = cl.user_id
+        WHERE cl.id = $1
+          AND cl.user_id = $2
+          AND cl.kind = 'stripe_purchase'`,
+      [ledgerId, claims.sub]
+    );
+
+    if (!row) {
+      return reply.code(404).send({ error: "invoice not found" });
+    }
+
+    // Derive a stable human-readable invoice number from the purchase
+    // UUID — no new column, no sequence query, same across re-renders.
+    const invoiceNumber = `INV-${row.purchase_id.slice(0, 8).toUpperCase()}`;
+
+    return reply.send({
+      invoice_number: invoiceNumber,
+      issued_at: row.purchase_created_at,
+      status: row.status,
+      customer: {
+        email: row.user_email,
+        display_name: row.user_display_name,
+      },
+      line_item: {
+        description: `Credits pack — ${row.credits_granted.toLocaleString()} credits`,
+        credits: row.credits_granted,
+        amount_cents: row.amount_cents,
+        currency: row.currency,
+      },
+      totals: {
+        subtotal_cents: row.amount_cents,
+        tax_cents: 0,
+        total_cents: row.amount_cents,
+        currency: row.currency,
+      },
+      payment: {
+        method: "card",
+        processor: "stripe",
+        checkout_session_id: row.stripe_checkout_id,
+        payment_intent_id: row.stripe_payment_intent_id,
+      },
+      issuer: {
+        name: "Canadian Political Data",
+        domain: "canadianpoliticaldata.ca",
+      },
     });
   });
 

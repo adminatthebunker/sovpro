@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   effectivePoliticianIds,
@@ -17,7 +17,10 @@ import { PoliticianResultGroup } from "../components/PoliticianResultGroup";
 import { PoliticianQuickNav } from "../components/PoliticianQuickNav";
 import { PoliticianPinChips } from "../components/PoliticianPinChips";
 import { AIContradictionAnalysis } from "../components/AIContradictionAnalysis";
+import { AIFullReportButton } from "../components/AIFullReportButton";
 import { useAIAnalyzeMeta } from "../hooks/useAIAnalyzeMeta";
+import { useReportsMeta } from "../hooks/useReportsMeta";
+import { useUserAuth } from "../hooks/useUserAuth";
 import "../styles/hansard-search.css";
 
 type ViewMode = "timeline" | "politician" | "analysis";
@@ -70,6 +73,7 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
     party: params.get("party") ?? undefined,
     from: params.get("from") ?? undefined,
     to: params.get("to") ?? undefined,
+    exclude_presiding: params.get("exclude_presiding") === "true" ? true : undefined,
     page: Number(params.get("page")) || 1,
     limit: 20,
     group_by: view === "politician" ? "politician" : "timeline",
@@ -87,6 +91,7 @@ function writeFilter(f: SpeechSearchFilter, view: ViewMode): URLSearchParams {
   if (f.party) p.set("party", f.party);
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
+  if (f.exclude_presiding) p.set("exclude_presiding", "true");
   if (f.politician_ids && f.politician_ids.length > 0) {
     for (const id of f.politician_ids) p.append("politician_id", id);
   } else if (f.politician_id) {
@@ -116,6 +121,7 @@ const SORT_DESCRIPTORS: Record<PoliticianSort, string> = {
 export default function HansardSearchPage() {
   useDocumentTitle("Hansard Search");
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
   const view = useMemo(() => readView(searchParams), [searchParams]);
   const filter = useMemo(() => readFilter(searchParams), [searchParams]);
 
@@ -200,6 +206,13 @@ export default function HansardSearchPage() {
   // rendering 20 grouped cards doesn't produce 20 /contradictions/meta
   // calls. Only gets used on the politician view.
   const { meta: aiMeta } = useAIAnalyzeMeta();
+  const { meta: reportsMeta } = useReportsMeta();
+  // Auth state drives the anon "sign in to expand" banner above the
+  // politician-grouped results, plus the per-card expand affordance
+  // inside PoliticianResultGroup itself. `disabled` is true when the
+  // server has accounts off (JWT_SECRET unset) — match SaveSearchButton's
+  // posture and render no auth UI in that case.
+  const { user, disabled: authDisabled } = useUserAuth();
 
   const page = filter.page ?? 1;
   const timeline = data && data.mode !== "grouped" ? data : null;
@@ -431,6 +444,30 @@ export default function HansardSearchPage() {
               pinCapReached={pinCapReached}
             />
 
+            {/*
+             * Anon-user advert: surface the gated "expand any card to
+             * read all that politician's quotes" feature so it's visible
+             * before the user has to click into a card to discover it.
+             * Only renders when (a) accounts are enabled server-side,
+             * (b) the visitor is signed out, and (c) at least one card
+             * actually has more quotes than its initial 5 — otherwise
+             * the CTA promises something the page can't deliver.
+             */}
+            {!user && !authDisabled && grouped.groups.some(g => g.mention_count > g.chunks.length) && (
+              <div className="hansard-search__expand-advert" role="note">
+                <span className="hansard-search__expand-advert-body">
+                  <strong>Signed-in users can expand any card</strong> to read every matching quote
+                  from that politician — not just the top 5.
+                </span>
+                <Link
+                  to={`/login?from=${encodeURIComponent(location.pathname + location.search)}`}
+                  className="hansard-search__expand-advert-cta"
+                >
+                  Sign in to unlock →
+                </Link>
+              </div>
+            )}
+
             <div className="hansard-search__summary">
               {grouped.total_politicians} {grouped.total_politicians === 1 ? "politician" : "politicians"}
               {" · "}
@@ -439,22 +476,48 @@ export default function HansardSearchPage() {
             </div>
 
             <ol className="hansard-search__groups" aria-label="Politicians with matching speeches">
-              {grouped.groups.map((g) => (
-                <li key={g.politician.id} className="hansard-search__group-item">
+              {grouped.groups.map((g) => {
+                // Key on politician id + everything that changes what
+                // "matching quotes for this politician" means. Ensures
+                // any expanded card with cached pageData invalidates
+                // when the parent filter shifts underneath it.
+                const cardKey = [
+                  g.politician.id,
+                  filter.q ?? "",
+                  filter.lang ?? "",
+                  filter.level ?? "",
+                  filter.province_territory ?? "",
+                  filter.party ?? "",
+                  filter.from ?? "",
+                  filter.to ?? "",
+                  filter.exclude_presiding ? "1" : "0",
+                ].join("|");
+                return (
+                <li key={cardKey} className="hansard-search__group-item">
                   <PoliticianResultGroup
                     group={g}
+                    parentFilter={filter}
                     footer={
-                      <AIContradictionAnalysis
-                        politicianId={g.politician.id}
-                        politicianName={g.politician.name ?? "this politician"}
-                        query={filter.q ?? ""}
-                        chunks={g.chunks}
-                        meta={aiMeta}
-                      />
+                      <>
+                        <AIContradictionAnalysis
+                          politicianId={g.politician.id}
+                          politicianName={g.politician.name ?? "this politician"}
+                          query={filter.q ?? ""}
+                          chunks={g.chunks}
+                          meta={aiMeta}
+                          reportsMeta={reportsMeta}
+                        />
+                        <AIFullReportButton
+                          politicianId={g.politician.id}
+                          query={filter.q ?? ""}
+                          meta={reportsMeta}
+                        />
+                      </>
                     }
                   />
                 </li>
-              ))}
+                );
+              })}
             </ol>
 
             <nav className="hansard-search__pager" aria-label="Pagination">

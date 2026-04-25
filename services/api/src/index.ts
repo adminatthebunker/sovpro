@@ -32,6 +32,7 @@ import contradictionsRoutes from "./routes/contradictions.js";
 import creditsRoutes from "./routes/credits.js";
 import stripeWebhookRoutes from "./routes/stripe-webhook.js";
 import rateLimitRequestRoutes from "./routes/rate-limit-requests.js";
+import reportsRoutes, { meReportsRoutes } from "./routes/reports.js";
 
 const app = Fastify({
   logger: {
@@ -104,6 +105,10 @@ await app.register(contradictionsRoutes, { prefix: "/api/v1/contradictions" });
 await app.register(creditsRoutes, { prefix: "/api/v1/me/credits" });
 await app.register(rateLimitRequestRoutes, { prefix: "/api/v1/me/rate-limit-requests" });
 await app.register(stripeWebhookRoutes, { prefix: "/api/v1/webhooks/stripe" });
+// Premium reports (phase 1b). Public meta + authed estimate/submit at
+// /reports; ownership-gated viewer + bug-report at /me/reports.
+await app.register(reportsRoutes, { prefix: "/api/v1/reports" });
+await app.register(meReportsRoutes, { prefix: "/api/v1/me/reports" });
 // Mounted under the same /politicians prefix so the final URL is
 // /api/v1/politicians/:id/openparliament (REST sub-resource pattern).
 await app.register(openparliamentRoutes, { prefix: "/api/v1/politicians" });

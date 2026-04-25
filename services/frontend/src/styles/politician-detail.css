@@ -72,6 +72,12 @@
   font-size: 1rem;
   margin-bottom: .5rem;
 }
+.pol-detail__former {
+  color: var(--ink-muted, #94a3b8);
+  font-size: .85rem;
+  font-style: italic;
+  margin: -.25rem 0 .55rem;
+}
 .pol-detail__party { color: #93c5fd; font-weight: 600; }
 .pol-detail__meta { display: flex; gap: .4rem; flex-wrap: wrap; margin-bottom: .65rem; }
 .pol-detail__chip {

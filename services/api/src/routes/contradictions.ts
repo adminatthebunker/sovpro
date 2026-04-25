@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { query, queryOne } from "../db.js";
 import { requireUser } from "../middleware/user-auth.js";
 import { requireCsrf } from "../lib/csrf.js";
+import { callJsonObjectModel } from "../lib/openrouter.js";
 
 /**
  * AI contradictions analysis for the grouped search view.
@@ -146,13 +147,6 @@ function buildUserPrompt(politician: PoliticianRow, topic: string, chunks: Chunk
   return lines.join("\n");
 }
 
-interface OpenRouterChoice {
-  message?: { content?: string };
-}
-interface OpenRouterResponse {
-  choices?: OpenRouterChoice[];
-}
-
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -282,108 +276,51 @@ export default async function contradictionsRoutes(app: FastifyInstance) {
 
     const userPrompt = buildUserPrompt(politician, topic, sortedChunks);
 
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), config.openrouter.timeoutMs);
+    const result = await callJsonObjectModel({
+      model: config.openrouter.model,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      timeoutMs: config.openrouter.timeoutMs,
+      temperature: 0.2,
+    });
 
-    let openrouterResponse: Response;
-    try {
-      openrouterResponse = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.openrouter.apiKey}`,
-          "HTTP-Referer": config.openrouter.siteUrl,
-          "X-Title": config.openrouter.appName,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: config.openrouter.model,
-          messages: [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userPrompt },
-          ],
-          // json_object is the widely-supported flavour; strict json_schema
-          // would be tighter but free-tier models may hard-400 when they
-          // don't support it.
-          response_format: { type: "json_object" },
-          // OpenRouter's response-healing plugin validates + repairs
-          // malformed JSON server-side before it reaches us. Free-tier
-          // models frequently drop keys or emit trailing commas; healing
-          // catches most of it. Non-streaming only (fine — we don't
-          // stream). If a model genuinely returns unrepairable output,
-          // our repairModelOutput() below is the second layer and the
-          // allowed-set filter is the third.
-          plugins: [{ id: "response-healing" }],
-          temperature: 0.2,
-        }),
-        signal: controller.signal,
-      });
-    } catch (err) {
-      clearTimeout(timeoutHandle);
-      if ((err as { name?: string }).name === "AbortError") {
-        req.log.warn({ politician_id }, "[contradictions] openrouter timeout");
-        return reply.code(504).send({ error: "AI service timed out" });
+    if (!result.ok) {
+      const e = result.error;
+      switch (e.kind) {
+        case "auth":
+          req.log.error({}, "[contradictions] openrouter 401 — check OPENROUTER_API_KEY");
+          return reply.code(503).send({ error: "AI service auth failed" });
+        case "rate_limit":
+          req.log.warn(
+            { headers: e.rateHeaders, body: e.bodySnippet, model: config.openrouter.model },
+            "[contradictions] openrouter 429"
+          );
+          return reply.code(429).send({ error: "AI service rate-limited, try again in a moment" });
+        case "timeout":
+          req.log.warn({ politician_id }, "[contradictions] openrouter timeout");
+          return reply.code(504).send({ error: "AI service timed out" });
+        case "network":
+          req.log.error({ message: e.message, politician_id }, "[contradictions] openrouter network error");
+          return reply.code(502).send({ error: "AI service unreachable" });
+        case "upstream":
+          req.log.error({ status: e.status, body: e.bodySnippet }, "[contradictions] openrouter upstream error");
+          return reply.code(502).send({ error: "AI service error" });
+        case "non_json":
+          req.log.error({ message: e.message }, "[contradictions] openrouter non-json response");
+          return reply.code(502).send({ error: "AI service returned non-JSON" });
+        case "bad_shape":
+          req.log.error({ raw: e.rawSnippet }, "[contradictions] missing choices[0].message.content");
+          return reply.code(502).send({ error: "AI service returned unexpected shape" });
       }
-      req.log.error({ err, politician_id }, "[contradictions] openrouter network error");
-      return reply.code(502).send({ error: "AI service unreachable" });
-    }
-    clearTimeout(timeoutHandle);
-
-    if (openrouterResponse.status === 401) {
-      req.log.error({}, "[contradictions] openrouter 401 — check OPENROUTER_API_KEY");
-      return reply.code(503).send({ error: "AI service auth failed" });
-    }
-    if (openrouterResponse.status === 429) {
-      // Capture OpenRouter's rate-limit headers + body so we can tell
-      // per-minute-burst from per-day-quota from per-model-spike in the
-      // logs. Body is fetched on best-effort; errors here shouldn't
-      // mask the 429 to the user.
-      const rateHeaders: Record<string, string> = {};
-      for (const h of [
-        "x-ratelimit-limit",
-        "x-ratelimit-remaining",
-        "x-ratelimit-reset",
-        "retry-after",
-      ]) {
-        const v = openrouterResponse.headers.get(h);
-        if (v) rateHeaders[h] = v;
-      }
-      const bodyText = await openrouterResponse.text().catch(() => "");
-      req.log.warn(
-        { headers: rateHeaders, body: bodyText.slice(0, 500), model: config.openrouter.model },
-        "[contradictions] openrouter 429"
-      );
-      return reply
-        .code(429)
-        .send({ error: "AI service rate-limited, try again in a moment" });
-    }
-    if (!openrouterResponse.ok) {
-      const body = await openrouterResponse.text().catch(() => "");
-      req.log.error(
-        { status: openrouterResponse.status, body },
-        "[contradictions] openrouter upstream error"
-      );
-      return reply.code(502).send({ error: "AI service error" });
-    }
-
-    let raw: OpenRouterResponse;
-    try {
-      raw = (await openrouterResponse.json()) as OpenRouterResponse;
-    } catch (err) {
-      req.log.error({ err }, "[contradictions] openrouter non-json response");
-      return reply.code(502).send({ error: "AI service returned non-JSON" });
-    }
-
-    const content = raw.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      req.log.error({ raw }, "[contradictions] missing choices[0].message.content");
-      return reply.code(502).send({ error: "AI service returned unexpected shape" });
     }
 
     let modelJson: unknown;
     try {
-      modelJson = JSON.parse(content);
+      modelJson = JSON.parse(result.value.content);
     } catch (err) {
-      req.log.error({ err, content }, "[contradictions] model output is not valid JSON");
+      req.log.error({ err, content: result.value.content }, "[contradictions] model output is not valid JSON");
       return reply.code(502).send({ error: "AI model returned invalid JSON" });
     }
 

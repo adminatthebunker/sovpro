@@ -187,6 +187,59 @@ When an admin transitions a `correction_submissions` row into `status='applied'`
 
 **No manual re-grant path is needed.** If you re-apply an already-applied correction, the DB constraint guarantees no duplicate row. If you need to reward outside the normal flow (e.g. an exceptional find that merits more than the flat amount), use the admin-comp flow at `/admin/users/:id/grant-credits` — that's the escape hatch by design.
 
+### Reports operations (phase 1b)
+
+The `reports-worker` compose service is the production runner for premium reports. Default poll interval 5s. Single worker per host is fine — concurrency is handled at the job-claim level (`FOR UPDATE SKIP LOCKED`). Adding a second instance for throughput is safe.
+
+**Tunable knobs** (all env, all picked up on `docker compose up -d --force-recreate api reports-worker`):
+
+| Env var | Default | Effect |
+|---|---|---|
+| `OPENROUTER_REPORT_MODEL` | `anthropic/claude-sonnet-4.6` | Provider model id. The api and worker MUST agree. |
+| `OPENROUTER_REPORT_TIMEOUT_MS` | `120000` | Per map / reduce call. Bump if the model is slow on large inputs. |
+| `REPORT_BASE_COST_CREDITS` | `5` | Reduce-step flat cost. |
+| `REPORT_PER_CHUNK_BUCKET_COST` | `1` | Per map-bucket cost. |
+| `REPORT_BUCKET_SIZE` | `10` | Chunks per map call. Larger buckets = fewer calls but more model output to merge. |
+| `REPORT_MAX_CHUNKS` | `300` | Hard cap. Users see "(capped)" in the cost dialog. |
+| `REPORTS_RATE_LIMIT_DEFAULT_PER_DAY` | `5` | Daily report cap for `default` tier. |
+| `REPORTS_RATE_LIMIT_EXTENDED_PER_DAY` | `20` | Daily report cap for `extended` tier. |
+| `REPORTS_POLL_INTERVAL` | `5` | Worker poll cadence. |
+| `REPORTS_STALE_CLAIM_MINUTES` | `15` | A `running` job past this age is re-queued (worker crash recovery). |
+
+**Inspecting a stuck job:**
+```sql
+-- All non-terminal jobs, with claim age:
+SELECT id, status, user_id, politician_id, query, claimed_at,
+       now() - claimed_at AS age,
+       error
+  FROM report_jobs
+ WHERE status IN ('queued','running')
+ ORDER BY created_at;
+```
+
+A job stuck in `running` past `REPORTS_STALE_CLAIM_MINUTES` will be auto-re-queued on the next worker tick (the worker runs a sweep before claiming). If you want to force a re-queue immediately:
+
+```sql
+UPDATE report_jobs SET status = 'queued', claimed_at = NULL, started_at = NULL
+ WHERE id = '<job_id>' AND status = 'running';
+```
+
+**Refunding a report** is admin-UI driven at `/admin/reports`. Two modes happen automatically based on the current ledger state:
+
+1. *Hold still `held`* (worker hasn't committed yet — job is queued, running, or failed pre-commit): the hold flips `held → refunded`. Balance immediately reflects the refund.
+2. *Hold already `committed`* (job succeeded then bug report came in): a fresh `admin_credit` row is inserted with the same delta, since you can't un-flip a state-flipped row.
+
+If you need to refund manually (admin UI down, etc.) the SQL is in the file `services/api/src/routes/admin.ts` `POST /admin/reports/:id/refund` handler — read it before running anything.
+
+**Rolling the model id** (e.g. `anthropic/claude-sonnet-4.6` → newer snapshot):
+```bash
+# .env: OPENROUTER_REPORT_MODEL=anthropic/claude-...-newer
+docker compose up -d --force-recreate api reports-worker
+```
+No migration needed. Cost-formula knobs persist across model swaps; revisit them if the new model's pricing is materially different.
+
+**Bug-report queue:** `/admin/bug-reports` lists user-flagged issues. Mark them `reviewing` while you investigate, `resolved` when fixed (no auto-action), `dismissed` if not actionable. There is no automatic credit refund on bug submission — admins decide via the refund button on the parent report.
+
 ## Scheduled jobs
 
 `scanner-cron` runs an hourly loop:
@@ -196,12 +249,128 @@ When an admin transitions a `correction_submissions` row into `status='applied'`
 
 ## Backups
 
+Two paths exist. Pick by what the backup is for.
+
+### Path A — quick gzipped archive (legacy, portable)
+
+For ad-hoc snapshots, sharing a DB state with someone else, or before a risky migration where you want a single file you can email yourself:
+
 ```bash
 sovpro db backup                    # writes backups/<timestamp>.sql.gz
 sovpro db restore backups/foo.sql.gz
 ```
 
-For production, copy `backups/` to off-host storage (S3, B2, etc) on a cron.
+Trade-off: plain SQL gzipped is **single-threaded on restore**. On the live 124 GB corpus the restore path takes hours of single-CPU work. Fine for small DBs and code snapshots; not the right tool for "the database is gone, get it back fast."
+
+### Path B — fast parallel snapshot (use for the live DB)
+
+`pg_dump` directory format with parallel workers and no compression. Output: one file per table, restorable via `pg_restore -j N` for parallel data load + index build. This is what you want for a full DB backup you might actually need to restore in a hurry.
+
+**Storage layout:**
+
+| Path | Filesystem | Role |
+|---|---|---|
+| `/media/bunker-admin/Internal/canadian-political-data-backups/` | ext4 on internal NVMe | Primary backup. Always dump here first. |
+| `/media/bunker-admin/<usb-label>/` | LUKS2 + ext4 on USB | Secondary mirror. Requires unlock + mount each time. |
+
+#### One-shot procedure
+
+```bash
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+DEST="/media/bunker-admin/Internal/canadian-political-data-backups"
+
+# 1. Manifest — audit trail (git SHA, row counts, applied migrations)
+{
+  echo "# sovereignwatch backup manifest"
+  echo "timestamp_utc: $TS"
+  echo "git_sha: $(git -C /home/bunker-admin/sovpro rev-parse HEAD)"
+  echo
+  echo "row_counts:"
+  docker exec sw-db psql -U sw -d sovereignwatch -tAc \
+    "SELECT 'speeches', count(*) FROM speeches UNION ALL
+     SELECT 'speech_chunks', count(*) FROM speech_chunks UNION ALL
+     SELECT 'politicians', count(*) FROM politicians UNION ALL
+     SELECT 'bills', count(*) FROM bills"
+  echo
+  echo "applied_migrations:"
+  ls /home/bunker-admin/sovpro/db/migrations/ | sort
+} > "$DEST/sovereignwatch-$TS.manifest.txt"
+
+# 2. Globals — sw role + cluster-level config; needed to restore to a fresh server
+docker exec sw-db pg_dumpall -U sw --globals-only \
+  > "$DEST/sovereignwatch-$TS.globals.sql"
+
+# 3. Main dump — parallel directory format, no compression, via a throwaway sidecar
+docker run --rm \
+  --name "sw-backup-$TS" \
+  --network sovpro_sw \
+  -v "$DEST:/backup" \
+  -e PGPASSWORD="$(grep '^DB_PASSWORD=' /home/bunker-admin/sovpro/.env | cut -d= -f2-)" \
+  postgres:16 \
+  pg_dump -h db -U sw -d sovereignwatch \
+          -Fd -j 8 -Z 0 \
+          -f "/backup/sovereignwatch-$TS.d" \
+          --verbose
+
+# 4. Fix ownership — the sidecar runs as root inside the container
+docker run --rm -v "$DEST:/backup" busybox \
+  chown -R 1000:1000 "/backup/sovereignwatch-$TS.d"
+
+# 5. Verify — TOC parses, segment count is reasonable, exit 0
+docker run --rm -v "$DEST:/backup" postgres:16 \
+  pg_restore --list "/backup/sovereignwatch-$TS.d" | head
+ls "$DEST/sovereignwatch-$TS.d/" | wc -l
+du -sh "$DEST/sovereignwatch-$TS.d"
+```
+
+Expected wall-time on the live DB: **15–20 min** on internal NVMe. Output size ≈ 216 GB even though the live DB is 124 GB — `pg_dump` serializes vectors and JSON as text, which expands. The HNSW index on `speech_chunks.embedding` is *not* in the dump (it's rebuilt at restore time).
+
+The sidecar pattern (`docker run --rm postgres:16 …`) is deliberate: it keeps the running `db` container untouched, mounts the backup path the way it needs to be mounted, and leaves no state behind. Don't add a bind-mount to the `db` service in `docker-compose.yml` for this — that requires a restart and persists across reboots.
+
+#### Mirror to LUKS USB
+
+After the internal dump succeeds, mirror to the USB. The drive is LUKS2-encrypted; unlock it first (GNOME Files → click drive → enter passphrase, or CLI `cryptsetup luksOpen`). Then:
+
+```bash
+USB="/media/bunker-admin/<usb-label>"   # set this after the LUKS volume mounts
+
+rsync -a --info=progress2 \
+  "$DEST/sovereignwatch-$TS.d" \
+  "$DEST/sovereignwatch-$TS.globals.sql" \
+  "$DEST/sovereignwatch-$TS.manifest.txt" \
+  "$USB/"
+
+# Lock when done (GUI eject button or CLI):
+sudo umount "$USB"
+sudo cryptsetup luksClose <usb-mapper-name>
+```
+
+Use `rsync` rather than `cp -r` — it shows live progress (the USB transfer is often longer than the dump itself) and resumes mid-stream if you cancel. The two locations now hold byte-identical copies of the same snapshot.
+
+#### Restore from a directory-format snapshot
+
+```bash
+# 1. Recreate the sw role (needed only on a fresh server)
+psql -U postgres < sovereignwatch-<TS>.globals.sql
+
+# 2. Empty target DB
+createdb -U postgres -O sw sovereignwatch
+
+# 3. Parallel restore (data + indexes in parallel)
+pg_restore -U postgres -d sovereignwatch -j 4 --verbose \
+  sovereignwatch-<TS>.d
+```
+
+The HNSW vector index on `speech_chunks.embedding` rebuilds at restore time. On the 3.4 M-row corpus expect **30–60 min for the index step alone**, regardless of how fast the data load was. That's the floor on full-restore wall-time.
+
+#### What not to do
+
+- **Don't dump to FAT32.** The 4 GB per-file ceiling kills mid-dump on `speeches` / `speech_chunks`. Run `lsblk -f /dev/<x>` to confirm the filesystem type of any new target drive *before* pointing a backup at it; `df -h` does not show FS type by default and is not a substitute.
+- **Don't store unencrypted backups on removable media.** Backup files contain everything: user emails, magic-link redemption history, Stripe customer IDs, full speech text. The LUKS layer on the USB is non-optional.
+- **Don't re-run pg_dump for the second (USB) copy.** A second dump produces a slightly different snapshot (txn boundary moved). Mirroring with `rsync` gives you two copies of the *same* dump, which is what "redundant backup" actually means.
+- **Don't commit `backups/` or the new internal backup directory.** They're not in the public-facing git tree. The legacy `backups/` is host-local; the internal target lives outside the repo entirely.
+
+For production, copy the internal backup directory to off-host storage (S3, B2, etc.) on a cron — same `rsync` invocation as the USB mirror, different destination.
 
 ## Deploying
 

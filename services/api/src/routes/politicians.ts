@@ -414,7 +414,14 @@ export default async function politicianRoutes(app: FastifyInstance) {
   app.get("/:id", async (req, reply) => {
     const { id } = req.params as { id: string };
     const pol = await queryOne<Record<string, unknown>>(
-      `SELECT * FROM politicians WHERE id = $1 AND is_active = true`, [id]
+      `SELECT p.*,
+              (SELECT MAX(ended_at)
+                 FROM politician_terms
+                WHERE politician_id = p.id
+                  AND ended_at IS NOT NULL) AS latest_term_ended_at
+         FROM politicians p
+        WHERE p.id = $1`,
+      [id],
     );
     if (!pol) return reply.notFound();
     (pol as Record<string, unknown>).photo_url = resolvePhotoUrl(

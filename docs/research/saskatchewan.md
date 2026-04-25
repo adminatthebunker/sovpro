@@ -55,3 +55,17 @@
 - [ ] Schema drafted
 - [ ] Ingestion prototyped
 - [ ] Production ingestion live
+
+## Research-handoff items (Bills + Hansard)
+
+Per [overview.md](./overview.md) rule #5, SK pipelines are gated on user research. SK is the only "no Hansard ingester anywhere" jurisdiction where Hansard is rated *easier* than bills (difficulty 2 vs 4) — likely the right place to start. Specific questions to answer before any code is written:
+
+**Bills:**
+- **PDF parsing in scope?** The current README marks SK as ⏸️ Deferred specifically because the primary bill artifact is `progress-of-bills.pdf` with no per-bill HTML URLs. Has the user confirmed PDF parsing (similar to the MB `billstatus.pdf` pattern) is acceptable, or is the team holding out for an HTML/JSON source?
+- **freelaws.gov.sk.ca alternative:** That site has bill *text* but not procedural data. Has the user evaluated whether stage-event coverage is essential for SK, or whether bill text + minimal status is enough for a first pass?
+
+**Hansard:**
+- **Speaker/subject indexes:** The dossier flags downloadable indexes from 1996 forward as a "major asset — would let us link speeches to MLAs without name-fuzz." Has the user inspected the index format (CSV? PDF? structured HTML?) and confirmed it's machine-readable?
+- **Transcript URL pattern:** `docs.legassembly.sk.ca` is named as the document repository. What's the per-sitting URL pattern? PDF or HTML transcripts? The contact (`hansard@legassembly.sk.ca`) may be worth emailing for an authoritative URL template before reverse-engineering.
+- **Era boundary:** Digitized back to 1947, but format almost certainly changes between eras. Where does HTML start? An era-branching parser (NL/MB pattern) is likely needed.
+- **Politician slug column:** Does any SK roster source publish a stable per-MLA ID/slug? If yes, add it as `politicians.sk_assembly_slug` per CLAUDE.md convention #1 *before* building the speaker resolver.

@@ -60,6 +60,21 @@ const COMMAND_CATALOG = [
       { name: "limit_speeches", type: "int", required: false, help: "Cap on TOTAL speeches ingested." },
     ],
   },
+  { key: "enrich-ab-mlas", category: "enrichment",
+    description: "Fetch /member-information?mid=NNNN per AB MLA — photo, party, constituency, cabinet/Speaker offices into politicians + politician_terms.",
+    args: [
+      { name: "mid", type: "string", required: false, help: "Process a single ab_assembly_mid (smoke test)." },
+      { name: "limit", type: "int", required: false, help: "Cap number of MLAs processed this run." },
+      { name: "delay", type: "float", required: false, help: "Seconds between page fetches (default 1.0)." },
+      { name: "refresh", type: "bool", required: false, help: "Re-fetch even MLAs already enriched." },
+    ],
+  },
+  { key: "merge-ab-presiding-stubs", category: "maintenance",
+    description: "One-time reconciliation of presiding-officer-seed:AB:* stubs into their MID-keyed twins. Speeches + chunks reassign; speaker_role preserved.",
+    args: [
+      { name: "dry_run", type: "bool", required: false, help: "Report stub→twin pairs without modifying any rows." },
+    ],
+  },
   { key: "ingest-bc-hansard", category: "hansard",
     description: "Pull BC Legislative Assembly Hansard (Blues + Final HTML via LIMS HDMS) into `speeches`.",
     args: [
@@ -413,7 +428,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     if (!q.success) return reply.badRequest(q.error.message);
     const { status, schedule_id, limit } = q.data;
 
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
     const where: string[] = [];
     if (status) { params.push(status); where.push(`status = $${params.length}`); }
     if (schedule_id) { params.push(schedule_id); where.push(`schedule_id = $${params.length}`); }
@@ -517,7 +532,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     const parsed = schedulePatchBody.safeParse(req.body);
     if (!parsed.success) return reply.badRequest(parsed.error.message);
     const fields: string[] = [];
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
     const body = parsed.data;
     if (body.name !== undefined) { params.push(body.name); fields.push(`name = $${params.length}`); }
     if (body.args !== undefined) { params.push(JSON.stringify(body.args)); fields.push(`args = $${params.length}::jsonb`); }
@@ -649,7 +664,7 @@ export default async function adminRoutes(app: FastifyInstance) {
     const q = flaggedListQuery.safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
     const { platform, limit, offset } = q.data;
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
     const where: string[] = ["s.flagged_low_confidence = true"];
     if (platform) { params.push(platform); where.push(`s.platform = $${params.length}`); }
     params.push(limit); const limIdx = params.length;
@@ -956,7 +971,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       .safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
 
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
     const conditions: string[] = [];
     if (q.data.q) {
       params.push(`%${q.data.q.toLowerCase()}%`);
@@ -1082,7 +1097,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       .safeParse(req.query);
     if (!q.success) return reply.badRequest(q.error.message);
 
-    const params: unknown[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
     const conditions: string[] = [];
     if (q.data.status) {
       params.push(q.data.status);
@@ -1159,4 +1174,207 @@ export default async function adminRoutes(app: FastifyInstance) {
 
     return updated;
   });
+
+  // ── Reports (premium, phase 1b) ────────────────────────────────
+  // Operator triage surface for the /reports flow. Read-only listing
+  // and detail; refund flips the hold (or grants a compensating
+  // admin_credit row if the hold has already committed). Bug reports
+  // queue lives here too.
+
+  const reportsListQuery = z.object({
+    status: z.enum(["queued", "running", "succeeded", "failed", "cancelled", "refunded"]).optional(),
+    q: z.string().trim().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  });
+
+  app.get("/reports", async (req, reply) => {
+    const parsed = reportsListQuery.safeParse(req.query);
+    if (!parsed.success) return reply.badRequest(parsed.error.message);
+    const { status, q, limit } = parsed.data;
+    const conds: string[] = [];
+    const params: (string | number | boolean | null | string[])[] = [];
+    if (status) {
+      params.push(status);
+      conds.push(`rj.status = $${params.length}`);
+    }
+    if (q) {
+      params.push(`%${q}%`);
+      conds.push(`(u.email ILIKE $${params.length} OR rj.query ILIKE $${params.length})`);
+    }
+    params.push(limit);
+    const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    return await query(
+      `SELECT rj.id, rj.user_id, u.email AS user_email,
+              rj.politician_id, p.name AS politician_name,
+              rj.query, rj.status, rj.estimated_credits, rj.chunk_count_actual,
+              rj.model_used, rj.tokens_in, rj.tokens_out,
+              rj.created_at, rj.finished_at, rj.error,
+              rj.hold_ledger_id
+         FROM report_jobs rj
+         JOIN users u       ON u.id = rj.user_id
+         JOIN politicians p ON p.id = rj.politician_id
+         ${where}
+        ORDER BY rj.created_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+  });
+
+  app.get<{ Params: { id: string } }>("/reports/:id", async (req, reply) => {
+    const id = req.params.id;
+    const row = await queryOne(
+      `SELECT rj.*, u.email AS user_email, p.name AS politician_name
+         FROM report_jobs rj
+         JOIN users u       ON u.id = rj.user_id
+         JOIN politicians p ON p.id = rj.politician_id
+        WHERE rj.id = $1`,
+      [id],
+    );
+    if (!row) return reply.notFound();
+    return row;
+  });
+
+  const refundBody = z.object({
+    reason: z.string().trim().min(3).max(500),
+  });
+
+  // Refund a report:
+  //   - If the hold is still 'held', flip it to 'refunded' and mark the
+  //     job 'refunded' (releaseHold path).
+  //   - If the hold is already 'committed' (worker succeeded then user
+  //     reports a problem), insert a compensating 'admin_credit' row
+  //     for the same amount — never un-commit a state-flipped row.
+  app.post<{ Params: { id: string }; Body: { reason: string } }>(
+    "/reports/:id/refund",
+    async (req, reply) => {
+      const id = req.params.id;
+      const parsed = refundBody.safeParse(req.body);
+      if (!parsed.success) return reply.badRequest(parsed.error.message);
+
+      const job = await queryOne<{
+        id: string;
+        user_id: string;
+        status: string;
+        estimated_credits: number;
+        hold_ledger_id: string | null;
+      }>(
+        `SELECT id, user_id, status, estimated_credits, hold_ledger_id
+           FROM report_jobs
+          WHERE id = $1`,
+        [id],
+      );
+      if (!job) return reply.notFound();
+
+      const ledger = job.hold_ledger_id
+        ? await queryOne<{ state: string }>(
+            `SELECT state FROM credit_ledger WHERE id = $1`,
+            [job.hold_ledger_id],
+          )
+        : null;
+
+      const actingAdmin = await queryOne<{ id: string }>(
+        `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+        [getAdminEmail(req)],
+      );
+      if (!actingAdmin) {
+        return reply.code(500).send({ error: "acting admin not resolvable" });
+      }
+
+      if (ledger && ledger.state === "held") {
+        // releaseHold path: flip held → refunded.
+        await query(
+          `UPDATE credit_ledger
+              SET state = 'refunded',
+                  reason = $2
+            WHERE id = $1
+              AND state = 'held'
+              AND kind = 'report_hold'`,
+          [job.hold_ledger_id, `admin refund: ${parsed.data.reason}`],
+        );
+        await query(
+          `UPDATE report_jobs SET status = 'refunded' WHERE id = $1`,
+          [id],
+        );
+        return { refunded: true, mode: "released_hold", credits: job.estimated_credits };
+      }
+
+      // Committed (or no hold): compensating admin_credit grant.
+      await query(
+        `INSERT INTO credit_ledger
+             (user_id, delta, state, kind, reason, created_by_admin_id)
+           VALUES ($1, $2, 'committed', 'admin_credit', $3, $4)`,
+        [
+          job.user_id,
+          job.estimated_credits,
+          `Compensating refund for report ${id}: ${parsed.data.reason}`,
+          actingAdmin.id,
+        ],
+      );
+      await query(
+        `UPDATE report_jobs SET status = 'refunded' WHERE id = $1`,
+        [id],
+      );
+      return { refunded: true, mode: "compensating_admin_credit", credits: job.estimated_credits };
+    },
+  );
+
+  // ── Bug reports ────────────────────────────────────────────────
+  const bugListQuery = z.object({
+    status: z.enum(["open", "reviewing", "resolved", "dismissed"]).optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  });
+
+  app.get("/bug-reports", async (req, reply) => {
+    const parsed = bugListQuery.safeParse(req.query);
+    if (!parsed.success) return reply.badRequest(parsed.error.message);
+    const params: (string | number | boolean | null | string[])[] = [];
+    let where = "";
+    if (parsed.data.status) {
+      params.push(parsed.data.status);
+      where = `WHERE br.status = $${params.length}`;
+    }
+    params.push(parsed.data.limit);
+    return await query(
+      `SELECT br.id, br.report_id, br.user_id, u.email AS user_email,
+              rj.politician_id, p.name AS politician_name, rj.query AS report_query,
+              br.message, br.status, br.admin_notes, br.created_at, br.resolved_at
+         FROM report_bug_reports br
+         JOIN users u       ON u.id = br.user_id
+         JOIN report_jobs rj ON rj.id = br.report_id
+         JOIN politicians p ON p.id = rj.politician_id
+         ${where}
+        ORDER BY br.created_at DESC
+        LIMIT $${params.length}`,
+      params,
+    );
+  });
+
+  const bugPatchBody = z.object({
+    status: z.enum(["open", "reviewing", "resolved", "dismissed"]),
+    admin_notes: z.string().trim().max(2000).nullable().optional(),
+  });
+
+  app.patch<{ Params: { id: string }; Body: { status: string; admin_notes?: string | null } }>(
+    "/bug-reports/:id",
+    async (req, reply) => {
+      const id = req.params.id;
+      const parsed = bugPatchBody.safeParse(req.body);
+      if (!parsed.success) return reply.badRequest(parsed.error.message);
+      const resolvedExpr =
+        parsed.data.status === "resolved" || parsed.data.status === "dismissed"
+          ? "now()"
+          : "NULL";
+      const updated = await queryOne(
+        `UPDATE report_bug_reports
+            SET status = $1,
+                admin_notes = $2,
+                resolved_at = ${resolvedExpr}
+          WHERE id = $3
+          RETURNING id, status, admin_notes, resolved_at`,
+        [parsed.data.status, parsed.data.admin_notes ?? null, id],
+      );
+      if (!updated) return reply.notFound();
+      return updated;
+    },
+  );
 }

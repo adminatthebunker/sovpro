@@ -12,9 +12,21 @@ const LEVEL_LABEL: Record<string, string> = {
   municipal: "Municipal",
 };
 
+function formatLastTermDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-CA", { year: "numeric", month: "long", day: "numeric" });
+}
+
 export function PoliticianDetailHeader({ politician: p }: Props) {
   const levelLabel = LEVEL_LABEL[p.level] ?? p.level;
   const locationBits = [p.constituency_name, p.province_territory].filter(Boolean).join(" · ");
+  const isFormer = p.is_active === false;
+  const officeLabel = p.elected_office
+    ? (isFormer ? `Former ${p.elected_office}` : p.elected_office)
+    : (isFormer ? "Former member" : null);
+  const lastTermDate = formatLastTermDate(p.latest_term_ended_at);
 
   return (
     <header className="pol-detail__header">
@@ -31,11 +43,14 @@ export function PoliticianDetailHeader({ politician: p }: Props) {
         )}
         <div className="pol-detail__head-text">
           <h1 className="pol-detail__name">{p.name}</h1>
-          {p.elected_office && (
+          {officeLabel && (
             <div className="pol-detail__office">
-              {p.elected_office}
+              {officeLabel}
               {p.party && <> · <span className="pol-detail__party">{p.party}</span></>}
             </div>
+          )}
+          {isFormer && lastTermDate && (
+            <div className="pol-detail__former">Last term ended {lastTermDate}</div>
           )}
           <div className="pol-detail__meta">
             <span className="pol-detail__chip">{levelLabel}</span>

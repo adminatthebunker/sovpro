@@ -67,3 +67,13 @@ NU has **consensus government** — 22 non-partisan MLAs. No political parties, 
 - [ ] Assembly/session auto-detection (currently hard-coded default via CLI flag)
 - [ ] Hansard
 - [ ] Votes (consensus-government modeling question remains open)
+
+## Research-handoff items (Hansard)
+
+Per [overview.md](./overview.md) rule #5, NU Hansard scraper design is gated on user research. Specific questions to answer before any code is written:
+
+- **Bilingual handling:** Hansard is published in Inuktitut + English. Are they served as separate pages (`/hansard/{date}-iu.html` and `/hansard/{date}-en.html`), one combined page with both languages interleaved, or one canonical English page with Inuktitut as a downloadable attachment? This decides whether `speeches` rows should carry a `language` column or store both as raw payload.
+- **Inuktitut character encoding:** UTF-8 syllabics (ᐃᓄᒃᑎᑐᑦ) or transliterated roman? If syllabics, the embedding model (Qwen3) needs to handle them — worth a quick test before scheduling daily runs that fail silently on encoding errors.
+- **URL pattern:** The dossier lists `assembly.nu.ca/hansard` as the index; the per-sitting URL pattern is unprobed. Likely Drupal 9 (same CMS as bills), so `/hansard/{slug}` per sitting, but needs confirmation. The bills page disabled `?_format=json` — Hansard probably did too, but test that probe.
+- **Blues vs. final:** "Blues (unedited)" published next morning per the dossier. Are Blues at a different URL than the final (BC pattern)? If yes, the parser needs the same Blues→Final swap-in-place logic that `bc_hansard.py` already has.
+- **Speaker attribution:** No partisan affiliation; 22 non-partisan MLAs. Is there a stable per-MLA slug or numeric ID anywhere in the Drupal markup we can stamp on `politicians.nu_assembly_slug` (new column, follow CLAUDE.md convention #1)? If only names, the Speaker resolver needs a date-windowed roster to disambiguate across assemblies.

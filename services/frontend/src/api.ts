@@ -144,3 +144,69 @@ export interface CorrectionSubmission {
   credits_earned?: number;
 }
 
+// ── Premium reports (phase 1b) ──────────────────────────────────
+
+export interface ReportsMeta {
+  enabled: boolean;
+  model: string | null;
+  bucket_size: number;
+  max_chunks: number;
+  base_cost_credits: number;
+  per_chunk_bucket_cost: number;
+}
+
+export interface ReportEstimate {
+  politician: { id: string; name: string | null };
+  query: string;
+  estimated_chunks: number;
+  candidate_chunks: number;
+  estimated_credits: number;
+  capped: boolean;
+  balance: number;
+  sufficient: boolean;
+}
+
+export type ReportStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "refunded";
+
+export interface ReportListEntry {
+  id: string;
+  politician_id: string;
+  politician_name: string | null;
+  politician_party: string | null;
+  query: string;
+  status: ReportStatus;
+  summary: string | null;
+  estimated_credits: number;
+  chunk_count_actual: number | null;
+  model_used: string | null;
+  word_count: number | null;
+  is_public: boolean;
+  created_at: string;
+  finished_at: string | null;
+  error: string | null;
+}
+
+export interface ReportDetail {
+  id: string;
+  politician_id: string;
+  politician_name: string | null;
+  politician_party: string | null;
+  query: string;
+  status: ReportStatus;
+  html: string | null;
+  summary: string | null;
+  chunk_count_actual: number | null;
+  estimated_credits: number;
+  model_used: string | null;
+  is_public: boolean;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+

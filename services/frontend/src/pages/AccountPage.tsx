@@ -9,6 +9,13 @@ interface CreditsSummary {
   stripe_enabled: boolean;
 }
 
+function formatDate(iso: string, withTime = false): string {
+  const opts: Intl.DateTimeFormatOptions = withTime
+    ? { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }
+    : { year: "numeric", month: "long", day: "numeric" };
+  return new Date(iso).toLocaleDateString(undefined, opts);
+}
+
 /**
  * Signed-in user's home. Profile (display_name), link to saved
  * searches, logout. If not signed in, prompt sign-in.
@@ -92,17 +99,27 @@ export default function AccountPage() {
     navigate("/", { replace: true });
   }
 
+  const displayLabel = user.display_name?.trim() || user.email.split("@")[0];
+
   return (
     <section className="cpd-auth cpd-auth--account">
-      <h2>Your account</h2>
+      <header className="cpd-auth__header">
+        <div className="cpd-auth__avatar" aria-hidden="true">
+          {displayLabel?.charAt(0).toUpperCase() ?? "?"}
+        </div>
+        <div className="cpd-auth__header-body">
+          <h2>{user.display_name?.trim() || "Your account"}</h2>
+          <p className="cpd-auth__header-sub">{user.email}</p>
+        </div>
+      </header>
+
       <dl className="cpd-auth__meta">
-        <dt>Email</dt><dd>{user.email}</dd>
-        <dt>Account since</dt>
-        <dd>{new Date(user.created_at).toLocaleDateString()}</dd>
+        <dt>Member since</dt>
+        <dd>{formatDate(user.created_at)}</dd>
         {user.last_login_at && (
           <>
             <dt>Last signed in</dt>
-            <dd>{new Date(user.last_login_at).toLocaleString()}</dd>
+            <dd>{formatDate(user.last_login_at, true)}</dd>
           </>
         )}
       </dl>
@@ -125,19 +142,47 @@ export default function AccountPage() {
         </button>
       </form>
 
-      <div className="cpd-auth__actions">
-        <Link to="/account/saved-searches" className="cpd-auth__linklike">
-          Your saved searches →
+      <nav className="cpd-auth__tiles" aria-label="Account sections">
+        <Link to="/account/saved-searches" className="cpd-auth__tile">
+          <span className="cpd-auth__tile-title">Saved searches</span>
+          <span className="cpd-auth__tile-sub">
+            Queries you've bookmarked and alert preferences
+          </span>
+          <span className="cpd-auth__tile-arrow" aria-hidden="true">→</span>
         </Link>
-        <Link to="/account/corrections" className="cpd-auth__linklike">
-          Your corrections →
+
+        <Link to="/account/corrections" className="cpd-auth__tile">
+          <span className="cpd-auth__tile-title">Corrections</span>
+          <span className="cpd-auth__tile-sub">
+            Data fixes you've submitted and their status
+          </span>
+          <span className="cpd-auth__tile-arrow" aria-hidden="true">→</span>
         </Link>
+
         {credits && credits.stripe_enabled && (
-          <Link to="/account/credits" className="cpd-auth__linklike">
-            Your credits <span className="cpd-auth__chip">{credits.balance}</span> →
+          <Link to="/account/credits" className="cpd-auth__tile cpd-auth__tile--credits">
+            <span className="cpd-auth__tile-title">
+              Credits
+              <span className="cpd-auth__tile-chip">{credits.balance.toLocaleString()}</span>
+            </span>
+            <span className="cpd-auth__tile-sub">
+              Balance, purchases, and ledger history
+            </span>
+            <span className="cpd-auth__tile-arrow" aria-hidden="true">→</span>
           </Link>
         )}
-        <button type="button" onClick={onLogout} className="cpd-auth__linkbtn">
+
+        <Link to="/account/reports" className="cpd-auth__tile">
+          <span className="cpd-auth__tile-title">Reports</span>
+          <span className="cpd-auth__tile-sub">
+            Premium full-report syntheses you've generated
+          </span>
+          <span className="cpd-auth__tile-arrow" aria-hidden="true">→</span>
+        </Link>
+      </nav>
+
+      <div className="cpd-auth__footer-row">
+        <button type="button" onClick={onLogout} className="cpd-auth__signout">
           Sign out
         </button>
       </div>

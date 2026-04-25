@@ -3,6 +3,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { pool, query, queryOne } from "../db.js";
 import { resolvePhotoUrl } from "../lib/photos.js";
+import { requireUser, getUser } from "../middleware/user-auth.js";
 
 // Instruction prefix for Qwen3-Embedding-0.6B query encoding.
 // Indexing pipeline (scanner/src/legislative/speech_embedder.py) writes
@@ -39,6 +40,7 @@ export const baseFilterSchema = z.object({
   party: z.string().max(64).optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  exclude_presiding: z.coerce.boolean().optional(),
 });
 
 export function effectivePoliticianIds(
@@ -78,6 +80,22 @@ const searchQuery = baseFilterSchema.extend({
   sort: z.enum(["mentions", "best_match", "avg_match", "keyword_hits"]).default("mentions"),
 });
 
+// Single-politician deep-dive ("show all of X's quotes for query Q").
+// Authenticated, rate-limited surface backing the expand-card affordance
+// on /search. Extends baseFilterSchema rather than forking it so saved
+// filters and pin shares stay compatible. politician_id is overridden to
+// required + single-UUID — the multi-pin form doesn't fit the deep-dive
+// UX, and a missing id would silently fall through to a global search.
+const expandQuery = baseFilterSchema.extend({
+  politician_id: z.string().uuid(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(50),
+  // Client-selectable similarity floor. Always clamped >= 0.45 server-side
+  // so the baseline "actually matches the query" definition never weakens;
+  // tightening is allowed (≥50%, ≥60%, ≥70%, ≥80%).
+  min_similarity: z.coerce.number().min(0).max(1).optional(),
+});
+
 type BaseFilter = z.infer<typeof baseFilterSchema>;
 
 interface SpeechSearchRow {
@@ -100,6 +118,7 @@ interface SpeechSearchRow {
   politician_party: string | null;
   politician_socials: Array<{ platform: string; url: string; handle: string | null }> | null;
   speech_speaker_name_raw: string;
+  speech_speaker_role: string | null;
   speech_source_url: string | null;
   speech_source_anchor: string | null;
   parliament_number: number | null;
@@ -158,6 +177,14 @@ function buildFilterWhere(f: BaseFilter): {
   if (f.party)          { filterParams.push(f.party); where.push(`sc.party_at_time = $${filterParams.length}`); }
   if (f.from)           { filterParams.push(f.from); where.push(`sc.spoken_at >= $${filterParams.length}`); }
   if (f.to)             { filterParams.push(f.to);   where.push(`sc.spoken_at < ($${filterParams.length}::date + interval '1 day')`); }
+  // Hide presiding-officer turns ("I declare the motion lost", procedural
+  // chair speech). Correlated EXISTS scoped to the HNSW candidate pool —
+  // negligible cost since the WHERE caps at ~1k chunks.
+  if (f.exclude_presiding) {
+    where.push(
+      `NOT EXISTS (SELECT 1 FROM speeches sx WHERE sx.id = sc.speech_id AND sx.speaker_role IS NOT NULL AND sx.speaker_role <> '')`,
+    );
+  }
   return { whereSql: where.join(" AND "), filterParams };
 }
 
@@ -286,6 +313,7 @@ async function handleGroupedByPolitician(
            p.party                       AS politician_party,
            socials.items                 AS politician_socials,
            s.speaker_name_raw            AS speech_speaker_name_raw,
+           s.speaker_role                AS speech_speaker_role,
            s.source_url                  AS speech_source_url,
            s.source_anchor               AS speech_source_anchor,
            ls.parliament_number,
@@ -348,6 +376,7 @@ async function handleGroupedByPolitician(
     party_at_time: string | null;
     speech: {
       speaker_name_raw: string;
+      speaker_role: string | null;
       source_url: string | null;
       source_anchor: string | null;
       session: { parliament_number: number; session_number: number } | null;
@@ -408,6 +437,7 @@ async function handleGroupedByPolitician(
       party_at_time: r.party_at_time,
       speech: {
         speaker_name_raw: r.speech_speaker_name_raw,
+        speaker_role: r.speech_speaker_role,
         source_url: r.speech_source_url,
         source_anchor: r.speech_source_anchor,
         session:
@@ -429,160 +459,263 @@ async function handleGroupedByPolitician(
   };
 }
 
+/** Timeline-mode search: flat list of chunks, ranked by semantic distance
+ *  when `q` is present, else by recency. Used by both the public
+ *  /speeches route and the gated /politician-quotes deep-dive route, so
+ *  the SQL lives once and both callers share the same response shape.
+ *
+ *  options.minSimilarity (0..1, requires q) — drop chunks whose cosine
+ *  similarity to the query falls below this floor from BOTH the count
+ *  and the result set. /politician-quotes passes 0.45, mirroring
+ *  handleGroupedByPolitician's MIN_SIMILARITY, so the deep-dive's count
+ *  matches the headline `mention_count` on the same card and doesn't
+ *  inflate to "every chunk this politician has ever uttered under the
+ *  parent search's structural filters". /speeches doesn't pass it, so
+ *  the public timeline keeps its existing wide-net behaviour. */
+async function runTimelineSearch(
+  input: SearchInput,
+  options: { minSimilarity?: number } = {},
+) {
+  const { q, page, limit } = input;
+  const { minSimilarity } = options;
+  const offset = (page - 1) * limit;
+
+  const { whereSql, filterParams } = buildFilterWhere(input);
+
+  // Encode the query once; both the threshold (when set) and the rank
+  // ORDER BY share the same vector literal.
+  let queryVecLiteral: string | null = null;
+  if (q) {
+    const vec = await encodeQuery(q);
+    queryVecLiteral = toPgVector(vec);
+  }
+  const applyThreshold =
+    !!q && queryVecLiteral !== null && minSimilarity != null && minSimilarity > 0;
+  const maxDistance = applyThreshold ? 1 - (minSimilarity as number) : null;
+
+  // Cap the count at 1000 to avoid a full HNSW/filter scan just to
+  // compute "pages". UIs beyond page 50 (at limit=20) are unusable
+  // anyway; keyset pagination is a later concern.
+  const COUNT_CAP = 1000;
+  const countParams: (string | number | string[])[] = [...filterParams];
+  let countWhere = whereSql;
+  if (applyThreshold) {
+    countParams.push(queryVecLiteral as string);
+    const cvIdx = countParams.length;
+    countParams.push(maxDistance as number);
+    const cdIdx = countParams.length;
+    countWhere = `${whereSql} AND (sc.embedding <=> $${cvIdx}::vector) <= $${cdIdx}`;
+  }
+  const countRow = await queryOne<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM (
+       SELECT 1 FROM speech_chunks sc
+       WHERE ${countWhere}
+       LIMIT ${COUNT_CAP + 1}
+     ) x`,
+    countParams,
+  );
+  const totalRaw = countRow?.n ?? 0;
+  const totalCapped = totalRaw > COUNT_CAP;
+  const total = totalCapped ? COUNT_CAP : totalRaw;
+
+  // Build the main SELECT.
+  const params: (string | number | string[])[] = [...filterParams];
+  let orderBy: string;
+  let vectorParamIndex: number | null = null;
+  if (q && queryVecLiteral !== null) {
+    params.push(queryVecLiteral);
+    vectorParamIndex = params.length;
+    // Single-key ORDER BY: adding a tiebreaker (sc.id) forces Postgres to
+    // materialise the full filtered set to satisfy deterministic sort,
+    // defeating the HNSW index (8ms → 4400ms on 1.4M rows).
+    orderBy = `sc.embedding <=> $${vectorParamIndex}::vector`;
+  } else {
+    orderBy = "sc.spoken_at DESC NULLS LAST, sc.id";
+  }
+
+  // ts_headline uses the per-row tsv_config so highlight tokenisation
+  // matches the index used at build time.
+  let headlineExpr = "NULL::text";
+  if (q) {
+    params.push(q);
+    const qIdx = params.length;
+    headlineExpr = `
+      ts_headline(
+        COALESCE(sc.tsv_config, 'simple')::regconfig,
+        sc.text,
+        websearch_to_tsquery(COALESCE(sc.tsv_config, 'simple')::regconfig, $${qIdx}),
+        'MaxWords=35, MinWords=15, ShortWord=3, MaxFragments=2, FragmentDelimiter=" … ", HighlightAll=FALSE'
+      )`;
+  }
+
+  let mainWhere = whereSql;
+  if (applyThreshold) {
+    // Reuse vectorParamIndex (already pushed above) and add a fresh
+    // distance param so this WHERE doesn't share params with the count
+    // query's separate paramslist.
+    params.push(maxDistance as number);
+    const mdIdx = params.length;
+    mainWhere = `${whereSql} AND (sc.embedding <=> $${vectorParamIndex}::vector) <= $${mdIdx}`;
+  }
+
+  const sql = `
+    SELECT
+      sc.id                         AS chunk_id,
+      sc.speech_id,
+      sc.chunk_index,
+      sc.text,
+      ${headlineExpr}               AS snippet_html,
+      ${vectorParamIndex ? `(sc.embedding <=> $${vectorParamIndex}::vector)::float` : "NULL::float"} AS distance,
+      sc.spoken_at,
+      sc.language,
+      sc.level,
+      sc.province_territory,
+      sc.party_at_time,
+      sc.politician_id,
+      p.name                        AS politician_name,
+      p.openparliament_slug         AS politician_slug,
+      p.photo_url                   AS politician_photo_url,
+      p.photo_path                  AS politician_photo_path,
+      p.party                       AS politician_party,
+      socials.items                 AS politician_socials,
+      s.speaker_name_raw            AS speech_speaker_name_raw,
+      s.speaker_role                AS speech_speaker_role,
+      s.source_url                  AS speech_source_url,
+      s.source_anchor               AS speech_source_anchor,
+      ls.parliament_number,
+      ls.session_number
+    FROM speech_chunks sc
+    LEFT JOIN politicians p           ON p.id  = sc.politician_id
+    LEFT JOIN speeches   s            ON s.id  = sc.speech_id
+    LEFT JOIN legislative_sessions ls ON ls.id = s.session_id
+    LEFT JOIN LATERAL (
+      SELECT jsonb_agg(
+               jsonb_build_object('platform', ps.platform, 'url', ps.url, 'handle', ps.handle)
+               ORDER BY ps.platform
+             ) AS items
+        FROM politician_socials ps
+       WHERE ps.politician_id = p.id
+         AND COALESCE(ps.is_live, true)
+    ) socials ON true
+    WHERE ${mainWhere}
+    ORDER BY ${orderBy}
+    LIMIT ${limit} OFFSET ${offset}
+  `;
+
+  const rows = await query<SpeechSearchRow>(sql, params);
+
+  const items = rows.map((r) => ({
+    chunk_id: r.chunk_id,
+    speech_id: r.speech_id,
+    chunk_index: r.chunk_index,
+    text: r.text,
+    snippet_html: r.snippet_html,
+    similarity: r.distance !== null ? 1 - r.distance : null,
+    spoken_at: r.spoken_at,
+    language: r.language,
+    level: r.level,
+    province_territory: r.province_territory,
+    party_at_time: r.party_at_time,
+    politician: r.politician_id
+      ? {
+          id: r.politician_id,
+          name: r.politician_name,
+          slug: r.politician_slug,
+          photo_url: resolvePhotoUrl({
+            photo_path: r.politician_photo_path,
+            photo_url: r.politician_photo_url,
+          }),
+          party: r.politician_party,
+          socials: r.politician_socials ?? [],
+        }
+      : null,
+    speech: {
+      speaker_name_raw: r.speech_speaker_name_raw,
+      speaker_role: r.speech_speaker_role,
+      source_url: r.speech_source_url,
+      source_anchor: r.speech_source_anchor,
+      session:
+        r.parliament_number !== null && r.session_number !== null
+          ? { parliament_number: r.parliament_number, session_number: r.session_number }
+          : null,
+    },
+  }));
+
+  return {
+    items,
+    page,
+    limit,
+    total,
+    totalCapped,
+    pages: Math.max(1, Math.ceil(total / limit)),
+    mode: (q ? "semantic" : "recent") as "semantic" | "recent",
+  };
+}
+
 export default async function searchRoutes(app: FastifyInstance) {
   app.get("/speeches", async (req, reply) => {
     const parsed = searchQuery.safeParse(req.query);
     if (!parsed.success) return reply.badRequest(parsed.error.message);
-    const { q, page, limit, group_by } = parsed.data;
+    const { group_by } = parsed.data;
 
     if (group_by === "politician") {
       return handleGroupedByPolitician(app, reply, parsed.data);
     }
 
-    const offset = (page - 1) * limit;
-
-    if (!q && !hasAnyStructuralFilter(parsed.data)) {
+    if (!parsed.data.q && !hasAnyStructuralFilter(parsed.data)) {
       return reply.badRequest("provide `q` or at least one filter (politician_ids, party, level, province, from, to)");
     }
 
-    const { whereSql, filterParams } = buildFilterWhere(parsed.data);
-    const params: (string | number | string[])[] = [...filterParams];
-    let orderBy: string;
-    let vectorParamIndex: number | null = null;
-    if (q) {
-      const vec = await encodeQuery(q);
-      params.push(toPgVector(vec));
-      vectorParamIndex = params.length;
-      // Single-key ORDER BY: adding a tiebreaker (sc.id) forces Postgres to
-      // materialise the full filtered set to satisfy deterministic sort,
-      // defeating the HNSW index (8ms → 4400ms on 1.4M rows).
-      orderBy = `sc.embedding <=> $${vectorParamIndex}::vector`;
-    } else {
-      orderBy = "sc.spoken_at DESC NULLS LAST, sc.id";
-    }
-
-    // ts_headline uses the per-row tsv_config so highlight tokenisation
-    // matches the index used at build time.
-    let headlineExpr = "NULL::text";
-    if (q) {
-      params.push(q);
-      const qIdx = params.length;
-      headlineExpr = `
-        ts_headline(
-          COALESCE(sc.tsv_config, 'simple')::regconfig,
-          sc.text,
-          websearch_to_tsquery(COALESCE(sc.tsv_config, 'simple')::regconfig, $${qIdx}),
-          'MaxWords=35, MinWords=15, ShortWord=3, MaxFragments=2, FragmentDelimiter=" … ", HighlightAll=FALSE'
-        )`;
-    }
-
-    // Cap the count at 1000 to avoid a full HNSW/filter scan just to
-    // compute "pages". UIs beyond page 50 (at limit=20) are unusable
-    // anyway; keyset pagination is a later concern.
-    const COUNT_CAP = 1000;
-    const countRow = await queryOne<{ n: number }>(
-      `SELECT COUNT(*)::int AS n FROM (
-         SELECT 1 FROM speech_chunks sc
-         WHERE ${whereSql}
-         LIMIT ${COUNT_CAP + 1}
-       ) x`,
-      filterParams,
-    );
-    const totalRaw = countRow?.n ?? 0;
-    const totalCapped = totalRaw > COUNT_CAP;
-    const total = totalCapped ? COUNT_CAP : totalRaw;
-
-    const sql = `
-      SELECT
-        sc.id                         AS chunk_id,
-        sc.speech_id,
-        sc.chunk_index,
-        sc.text,
-        ${headlineExpr}               AS snippet_html,
-        ${vectorParamIndex ? `(sc.embedding <=> $${vectorParamIndex}::vector)::float` : "NULL::float"} AS distance,
-        sc.spoken_at,
-        sc.language,
-        sc.level,
-        sc.province_territory,
-        sc.party_at_time,
-        sc.politician_id,
-        p.name                        AS politician_name,
-        p.openparliament_slug         AS politician_slug,
-        p.photo_url                   AS politician_photo_url,
-        p.photo_path                  AS politician_photo_path,
-        p.party                       AS politician_party,
-        socials.items                 AS politician_socials,
-        s.speaker_name_raw            AS speech_speaker_name_raw,
-        s.source_url                  AS speech_source_url,
-        s.source_anchor               AS speech_source_anchor,
-        ls.parliament_number,
-        ls.session_number
-      FROM speech_chunks sc
-      LEFT JOIN politicians p           ON p.id  = sc.politician_id
-      LEFT JOIN speeches   s            ON s.id  = sc.speech_id
-      LEFT JOIN legislative_sessions ls ON ls.id = s.session_id
-      LEFT JOIN LATERAL (
-        SELECT jsonb_agg(
-                 jsonb_build_object('platform', ps.platform, 'url', ps.url, 'handle', ps.handle)
-                 ORDER BY ps.platform
-               ) AS items
-          FROM politician_socials ps
-         WHERE ps.politician_id = p.id
-           AND COALESCE(ps.is_live, true)
-      ) socials ON true
-      WHERE ${whereSql}
-      ORDER BY ${orderBy}
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-
-    const rows = await query<SpeechSearchRow>(sql, params);
-
-    const items = rows.map((r) => ({
-      chunk_id: r.chunk_id,
-      speech_id: r.speech_id,
-      chunk_index: r.chunk_index,
-      text: r.text,
-      snippet_html: r.snippet_html,
-      similarity: r.distance !== null ? 1 - r.distance : null,
-      spoken_at: r.spoken_at,
-      language: r.language,
-      level: r.level,
-      province_territory: r.province_territory,
-      party_at_time: r.party_at_time,
-      politician: r.politician_id
-        ? {
-            id: r.politician_id,
-            name: r.politician_name,
-            slug: r.politician_slug,
-            photo_url: resolvePhotoUrl({
-              photo_path: r.politician_photo_path,
-              photo_url: r.politician_photo_url,
-            }),
-            party: r.politician_party,
-            socials: r.politician_socials ?? [],
-          }
-        : null,
-      speech: {
-        speaker_name_raw: r.speech_speaker_name_raw,
-        source_url: r.speech_source_url,
-        source_anchor: r.speech_source_anchor,
-        session:
-          r.parliament_number !== null && r.session_number !== null
-            ? { parliament_number: r.parliament_number, session_number: r.session_number }
-            : null,
-      },
-    }));
-
-    return {
-      items,
-      page,
-      limit,
-      total,
-      totalCapped,
-      pages: Math.max(1, Math.ceil(total / limit)),
-      mode: q ? "semantic" : "recent",
-    };
+    return runTimelineSearch(parsed.data);
   });
+
+  // Authenticated deep-dive: every quote one politician has on the query.
+  // Backs the "Show all N matching quotes" expand affordance on /search's
+  // politician view. Hard-gated behind requireUser + a per-user rate limit
+  // so anon callers can't bypass the "sign in to expand" UI by URL — same
+  // posture as POST /reports (the established gated-search-feature
+  // precedent in this codebase).
+  app.get(
+    "/politician-quotes",
+    {
+      preHandler: [requireUser],
+      config: {
+        rateLimit: {
+          max: 60,
+          timeWindow: "1 minute",
+          keyGenerator: (req) => `expand-quotes:${getUser(req)?.sub ?? req.ip}`,
+        },
+      },
+    },
+    async (req, reply) => {
+      const parsed = expandQuery.safeParse(req.query);
+      if (!parsed.success) return reply.badRequest(parsed.error.message);
+      if (!parsed.data.q) {
+        return reply.badRequest("`q` is required for /politician-quotes");
+      }
+      // Force timeline mode + collapse to the single requested politician.
+      // per_group_limit/sort/group_by don't apply here but SearchInput
+      // demands them; supply the schema defaults so runTimelineSearch's
+      // shared filter builder works unchanged.
+      const input: SearchInput = {
+        ...parsed.data,
+        politician_id: undefined,
+        politician_ids: [parsed.data.politician_id],
+        group_by: "timeline",
+        per_group_limit: 5,
+        sort: "mentions",
+      };
+      // 0.45 mirrors handleGroupedByPolitician's MIN_SIMILARITY so the
+      // deep-dive count matches mention_count on the same card —
+      // "actually matching quotes for this query", not "every chunk
+      // this MP has ever uttered under the structural filters". Client
+      // can tighten further (e.g. 0.7 for "strong matches only") but
+      // never loosen below the 0.45 floor.
+      const clientMin = parsed.data.min_similarity ?? 0;
+      const effectiveMin = Math.max(0.45, clientMin);
+      return runTimelineSearch(input, { minSimilarity: effectiveMin });
+    }
+  );
 
   app.get("/facets", async (req, reply) => {
     const parsed = baseFilterSchema.safeParse(req.query);

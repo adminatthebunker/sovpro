@@ -22,6 +22,9 @@ import SavedSearchesPage from "./pages/SavedSearchesPage";
 import CorrectionsPage from "./pages/CorrectionsPage";
 import AccountCorrectionsPage from "./pages/AccountCorrectionsPage";
 import CreditsPage from "./pages/CreditsPage";
+import InvoicePage from "./pages/InvoicePage";
+import ReportsListPage from "./pages/ReportsListPage";
+import ReportViewerPage from "./pages/ReportViewerPage";
 import { AdminLayout } from "./components/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminJobs from "./pages/admin/AdminJobs";
@@ -30,6 +33,7 @@ import AdminSchedules from "./pages/admin/AdminSchedules";
 import AdminSocialsReview from "./pages/admin/AdminSocialsReview";
 import AdminCorrections from "./pages/admin/AdminCorrections";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminReports from "./pages/admin/AdminReports";
 
 // Legacy /politician/:id → /politicians/:id, preserving any #hash (e.g. #socials)
 // so existing deep-links keep the right tab open after the redirect.
@@ -44,6 +48,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <UserAuthProvider>
         <Routes>
+        {/* Invoice pages render OUTSIDE the main Layout — no site nav,
+            no footer, print-clean by design. See InvoicePage.tsx. */}
+        <Route path="account/credits/invoice/:ledgerId" element={<InvoicePage />} />
+        {/* Report viewer also renders outside the main layout — print-clean,
+            same rationale as invoices. See ReportViewerPage.tsx. */}
+        <Route path="reports/:id" element={<ReportViewerPage />} />
         <Route element={<Layout />}>
           <Route index element={<Lander />} />
           <Route path="map" element={<MapPage />} />
@@ -61,6 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <Route path="account/saved-searches" element={<SavedSearchesPage />} />
           <Route path="account/corrections" element={<AccountCorrectionsPage />} />
           <Route path="account/credits" element={<CreditsPage />} />
+          <Route path="account/reports" element={<ReportsListPage />} />
           <Route path="corrections" element={<CorrectionsPage />} />
           <Route path="admin" element={<AdminLayout />}>
             <Route index element={<AdminDashboard />} />
@@ -70,6 +81,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="socials" element={<AdminSocialsReview />} />
             <Route path="corrections" element={<AdminCorrections />} />
             <Route path="users" element={<AdminUsers />} />
+            <Route path="reports" element={<AdminReports />} />
           </Route>
         </Route>
         </Routes>

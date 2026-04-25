@@ -99,6 +99,15 @@ Canadian Political Data is a small fleet of cooperating services orchestrated by
 - Captures rolling 4 KB tails of stdout/stderr into the job row so failures are debuggable without log spelunking.
 - On boot recovers any `status='running'` row older than `JOBS_STUCK_MINUTES` (default 10) back to `queued`.
 
+### `alerts-worker`
+- Long-running poller for saved-search alert digests. Re-runs each due `saved_searches` row's HNSW query against the cached `query_embedding` (no TEI call from the worker), sends a daily/weekly digest via Proton SMTP, then advances `last_checked_at` / `last_notified_at`.
+- Suppresses sends to addresses with `users.email_bounced_at IS NOT NULL`; flips the bounce timestamp on synchronous SMTP 5xx responses so further alerts stop until an operator clears it.
+
+### `reports-worker`
+- Long-running poller that drives the premium /reports flow. Claims the oldest queued `report_jobs` row via `FOR UPDATE SKIP LOCKED`, embeds the user's query via TEI, runs an LLM map-reduce over every matching `speech_chunk` for the `(politician, query)` pair through OpenRouter (default `anthropic/claude-sonnet-4.6`), sanitises the rendered HTML server-side (`bleach` allowlist), persists the result on the row, and either commits the credit hold on success (`released → committed` on the existing ledger row) or releases it on failure (`held → refunded`).
+- Stale-claim re-queue: a row stuck in `running` past `REPORTS_STALE_CLAIM_MINUTES` (default 15) is reset to `queued` so a fresh worker picks it up. The hold persists across re-queues — no double-debit risk thanks to the `(kind='report_hold', reference_id=jobId)` partial unique index.
+- Sends "your report is ready" / "report failed, credits refunded" emails via the same Proton SMTP relay as `alerts-worker`, gated by `users.email_bounced_at`.
+
 ### `change-detection` (external `ghcr.io/thedurancode/change`)
 - Watches website content for changes
 - POSTs to `/api/v1/webhooks/change` with HMAC sig

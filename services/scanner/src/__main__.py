@@ -712,7 +712,10 @@ from .legislative.qc_bills import (  # noqa: E402
     fetch_qc_bill_sponsors, ingest_qc_bills_csv, ingest_qc_bills_rss,
 )
 from .legislative.ab_mlas import enrich_ab_mla_ids  # noqa: E402
-from .legislative.ab_former_mlas import ingest_ab_former_mlas, resolve_ab_speakers  # noqa: E402
+from .legislative.ab_former_mlas import (  # noqa: E402
+    ingest_ab_former_mlas, resolve_ab_speakers, enrich_ab_mlas,
+)
+from .legislative.ab_presiding_merge import merge_ab_presiding_stubs  # noqa: E402
 from .legislative.ab_bills import ingest_ab_bills  # noqa: E402
 from .legislative.mb_mlas import ingest as ingest_mb_mlas  # noqa: E402
 from .legislative.mb_former_mlas import ingest_mb_former_mlas  # noqa: E402
@@ -973,10 +976,10 @@ def cmd_ingest_ns_mlas(
 
 
 @cli.command("ingest-ns-hansard")
-@click.option("--parliament", type=int, required=True,
-              help="NS assembly number (e.g. 65 for current).")
-@click.option("--session", type=int, required=True,
-              help="Session within the assembly (e.g. 1).")
+@click.option("--parliament", type=int, default=None,
+              help="NS assembly number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the assembly. Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only ingest sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -989,31 +992,32 @@ def cmd_ingest_ns_mlas(
               help="Bypass discovery and ingest a single sitting URL directly.")
 @click.pass_context
 def cmd_ingest_ns_hansard(
-    ctx: click.Context, parliament: int, session: int,
+    ctx: click.Context, parliament, session,
     since: Optional[str], until: Optional[str],
     limit_sittings: Optional[int], limit_speeches: Optional[int],
     one_off_url: Optional[str],
 ) -> None:
     """Ingest Nova Scotia Hansard (HTML transcripts) → `speeches` table.
 
-    Discovery: session index at /legislative-business/hansard-debates/
-    {parliament}-{session}; sitting URLs of shape
-    /assembly-{N}-session-{M}/house_{YYmonDD}.
-
-    Parser: every <p> anchored at /members/profiles/<slug> or
-    /members/speaker/ is a speaker turn. Slug FK-joins
-    politicians.nslegislature_slug for exact attribution (run
-    ingest-ns-mlas first). "The Speaker" turns leave politician_id
-    NULL; resolve-presiding-speakers --province NS handles those.
-
-    Idempotent via UNIQUE (source_system, source_url, sequence).
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions (populated by ingest-ns-bills).
     """
     from datetime import date as _date
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if (parliament is None or session is None) and one_off_url is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="NS",
+            )
+            console.print(
+                f"[dim]auto-resolved current NS session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await ingest_ns_hansard(
             db,
             parliament=parliament,
@@ -1050,6 +1054,107 @@ def cmd_resolve_ns_speakers(ctx: click.Context, limit: Optional[int]) -> None:
         stats = await resolve_ns_hansard_speakers(db, limit=limit)
         console.print(
             f"[green]resolve-ns-speakers[/green]: "
+            f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
+            f"still_unresolved={stats.still_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("ingest-on-hansard")
+@click.option("--parliament", type=int, default=None,
+              help="Ontario Parliament number (e.g. 44). Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the parliament (e.g. 1). Default: latest.")
+@click.option("--since", type=str, default=None,
+              help="Only ingest sittings on/after this ISO date (YYYY-MM-DD).")
+@click.option("--until", type=str, default=None,
+              help="Only ingest sittings on/before this ISO date (YYYY-MM-DD).")
+@click.option("--limit-sittings", type=int, default=None,
+              help="Cap on sittings processed (newest-first when capped).")
+@click.option("--limit-speeches", type=int, default=None,
+              help="Cap on TOTAL speeches ingested. Smoke-test friendly.")
+@click.option("--url", "one_off_url", type=str, default=None,
+              help="Bypass discovery and ingest a single sitting URL directly.")
+@click.pass_context
+def cmd_ingest_on_hansard(
+    ctx: click.Context, parliament, session, since, until,
+    limit_sittings, limit_speeches, one_off_url,
+) -> None:
+    """Ingest Ontario Hansard (HTML transcripts via ola.org JSON node) → speeches.
+
+    Discovery: walk the session HTML at /house-documents/parliament-{P}/session-{S}/.
+    Per-sitting fetch uses ?_format=json which carries the body HTML in
+    `body.value` plus structured field_date / field_associated_bill_multi.
+
+    Speaker resolution is name-based against the ON politicians roster
+    (no per-speaker slug anchors in ON markup). Bare-role turns ("The
+    Speaker" without inline parens) defer to
+    `resolve-presiding-speakers --province ON`.
+
+    When --parliament/--session are omitted, resolves the current
+    session from legislative_sessions (populated by ingest-on-bills).
+    """
+    from datetime import date as _date
+    from .legislative.on_hansard import ingest as _ingest
+    from .legislative.current_session import current_session
+
+    def _parse_d(s):
+        return _date.fromisoformat(s) if s else None
+
+    async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if (parliament is None or session is None) and one_off_url is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="ON",
+            )
+            console.print(
+                f"[dim]auto-resolved current ON session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
+        # When one_off_url is set, parliament/session are still needed for
+        # legislative_sessions upsert. Default to the current session DB
+        # value if not supplied.
+        if (parliament is None or session is None) and one_off_url is not None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="ON",
+            )
+        stats = await _ingest(
+            db,
+            parliament=parliament,
+            session=session,
+            since=_parse_d(since),
+            until=_parse_d(until),
+            limit_sittings=limit_sittings,
+            limit_speeches=limit_speeches,
+            one_off_url=one_off_url,
+        )
+        console.print(
+            f"[green]ingest-on-hansard[/green]: "
+            f"sittings={stats.sittings_scanned} seen={stats.speeches_seen} "
+            f"inserted={stats.speeches_inserted} updated={stats.speeches_updated} "
+            f"skipped_empty={stats.skipped_empty} parse_errors={stats.parse_errors} "
+            f"resolved={stats.speeches_resolved} role={stats.speeches_role_only} "
+            f"ambiguous={stats.speeches_ambiguous} unresolved={stats.speeches_unresolved}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("resolve-on-speakers")
+@click.option("--limit", type=int, default=None,
+              help="Cap speeches scanned (smoke-test aid).")
+@click.pass_context
+def cmd_resolve_on_speakers(ctx: click.Context, limit: Optional[int]) -> None:
+    """Re-resolve politician_id on ON Hansard speeches with NULL politician_id.
+
+    Run after expanding the ON MPP roster (e.g. after ingest-ontario-mpps)
+    to pick up speeches whose name now resolves. Idempotent.
+    """
+    from .legislative.on_hansard import resolve_on_speakers as _resolve
+
+    async def _wrap(db: Database) -> None:
+        stats = await _resolve(db, limit=limit)
+        console.print(
+            f"[green]resolve-on-speakers[/green]: "
             f"scanned={stats.speeches_scanned} updated={stats.speeches_updated} "
             f"still_unresolved={stats.still_unresolved}"
         )
@@ -1342,6 +1447,88 @@ def cmd_resolve_ab_speakers(ctx: click.Context, limit: Optional[int]) -> None:
         )
     asyncio.run(_run(_wrap, ctx.obj["dsn"]))
 
+
+@cli.command("enrich-ab-mlas")
+@click.option("--mid", type=str, default=None,
+              help="Process a single ab_assembly_mid (smoke test).")
+@click.option("--limit", type=int, default=None,
+              help="Cap number of MLAs processed this run.")
+@click.option("--delay", type=float, default=1.0,
+              help="Seconds between page fetches (politeness).")
+@click.option("--refresh/--no-refresh", default=False,
+              help="Re-fetch even MLAs already enriched (etag-cached).")
+@click.pass_context
+def cmd_enrich_ab_mlas(
+    ctx: click.Context, mid: Optional[str], limit: Optional[int],
+    delay: float, refresh: bool,
+) -> None:
+    """Fetch /member-information?mid=NNNN per AB MLA and persist detail.
+
+    Captures photo, party history, constituency history, and the full
+    "Offices and Roles" table (Speaker / Premier / Minister / Critic /
+    committee chair periods) into politicians + politician_terms. The
+    Speaker terms enable merge-ab-presiding-stubs to disambiguate
+    `presiding-officer-seed:AB:%` stubs and fold their speeches into
+    the proper MID-keyed politicians.
+
+    Sets photo_url; does NOT download/hash the photo. Run
+    backfill-politician-photos afterwards to mirror the images onto
+    the local /assets volume.
+
+    Idempotent: skips MLAs whose extras.ab_member_info_fetched_at is
+    set unless --refresh is passed.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await enrich_ab_mlas(
+            db, mid=mid, limit=limit, delay=delay, refresh=refresh,
+        )
+        console.print(
+            f"[green]enrich-ab-mlas[/green]: "
+            f"considered={stats.considered} fetched={stats.fetched} "
+            f"updated={stats.politicians_updated} "
+            f"terms_inserted={stats.terms_inserted} "
+            f"failed={stats.failed}"
+        )
+        for s in stats.fail_samples:
+            console.print(f"  [yellow]fail[/yellow] {s}")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
+@cli.command("merge-ab-presiding-stubs")
+@click.option("--dry-run/--no-dry-run", default=False,
+              help="Report stub→twin pairs without modifying any rows.")
+@click.pass_context
+def cmd_merge_ab_presiding_stubs(ctx: click.Context, dry_run: bool) -> None:
+    """One-time reconciliation of AB presiding-officer-seed stubs.
+
+    Each stub is merged into its MID-keyed twin (matched on last_name,
+    disambiguated by overlapping Speaker terms when multiple twins share
+    a surname). Speeches and speech_chunks reassign to the twin and the
+    stub is deleted.
+
+    speeches.speaker_role is preserved — the [Speaker] / [Chair] badge
+    in search results survives the merge.
+
+    Idempotent: a re-run finds zero stubs and is a no-op.
+    """
+    async def _wrap(db: Database) -> None:
+        stats = await merge_ab_presiding_stubs(db, dry_run=dry_run)
+        verb = "would_merge" if dry_run else "merged"
+        console.print(
+            f"[green]merge-ab-presiding-stubs[/green]: "
+            f"considered={stats.stubs_considered} "
+            f"{verb}={stats.stubs_merged} "
+            f"no_twin={stats.stubs_no_twin} "
+            f"ambiguous={stats.stubs_ambiguous} "
+            f"empty_orphans={stats.skipped_no_speeches} "
+            f"speeches_moved={stats.speeches_moved} "
+            f"chunks_moved={stats.chunks_moved}"
+        )
+        for s in stats.fail_samples:
+            console.print(f"  [yellow]skip[/yellow] {s}")
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("resolve-mb-bill-sponsors")
 @click.option("--limit", type=int, default=None,
               help="Cap on rows scanned this run (default: all unresolved).")
@@ -1385,19 +1572,33 @@ def cmd_fetch_mb_billstatus(ctx: click.Context) -> None:
 
 
 @cli.command("parse-mb-bill-events")
-@click.option("--parliament", type=int, default=43,
-              help="Legislature number (default: 43, current).")
-@click.option("--session", type=int, default=3,
-              help="Session number within the legislature (default: 3, current).")
+@click.option("--parliament", type=int, default=None,
+              help="Legislature number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session number within the legislature. Default: latest.")
 @click.pass_context
-def cmd_parse_mb_bill_events(ctx: click.Context, parliament: int, session: int) -> None:
+def cmd_parse_mb_bill_events(ctx: click.Context, parliament, session) -> None:
     """Parse MB billstatus.pdf → bill_events (real stage dates).
 
     Deletes prior manitoba-billstatus events for this session, then
     re-inserts from the current parse. Requires that ingest-mb-bills
     has already created the matching bills rows.
+
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions.
     """
+    from .legislative.current_session import current_session
+
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if parliament is None or session is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="MB",
+            )
+            console.print(
+                f"[dim]auto-resolved current MB session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await parse_mb_bill_events(
             db, parliament=parliament, session=session,
         )
@@ -1413,12 +1614,12 @@ def cmd_parse_mb_bill_events(ctx: click.Context, parliament: int, session: int) 
 
 
 @cli.command("ingest-mb-bills")
-@click.option("--parliament", type=int, default=43,
-              help="Legislature number (default: 43, current).")
-@click.option("--session", type=int, default=3,
-              help="Session number within the legislature (default: 3, current).")
+@click.option("--parliament", type=int, default=None,
+              help="Legislature number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session number within the legislature. Default: latest.")
 @click.pass_context
-def cmd_ingest_mb_bills(ctx: click.Context, parliament: int, session: int) -> None:
+def cmd_ingest_mb_bills(ctx: click.Context, parliament, session) -> None:
     """Ingest Manitoba bills roster from web2.gov.mb.ca.
 
     One HTTP GET per session returns Government Bills + Private Members'
@@ -1426,8 +1627,23 @@ def cmd_ingest_mb_bills(ctx: click.Context, parliament: int, session: int) -> No
     only sponsor metadata — per-bill pages are text-only. Stage dates
     come from `billstatus.pdf` in a separate command
     (`parse-mb-bill-events`); this command only writes bills + sponsors.
+
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions. On a fresh DB, pass them explicitly once
+    (e.g. --parliament 43 --session 3).
     """
+    from .legislative.current_session import current_session
+
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if parliament is None or session is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="MB",
+            )
+            console.print(
+                f"[dim]auto-resolved current MB session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await ingest_mb_bills(db, parliament=parliament, session=session)
         console.print(
             f"[green]ingest-mb-bills[/green]: "
@@ -1714,11 +1930,52 @@ def cmd_harvest_personal_socials(ctx: click.Context, limit) -> None:
 # Federal Hansard — speeches ingest (openparliament.ca)
 # ─────────────────────────────────────────────────────────────────────
 
+@cli.command("ingest-federal-bills")
+@click.option("--parliament", type=int, default=None,
+              help="Parliament number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session number. Default: latest.")
+@click.option("--all-sessions", is_flag=True,
+              help="Walk every federal session in legislative_sessions.")
+@click.option("--limit", type=int, default=None,
+              help="Cap on bills processed (smoke-test friendly).")
+@click.option("--delay", "delay_secs", type=float, default=0.5,
+              help="Seconds between per-bill detail fetches (be polite to openparliament.ca).")
+@click.pass_context
+def cmd_ingest_federal_bills(
+    ctx: click.Context, parliament, session, all_sessions, limit, delay_secs,
+) -> None:
+    """Ingest federal bills from openparliament.ca JSON API.
+
+    Closes the federal bills_status='partial' gap. Sponsor FK via
+    politicians.openparliament_slug. Idempotent on
+    source_id='openparliament-bills:{p}-{s}:{number}'.
+
+    No stage events (openparliament doesn't expose them on bills); status
+    field carries the latest stage as a string.
+    """
+    from .legislative.federal_bills import ingest_federal_bills
+
+    async def _wrap(db: Database) -> None:
+        stats = await ingest_federal_bills(
+            db,
+            parliament=parliament, session=session,
+            all_sessions=all_sessions,
+            limit=limit, delay_seconds=delay_secs,
+        )
+        console.print(
+            f"[green]ingest-federal-bills[/green]: "
+            f"sessions={stats['sessions_touched']} bills={stats['bills']} "
+            f"sponsors={stats['sponsors']} sponsors_linked={stats['sponsors_linked']}"
+        )
+    asyncio.run(_run(_wrap, ctx.obj["dsn"]))
+
+
 @cli.command("ingest-federal-hansard")
-@click.option("--parliament", type=int, required=True,
-              help="Parliament number (e.g. 44). Tags every speech ingested.")
-@click.option("--session", type=int, required=True,
-              help="Session number within the parliament (e.g. 1).")
+@click.option("--parliament", type=int, default=None,
+              help="Parliament number (e.g. 44). Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session number within the parliament (e.g. 1). Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only fetch debates on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -1738,9 +1995,14 @@ def cmd_ingest_federal_hansard(
     (party / constituency parsed from openparliament's attribution line).
     Idempotent via UNIQUE (source_system, source_url, sequence); re-runs
     over the same date range are safe and update mutable columns.
+
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions (populated by the bills ingester). Schedule
+    bills before Hansard in the daily-ingest chain.
     """
     from datetime import date as _date
     from .legislative.federal_hansard import ingest as _ingest, federal_session_bounds
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
@@ -1748,26 +2010,34 @@ def cmd_ingest_federal_hansard(
     effective_since = _parse_d(since)
     effective_until = _parse_d(until)
 
-    # Auto-derive date bounds from the parliament/session if the caller
-    # didn't provide explicit --since / --until. Without this, the
-    # underlying /debates/ walk enumerates every Hansard sitting day
-    # openparliament has indexed (back to 1994) and tags them all with
-    # whichever session we named — which is how 896k speeches ended up
-    # mis-labeled as P43-S2 on 2026-04-18. Explicit flags still win.
-    if effective_since is None and effective_until is None:
-        try:
-            auto_since, auto_until = federal_session_bounds(parliament, session)
-            effective_since = auto_since
-            effective_until = auto_until
-            console.print(
-                f"[dim]auto-deriving date range for P{parliament}-S{session}: "
-                f"{effective_since} → {effective_until}[/dim]"
-            )
-        except ValueError as exc:
-            console.print(f"[red]{exc}[/red]")
-            raise click.Abort()
-
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session, effective_since, effective_until
+        if parliament is None or session is None:
+            parliament, session = await current_session(db, level="federal")
+            console.print(
+                f"[dim]auto-resolved current federal session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
+
+        # Auto-derive date bounds from the parliament/session if the caller
+        # didn't provide explicit --since / --until. Without this, the
+        # underlying /debates/ walk enumerates every Hansard sitting day
+        # openparliament has indexed (back to 1994) and tags them all with
+        # whichever session we named — which is how 896k speeches ended up
+        # mis-labeled as P43-S2 on 2026-04-18. Explicit flags still win.
+        if effective_since is None and effective_until is None:
+            try:
+                auto_since, auto_until = federal_session_bounds(parliament, session)
+                effective_since = auto_since
+                effective_until = auto_until
+                console.print(
+                    f"[dim]auto-deriving date range for P{parliament}-S{session}: "
+                    f"{effective_since} → {effective_until}[/dim]"
+                )
+            except ValueError as exc:
+                console.print(f"[red]{exc}[/red]")
+                raise click.Abort()
+
         stats = await _ingest(
             db,
             parliament=parliament,
@@ -1788,10 +2058,10 @@ def cmd_ingest_federal_hansard(
 
 
 @cli.command("ingest-ab-hansard")
-@click.option("--legislature", type=int, required=True,
-              help="Alberta Legislature number (e.g. 31).")
-@click.option("--session", type=int, required=True,
-              help="Session within the legislature (e.g. 2).")
+@click.option("--legislature", type=int, default=None,
+              help="Alberta Legislature number (e.g. 31). Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the legislature (e.g. 2). Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -1807,22 +2077,26 @@ def cmd_ingest_ab_hansard(
 ) -> None:
     """Ingest Alberta Hansard by parsing sitting PDFs from docs.assembly.ab.ca.
 
-    Scrapes the transcripts-by-type listing for the given legislature+session,
-    fetches each sitting's PDF, extracts text via Poppler (`pdftotext`), and
-    upserts one `speeches` row per speaker turn. Speaker attribution is
-    resolved against AB MLAs via `politicians.ab_assembly_mid`-populated
-    roster; surname collisions leave politician_id NULL.
-
-    Idempotent via UNIQUE (source_system, source_url, sequence); re-runs
-    over the same date range update mutable columns without duplicating.
+    When --legislature/--session are omitted, resolves the current session
+    from legislative_sessions (populated by ingest-ab-bills).
     """
     from datetime import date as _date
     from .legislative.ab_hansard import ingest as _ingest
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal legislature, session
+        if legislature is None or session is None:
+            legislature, session = await current_session(
+                db, level="provincial", province_territory="AB",
+            )
+            console.print(
+                f"[dim]auto-resolved current AB session: "
+                f"L{legislature}-S{session}[/dim]"
+            )
         stats = await _ingest(
             db,
             legislature=legislature,
@@ -1844,10 +2118,10 @@ def cmd_ingest_ab_hansard(
 
 
 @cli.command("ingest-bc-hansard")
-@click.option("--parliament", type=int, required=True,
-              help="BC Parliament number (e.g. 43).")
-@click.option("--session", type=int, required=True,
-              help="Session within the parliament (e.g. 2).")
+@click.option("--parliament", type=int, default=None,
+              help="BC Parliament number (e.g. 43). Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the parliament (e.g. 2). Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -1866,26 +2140,26 @@ def cmd_ingest_bc_hansard(
 ) -> None:
     """Ingest BC Hansard from LIMS HDMS (Blues + Final HTML → speeches).
 
-    Discovery: LIMS HDMS debate-index JSON at
-      https://lims.leg.bc.ca/hdms/debates/{parl}{sess}
-    gives every House sitting with Blues filename + Final redirect (when
-    published). For each sitting we fetch the best-available HTML (Final
-    if published, else Blues), parse speaker turns, and upsert into
-    `speeches`.
-
-    Blues vs Final use the same canonical `source_url` so Final replaces
-    Blues in place on `ON CONFLICT DO UPDATE`. Speaker resolution uses
-    politicians.lims_member_id (populated by bc_bills.enrich_bc_member_ids).
-
-    Idempotent via UNIQUE (source_system, source_url, sequence).
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions (populated by ingest-bc-bills).
     """
     from datetime import date as _date
     from .legislative.bc_hansard import ingest as _ingest
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if (parliament is None or session is None) and one_off_url is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="BC",
+            )
+            console.print(
+                f"[dim]auto-resolved current BC session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await _ingest(
             db,
             parliament=parliament,
@@ -1931,10 +2205,10 @@ def cmd_resolve_bc_speakers(ctx: click.Context, limit: Optional[int]) -> None:
 
 
 @cli.command("ingest-qc-hansard")
-@click.option("--parliament", type=int, required=True,
-              help="QC parliament (législature) number (e.g. 43).")
-@click.option("--session", type=int, required=True,
-              help="Session within the parliament (e.g. 2).")
+@click.option("--parliament", type=int, default=None,
+              help="QC parliament (législature) number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the parliament. Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only fetch sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -1952,23 +2226,26 @@ def cmd_ingest_qc_hansard(
 ) -> None:
     """Ingest Quebec Journal des débats (HTML) → speeches table.
 
-    Discovery: ASP.NET WebForms listing at assnat.qc.ca, paginated via
-    ViewState postbacks with the session filter set (e.g. 1617 = 43-2).
-
-    Parser: QC markup uses <p><b>Honorific Surname :</b> speech…</p>.
-    Speaker resolution uses politicians.qc_assnat_id (enrich-qc-mna-ids
-    populates this). Presiding-officer ("Le Président") rows are left
-    NULL here and resolved in a post-pass via resolve-presiding-speakers.
-
-    Idempotent via UNIQUE (source_system, source_url, sequence).
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions (populated by ingest-qc-bills).
     """
     from datetime import date as _date
     from .legislative.qc_hansard import ingest as _ingest
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if (parliament is None or session is None) and one_off_url is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="QC",
+            )
+            console.print(
+                f"[dim]auto-resolved current QC session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await _ingest(
             db,
             parliament=parliament,
@@ -1991,10 +2268,10 @@ def cmd_ingest_qc_hansard(
 
 
 @cli.command("ingest-mb-hansard")
-@click.option("--parliament", type=int, required=True,
-              help="MB parliament (legislature) number (e.g. 43).")
-@click.option("--session", type=int, required=True,
-              help="Session within the legislature (e.g. 3).")
+@click.option("--parliament", type=int, default=None,
+              help="MB parliament (legislature) number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the legislature. Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only ingest sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -2012,25 +2289,25 @@ def cmd_ingest_mb_hansard(
 ) -> None:
     """Ingest Manitoba Hansard (Word-exported HTML) → speeches table.
 
-    Discovery: simple index page at /hansard/{leg}_{sess}/{leg}_{sess}.html
-    enumerating vol_NN[letter]/summary pages. Transcript URLs are
-    deterministic (vol_NN[letter]/hNN[letter].html) so we skip the
-    summary round-trip.
-
-    Parser: MB markup uses <p class=MsoNormal><b>Name:</b> speech…</p>.
-    Timestamps like <b>*</b> (13:40) update the per-speech spoken_at.
-    Speaker resolution uses politicians.mb_assembly_slug (ingest-mb-mlas
-    populates this). Presiding "The Speaker" rows are left NULL and
-    resolved in a post-pass via resolve-presiding-speakers --province MB.
-
-    Idempotent via UNIQUE (source_system, source_url, sequence).
+    When --parliament/--session are omitted, resolves the current session
+    from legislative_sessions (populated by ingest-mb-bills).
     """
     from datetime import date as _date
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal parliament, session
+        if (parliament is None or session is None) and one_off_url is None:
+            parliament, session = await current_session(
+                db, level="provincial", province_territory="MB",
+            )
+            console.print(
+                f"[dim]auto-resolved current MB session: "
+                f"P{parliament}-S{session}[/dim]"
+            )
         stats = await ingest_mb_hansard(
             db,
             parliament=parliament,
@@ -2102,10 +2379,10 @@ def cmd_resolve_mb_speakers_dated(ctx: click.Context, limit: Optional[int]) -> N
 
 
 @cli.command("ingest-nl-hansard")
-@click.option("--ga", type=int, required=True,
-              help="NL General Assembly number (e.g. 51).")
-@click.option("--session", type=int, required=True,
-              help="Session within the GA (e.g. 1).")
+@click.option("--ga", type=int, default=None,
+              help="NL General Assembly number. Default: latest in legislative_sessions.")
+@click.option("--session", type=int, default=None,
+              help="Session within the GA. Default: latest.")
 @click.option("--since", type=str, default=None,
               help="Only ingest sittings on/after this ISO date (YYYY-MM-DD).")
 @click.option("--until", type=str, default=None,
@@ -2123,28 +2400,25 @@ def cmd_ingest_nl_hansard(
 ) -> None:
     """Ingest Newfoundland & Labrador Hansard (HTML) → speeches table.
 
-    Discovery: session calendar at
-    /HouseBusiness/Hansard/ga{GA}session{S}/ lists sitting-day hrefs
-    of the form {YY}-{MM}-{DD}[{Label}].htm[l]. Special days carry a
-    suffix label (SwearingIn, ElectionofSpeaker).
-
-    Parser: era-branching. Modern (Word-exported, MsoNormal + <strong>)
-    vs legacy (FrontPage, malformed <b>). Both UTF-8. Speakers in both
-    eras use compact ALLCAPS attributions — no riding, no party inline.
-
-    Speaker resolution: (first_initial, surname) against date-windowed
-    NL politician_terms; surname-only fallback. Presiding "SPEAKER"
-    rows are left NULL and resolved in a post-pass via
-    resolve-presiding-speakers --province NL.
-
-    Idempotent via UNIQUE (source_system, source_url, sequence).
+    When --ga/--session are omitted, resolves the current session from
+    legislative_sessions (populated by ingest-nl-bills).
     """
     from datetime import date as _date
+    from .legislative.current_session import current_session
 
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
     async def _wrap(db: Database) -> None:
+        nonlocal ga, session
+        if (ga is None or session is None) and one_off_url is None:
+            ga, session = await current_session(
+                db, level="provincial", province_territory="NL",
+            )
+            console.print(
+                f"[dim]auto-resolved current NL session: "
+                f"GA{ga}-S{session}[/dim]"
+            )
         stats = await ingest_nl_hansard(
             db,
             ga=ga,
@@ -2233,12 +2507,10 @@ def cmd_ingest_nb_hansard(
     def _parse_d(s):
         return _date.fromisoformat(s) if s else None
 
-    if all_sessions_in_legislature is None and (legislature is None or session is None):
-        raise click.UsageError(
-            "Provide --legislature and --session, or --all-sessions-in-legislature L."
-        )
+    from .legislative.current_session import current_session
 
     async def _wrap(db: Database) -> None:
+        nonlocal legislature, session
         if all_sessions_in_legislature is not None:
             stats = await ingest_nb_hansard_all_sessions(
                 db,
@@ -2249,6 +2521,14 @@ def cmd_ingest_nb_hansard(
                 limit_speeches=limit_speeches,
             )
         else:
+            if legislature is None or session is None:
+                legislature, session = await current_session(
+                    db, level="provincial", province_territory="NB",
+                )
+                console.print(
+                    f"[dim]auto-resolved current NB session: "
+                    f"L{legislature}-S{session}[/dim]"
+                )
             stats = await ingest_nb_hansard(
                 db,
                 legislature=legislature,
@@ -2413,6 +2693,21 @@ def cmd_alerts_worker(ctx: click.Context) -> None:
     asyncio.run(_aw.main())
 
 
+@cli.command("reports-worker")
+@click.pass_context
+def cmd_reports_worker(ctx: click.Context) -> None:
+    """Run the premium-reports map-reduce daemon.
+
+    Intended as the entrypoint of the `reports-worker` compose service.
+    Polls report_jobs for queued rows, runs LLM map-reduce over every
+    matching speech_chunk, persists sanitised HTML, commits the credit
+    hold (or releases on failure), and emails the user a "ready" /
+    "failed" notification via Proton SMTP. See premium-reports.md plan.
+    """
+    from . import reports_worker as _rw
+    asyncio.run(_rw.main())
+
+
 @cli.command("chunk-speeches")
 @click.option("--limit", type=int, default=None,
               help="Max speeches to chunk this run (default: all pending).")
@@ -2493,7 +2788,7 @@ def cmd_refresh_coverage_stats(ctx: click.Context) -> None:
 
 
 @cli.command("resolve-presiding-speakers")
-@click.option("--province", type=click.Choice(["AB", "BC", "QC", "MB", "NB", "NL", "NS"]), default="AB",
+@click.option("--province", type=click.Choice(["AB", "BC", "QC", "MB", "NB", "NL", "NS", "ON"]), default="AB",
               help="Jurisdiction whose Speaker roster to seed + resolve.")
 @click.option("--limit", type=int, default=None,
               help="Cap candidate speeches scanned (smoke-test aid).")

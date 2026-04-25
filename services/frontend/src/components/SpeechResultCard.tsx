@@ -83,6 +83,24 @@ function chamberLabel(level: string | null, prov: string | null): string | null 
   return level.toUpperCase();
 }
 
+/** Shorten parser-canonical role strings into compact UI badges. The
+ *  parser writes "The Speaker", "Le Président", "Mr. Speaker", etc.
+ *  Anything outside the known map renders verbatim, capped at 18 chars. */
+function presidingRoleLabel(role: string | null): string | null {
+  if (!role) return null;
+  const trimmed = role.trim();
+  if (!trimmed) return null;
+  const lower = trimmed.toLowerCase();
+  if (lower === "the speaker" || lower === "speaker"
+      || lower === "mr. speaker" || lower === "madam speaker" || lower === "madame speaker") {
+    return "Speaker";
+  }
+  if (lower === "le président" || lower === "la présidente") return "Président";
+  if (lower === "the deputy speaker" || lower === "deputy speaker") return "Deputy Speaker";
+  if (lower === "chairperson" || lower === "the chair" || lower === "chair") return "Chair";
+  return trimmed.length > 18 ? `${trimmed.slice(0, 17)}…` : trimmed;
+}
+
 export interface SpeechResultCardProps {
   item: SpeechSearchItem;
   /** Hide the photo + party badge when the card is rendered inside a
@@ -122,15 +140,25 @@ export function SpeechResultCard({ item, hideSpeaker = false }: SpeechResultCard
             </div>
           )}
           <div className="speech-result__speaker-meta">
-            {pol ? (
-              <Link to={`/politicians/${pol.id}`} className="speech-result__speaker-name">
-                {pol.name ?? item.speech.speaker_name_raw}
-              </Link>
-            ) : (
-              <span className="speech-result__speaker-name speech-result__speaker-name--unresolved">
-                {item.speech.speaker_name_raw}
-              </span>
-            )}
+            <div className="speech-result__speaker-name-row">
+              {pol ? (
+                <Link to={`/politicians/${pol.id}`} className="speech-result__speaker-name">
+                  {pol.name ?? item.speech.speaker_name_raw}
+                </Link>
+              ) : (
+                <span className="speech-result__speaker-name speech-result__speaker-name--unresolved">
+                  {item.speech.speaker_name_raw}
+                </span>
+              )}
+              {presidingRoleLabel(item.speech.speaker_role) && (
+                <span
+                  className="speech-result__role-badge"
+                  title="Spoken in a presiding-officer role (chair speech, procedural)"
+                >
+                  {presidingRoleLabel(item.speech.speaker_role)}
+                </span>
+              )}
+            </div>
             <span className="speech-result__speaker-sub">
               {item.party_at_time ?? pol?.party ?? "—"}
               {chamber ? <> · <span className="speech-result__chamber">{chamber}</span></> : null}
@@ -144,6 +172,14 @@ export function SpeechResultCard({ item, hideSpeaker = false }: SpeechResultCard
 
       <div className="speech-result__meta">
         {date && <time dateTime={item.spoken_at ?? ""}>{date}</time>}
+        {hideSpeaker && presidingRoleLabel(item.speech.speaker_role) && (
+          <span
+            className="speech-result__role-badge speech-result__role-badge--inline"
+            title="Spoken in a presiding-officer role (chair speech, procedural)"
+          >
+            {presidingRoleLabel(item.speech.speaker_role)}
+          </span>
+        )}
         {session && (
           <span className="speech-result__session">
             {" · "}

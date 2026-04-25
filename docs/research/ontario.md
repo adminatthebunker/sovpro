@@ -4,7 +4,7 @@
 
 **Legislature:** Legislative Assembly of Ontario | **Website:** https://www.ola.org | **Seats:** 124 | **Next election:** 2030-04-11
 
-**Status snapshot (2026-04-19):** ✅ **Bills live** for Parliament 44, Session 1 (102 bills, 595 events, 102 sponsors — 100% FK-linked). Hansard / votes / committees not yet built. Drupal `?_format=json` upgrade path identified but not migrated to (HTML pipeline works for current scope).
+**Status snapshot (2026-04-24):** ✅ **Bills + Hansard live** for Parliament 44, Session 1. Bills via ola.org HTML scrape (102 bills, 595 events, 102 sponsors — 100% FK-linked). Hansard via `?_format=json` JSON node — name-based speaker resolution against politicians (no per-speaker slug anchors in ON markup), parens-name extraction handles presiding-officer attributions exactly. Votes / committees not yet built.
 
 ---
 
@@ -98,3 +98,29 @@ https://www.ola.org/en/members/all/john-fraser?_format=json # member node
 - [ ] Hansard
 - [ ] Votes
 - [ ] Committees
+
+## Hansard pipeline ✅ LIVE (2026-04-24)
+
+Probe pass on 2026-04-24 resolved every research question and the pipeline shipped same-day.
+
+- **Endpoint:** `?_format=json` is enabled on Hansard pages (same Drupal serializer pattern as bills). Per-sitting JSON returns `node_type=hansard_document` with `body.value` carrying the full transcript HTML (~9–500 KB depending on sitting), plus structured `field_date`, `field_parliament`, `field_parliament_sessions`, `field_associated_bill_multi`, `field_pdf`, `field_html_upload`.
+- **URL pattern:**
+  - **Discovery (per session):** `/en/legislative-business/house-documents/parliament-{P}/session-{S}/` (HTML) — lists every sitting as `/{discovery}/{YYYY-MM-DD}/hansard`.
+  - **Per-sitting transcript:** the same URL with `?_format=json` returns the JSON node above; the bare URL returns the rendered HTML.
+  - Discovery extends back to parliament 29 (1971); per-sitting JSON works for the modern era unconditionally.
+- **Speaker markup:** every speech is `<p class="speakerStart"><strong>{Honorific Name (optional role)}:</strong> {body}</p>`. Procedural notes use `<p class="procedure">` and are skipped. Confirmed shapes:
+  - `Hon. Stephen Crawford:` / `Mr. Steve Clark:` / `Ms. Laurie Scott:` / `MPP Lisa Gretzky:`
+  - `The Speaker (Hon. Donna Skelly):` — presiding officer with the actual speaker's name in parens
+  - `The Acting Speaker (Mr. X):` / `The Deputy Speaker (Mr. X):` / `The Clerk of the Assembly (Mr. Trevor Day):`
+  - Bare `The Speaker:` / `Madam Speaker:` / `Mr. Speaker:` (legacy / rare in modern era)
+- **Speaker resolution:** name-based against `politicians WHERE province_territory='ON'` (no per-speaker `/members/<slug>` anchors in ON markup, so `politicians.ola_slug` is not in the FK chain for Hansard the way it is for bills). **Parens-name extraction** is the key trick: `The Speaker (Hon. Donna Skelly)` resolves to Donna Skelly directly via the parens content, sidestepping the date-windowed Speaker roster lookup that other jurisdictions need. Bare `The Speaker:` rows defer to `resolve-presiding-speakers --province ON` (SPEAKER_ROSTER seeded with current Speaker only — Tier-1 modern coverage).
+- **Scanner module:** `services/scanner/src/legislative/on_hansard.py` (orchestrator) + `on_hansard_parse.py` (parser).
+- **CLI:** `ingest-on-hansard` + `resolve-on-speakers` (both auto-detect current session via `current_session.py`).
+- **Schedule:** packed into the 18:00 UTC ON slot — bills:00, fetch:05, parse:10, hansard:20, resolve:35, presiding:50.
+- **First-run smoke (2025-04-14 sitting, opening day with Speaker election):** 18 speeches, 9 MPP speakers (100% resolved), 8 role-only Clerk turns (Trevor Day, not an MPP — leaves politician_id NULL), 1 Lieutenant Governor turn (also NULL by design). 0 parse errors.
+
+**Bilingual content note (probed 2026-04-24):** The `/fr/...` URL pattern exists (`/fr/affaires-legislatives/documents-chambre/legislature-{P}/session-{S}/{YYYY-MM-DD}/journal-debats`) and returns HTTP 200 — but the body is **byte-identical** to the English URL. ON Hansard is published as a single bilingual transcript: francophone MPPs' (e.g. France Gélinas, Anthony Leardi, Guy Bourgouin) speeches appear in French interleaved with the English majority (~3% French in a typical sitting). So the EN ingest already captures everything; **per-speech language detection** (a small French-stopword heuristic in `on_hansard_parse.py`) tags each row as `language='en'` or `'fr'` for search filtering and embedding correctness. There is no separate French Hansard to ingest.
+
+**Out of scope (followups):**
+- Historical backfill before parliament 44 — needs the politician roster to include former MPPs (matches the AB / MB historical-roster pattern). Until then, pre-2025 ingest would tank the resolution rate.
+- Bill ↔ Hansard cross-references via `field_associated_bill_multi` — already captured in the JSON we fetch, persisted to `raw->'on_hansard'->'field_associated_bills'`, but not yet promoted to a normalised join table.

@@ -80,6 +80,21 @@ services:
       # Correction-reward payout per accepted submission. Tunable
       # without a rebuild. Zero disables the reward entirely.
       CORRECTION_REWARD_CREDITS: ${CORRECTION_REWARD_CREDITS:-10}
+      # Premium reports phase 1b — paid LLM map-reduce. The api uses
+      # these for cost-estimate (POST /reports/estimate) and the
+      # /reports/meta enabled flag; the reports-worker uses them for
+      # the actual map-reduce run. Both sides MUST agree on the cost
+      # formula and chunk cap or the user-facing estimate diverges
+      # from what the worker actually consumes.
+      OPENROUTER_REPORT_MODEL: ${OPENROUTER_REPORT_MODEL:-anthropic/claude-sonnet-4.6}
+      OPENROUTER_REPORT_TIMEOUT_MS: ${OPENROUTER_REPORT_TIMEOUT_MS:-120000}
+      REPORT_BASE_COST_CREDITS: ${REPORT_BASE_COST_CREDITS:-5}
+      REPORT_PER_CHUNK_BUCKET_COST: ${REPORT_PER_CHUNK_BUCKET_COST:-1}
+      REPORT_BUCKET_SIZE: ${REPORT_BUCKET_SIZE:-10}
+      REPORT_MAX_CHUNKS: ${REPORT_MAX_CHUNKS:-300}
+      REPORT_HNSW_EF_SEARCH: ${REPORT_HNSW_EF_SEARCH:-1000}
+      REPORTS_RATE_LIMIT_DEFAULT_PER_DAY: ${REPORTS_RATE_LIMIT_DEFAULT_PER_DAY:-5}
+      REPORTS_RATE_LIMIT_EXTENDED_PER_DAY: ${REPORTS_RATE_LIMIT_EXTENDED_PER_DAY:-20}
     restart: unless-stopped
     networks: [sw]
 
@@ -244,6 +259,51 @@ services:
     volumes:
       - ./services/scanner/src:/app/src
     entrypoint: ["python", "-m", "src", "alerts-worker"]
+    restart: unless-stopped
+    networks: [sw]
+
+  # ── Reports worker (premium full-report generator) ────────────────
+  # Consumes report_jobs (queued) for the premium /reports flow. Polls
+  # every REPORTS_POLL_INTERVAL seconds, claims oldest queued job via
+  # FOR UPDATE SKIP LOCKED, runs an LLM map-reduce over every matching
+  # speech_chunk for the (politician, query) pair via OpenRouter, then
+  # persists sanitised HTML on the row, commits the credit hold on
+  # success / releases on failure, and sends a "ready" or "failed"
+  # email via the same SMTP relay the alerts-worker uses.
+  #
+  # Stale-claim re-queue: a job stuck in 'running' past 15 minutes is
+  # considered abandoned by a crashed worker and re-queued. The
+  # credit_ledger hold stays in place across re-queues — no double-debit.
+  reports-worker:
+    build:
+      context: ./services/scanner
+      dockerfile: Dockerfile
+    container_name: sw-reports-worker
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://sw:${DB_PASSWORD}@db:5432/sovereignwatch
+      EMBED_URL: ${EMBED_URL:-http://tei:80}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_REPORT_MODEL: ${OPENROUTER_REPORT_MODEL:-anthropic/claude-sonnet-4.6}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://canadianpoliticaldata.ca}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-Canadian Political Data}
+      OPENROUTER_REPORT_TIMEOUT_MS: ${OPENROUTER_REPORT_TIMEOUT_MS:-120000}
+      REPORTS_POLL_INTERVAL: ${REPORTS_POLL_INTERVAL:-5}
+      REPORT_BUCKET_SIZE: ${REPORT_BUCKET_SIZE:-10}
+      REPORT_MAX_CHUNKS: ${REPORT_MAX_CHUNKS:-300}
+      REPORT_HNSW_EF_SEARCH: ${REPORT_HNSW_EF_SEARCH:-1000}
+      SMTP_HOST: ${SMTP_HOST:-smtp.protonmail.ch}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-http://localhost:5173}
+    volumes:
+      - ./services/scanner/src:/app/src
+    entrypoint: ["python", "-m", "src", "reports-worker"]
     restart: unless-stopped
     networks: [sw]
 
