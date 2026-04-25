@@ -1,5 +1,11 @@
 # Handoff — 2026-04-23 (Premium reports billing rail — phase 1a live)
 
+> **Archived 2026-04-25.** Dated session-handoff narrative, kept for the
+> commit-SHA / image-SHA / smoke-test record. Evergreen operator procedures
+> from this handoff have been extracted to
+> [`docs/runbooks/billing-rail-operations.md`](../../runbooks/billing-rail-operations.md).
+> Read that file for current procedures; this one is historical.
+
 **Session arc:** designed and shipped the billing rail that every future premium feature will plug into. Phase 1a = Stripe Checkout + credit ledger + admin comp flow, **deliberately Stripe-unconfigured in production** so the code + DB changes landed as a dark deploy with zero new payment surface. Phase 1b (reports-worker + LLM pipeline that spends credits) has NOT been built — it's the next chunk. One commit landed on `main`; nginx upstream was reloaded after the rebuild to force IP re-resolve.
 
 **TL;DR resume path (if you pick this up):**

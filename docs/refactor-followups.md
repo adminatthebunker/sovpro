@@ -30,8 +30,7 @@ Each entry: **Problem** → **Proposed fix**. One pass at a time; don't bundle.
 
 ## Runbooks → archive
 
-- **`docs/runbooks/handoff-2026-04-23-billing-rail-phase-1a.md`** is currently in `runbooks/` but is structured as a dated handoff narrative, not an evergreen procedure.
-  - **Fix:** extract any evergreen operational steps (Stripe enable / webhook test / credit-grant procedure) into a new `docs/runbooks/billing-rail-operations.md`. Move the dated narrative under `docs/archive/recovery-logs/`.
+- ~~**`docs/runbooks/handoff-2026-04-23-billing-rail-phase-1a.md`** is currently in `runbooks/` but is structured as a dated handoff narrative, not an evergreen procedure.~~ **Done 2026-04-25.** Evergreen procedures extracted to `docs/runbooks/billing-rail-operations.md`; dated narrative moved to `docs/archive/recovery-logs/`.
 
 ## Cross-links
 
