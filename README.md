@@ -20,7 +20,7 @@ This project takes that seriously. Three principles fall out of it:
 2. **Source-available to the core.** Every ingester, every schema decision, every upstream quirk and blocker lives in this repo under [PolyForm Noncommercial 1.0.0](./LICENSE) — free for personal, research, educational, and other noncommercial use. Per-jurisdiction research dossiers under [`docs/research/`](docs/research/) document exactly how each legislature's data was sourced, what's reliable, and what's not. If we got something wrong, you can see where.
 3. **Honest about gaps.** Coverage holes are surfaced on the public [`/coverage`](https://canadianpoliticaldata.ca/coverage) dashboard rather than hidden. Four provincial bills pipelines are still blocked (MB/SK PDFs; PEI/YT WAFs); the dashboard says so.
 
-The project is **not apolitical**. It's rooted in democratic values, civic transparency, and progressive stances on access to information. See [`docs/goals.md`](docs/goals.md) for the full framing.
+The project is **not apolitical**. It's rooted in democratic values, civic transparency, and progressive stances on access to information. See [`docs/goals.md`](docs/goals.md) for the full framing, and [`docs/timeline.md`](docs/timeline.md) for what's being built next and in what order.
 
 ---
 
