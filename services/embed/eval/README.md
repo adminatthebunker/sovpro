@@ -1,6 +1,6 @@
 # services/embed/eval — embedding bake-off harness
 
-Tracking doc and decision-rule authority: **[`docs/plans/embedding-model-comparison.md`](../../../docs/plans/embedding-model-comparison.md)**.
+Tracking doc and decision-rule authority: **[`docs/archive/embedding-eval-2026-04.md`](../../../docs/archive/embedding-eval-2026-04.md)** (archived 2026-04-25; the eval harness here is still used for drift checks on any future model change).
 
 Layout:
 

@@ -1,7 +1,7 @@
 """Draft V1 eval query set with auto-labeled ground truth.
 
 Writes services/embed/eval/queries/queries.jsonl — 40 queries across the
-six categories A–F from docs/plans/embedding-model-comparison.md. Ground
+six categories A–F from docs/archive/embedding-eval-2026-04.md. Ground
 truth is the top-20 chunks per query by Postgres full-text `ts_rank`
 against a hand-picked keyword expansion. This is a V1 "low-quality
 labels that we can beat with embedding models" baseline, per the

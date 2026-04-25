@@ -72,7 +72,7 @@ Plan docs exist for these. They're not abandoned — they're parked behind the p
 - **Public developer API (`/api/public/v1/*`) with three paid tiers.** Greenfield: free / dev / pro tiers, Stripe subscriptions (distinct from credit-pack one-time), per-tier rate limits, OpenAPI + Swagger UI, key provisioning at `/account/api-keys`. Plan: [`plans/public-developer-api.md`](./plans/public-developer-api.md).
 - **Bulk export endpoints (Parquet / CSV) — `read:bulk` scope.** Per-jurisdiction-month presigned exports. Sits behind the dev-API v1.0 launch as v1.1. Plan: same doc as above.
 - **Map tiles self-hosting.** CARTO + OSM tiles currently CDN-loaded. Three options scoped: nginx raster cache, PMTiles + MapLibre GL (~25 GB Z0–Z14 Canada), OpenMapTiles container. Plan: [`plans/sovereignty-runtime-deps.md`](./plans/sovereignty-runtime-deps.md) § item 3.
-- **Browser-automation (Playwright/Camoufox) for PE/YT WAF jurisdictions.** Investment only worth making if the alternative — direct outreach to the legislatures for a civic-transparency allowlist — fails. Plan: [`plans/national-expansion-scoping.md`](./plans/national-expansion-scoping.md) q5.3.
+- **Browser-automation (Playwright/Camoufox) for PE/YT WAF jurisdictions.** Investment only worth making if the alternative — direct outreach to the legislatures for a civic-transparency allowlist — fails. Background: [`archive/scoping-q-a-2026-04.md`](./archive/scoping-q-a-2026-04.md) q5.3.
 - **Openparliament.ca live-call → scheduled refresh.** `/api/v1/openparliament` currently hits `api.openparliament.ca` per request; move to a scanner refresh job and cache in DB. Outage-mitigation. Plan: [`plans/sovereignty-runtime-deps.md`](./plans/sovereignty-runtime-deps.md) § item 4.
 
 ---
@@ -82,7 +82,7 @@ Plan docs exist for these. They're not abandoned — they're parked behind the p
 Not horizon-bound. These need attention every cycle regardless of what else is in flight.
 
 - **Governance docs before public launch.** Takedown / correction policy. DSAR workflow (especially before Apify social enrichment goes public). Disclaimer text on AI-generated reports. None written yet; small, but blocking.
-- **Embedding-model drift monitoring.** Re-run the eval set under [`services/embed/eval/queries/queries.jsonl`](../services/embed/eval/queries/queries.jsonl) on any model change. Qwen3-Embedding-0.6B is current; BGE-M3 wrapper kept on disk for rollback only. Plan context: [`plans/embedding-model-comparison.md`](./plans/embedding-model-comparison.md).
+- **Embedding-model drift monitoring.** Re-run the eval set under [`services/embed/eval/queries/queries.jsonl`](../services/embed/eval/queries/queries.jsonl) on any model change. Qwen3-Embedding-0.6B is current; BGE-M3 wrapper kept on disk for rollback only. Background: [`archive/embedding-eval-2026-04.md`](./archive/embedding-eval-2026-04.md).
 - **AI contradictions false-positive watch.** Feature is live and free-tier; watch for quoted-opponent and party-transition-boundary failure modes. Plan: [`plans/ai-contradictions-handoff.md`](./plans/ai-contradictions-handoff.md).
 - **Coverage dashboard accuracy.** `/coverage` is the honesty surface. After every Hansard or bills ingest, run `refresh-coverage-stats` so the dashboard doesn't lie.
 - **Documentation freshness.** When `/api/v1/search` ships, update [`docs/api.md`](./api.md). When the public dev-API ships, add a `/developers` section to [`README.md`](../README.md). When this timeline gets stale, edit it.

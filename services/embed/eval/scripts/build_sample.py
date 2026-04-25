@@ -3,7 +3,7 @@
 Produces services/embed/eval/sample/chunk_ids.txt: one UUID per line,
 plus a header comment describing the stratification.
 
-Requirements (from docs/plans/embedding-model-comparison.md):
+Requirements (from docs/archive/embedding-eval-2026-04.md):
 - 3,800 EN + 1,200 FR (76/24 to match corpus distribution).
 - Within each language, stratify across year (2021-2026) and party.
 - **Every chunk referenced in queries.jsonl as ground-truth must be

@@ -34,7 +34,7 @@ HNSW index `idx_chunks_embedding` (`vector_cosine_ops`, `m=16, ef_construction=6
 
 ### Eval results that drove the model choice
 
-Read `services/embed/eval/REPORT.md` + `docs/plans/embedding-model-comparison.md`. Bottom line:
+Read `services/embed/eval/REPORT.md` + `docs/archive/embedding-eval-2026-04.md`. Bottom line:
 
 - Qwen3-0.6B instruct beats BGE-M3 by **+13% NDCG@10 and +9% Recall@20** on the 5k-chunk eval sample.
 - Qwen3-0.6B **loses to BGE-M3 on cross-lingual R@10 (0.063 vs 0.081 — a 22% regression).** We accepted this because users generally search in one language at a time and the speed gain (months → weeks for the 1M-chunk backfill) mattered more.
@@ -143,7 +143,7 @@ You've got a 40-query eval set at `services/embed/eval/queries/queries.jsonl` wi
 1. `CLAUDE.md` — project-wide conventions, schema rules, don't-break list.
 2. `docs/goals.md` — product intent.
 3. `docs/plans/semantic-layer.md` — schema of record for everything you're querying.
-4. `docs/plans/embedding-model-comparison.md` — why Qwen3-0.6B, known quality deltas, decisions log.
+4. `docs/archive/embedding-eval-2026-04.md` — why Qwen3-0.6B, known quality deltas, decisions log.
 5. `services/embed/eval/REPORT.md` — measured retrieval numbers to regress against.
 6. `db/migrations/0017_speech_chunks.sql` + `0023_embedding_next.sql` + `0025_drop_legacy_embedding_column.sql` — the final shape of the vector column you'll query (blue-green migration finished in 0025).
 7. `services/api/src/routes/admin.ts` — Fastify + zod pattern match for a new route.

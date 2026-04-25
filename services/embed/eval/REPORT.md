@@ -54,7 +54,7 @@ The cross-lingual win for 4B-int8 (0.193 vs 0.135) is the single biggest categor
 
 ## Decision rule application
 
-From `docs/plans/embedding-model-comparison.md`:
+From `docs/archive/embedding-eval-2026-04.md`:
 
 | Rule | Threshold | Observed | Verdict |
 |---|---|---:|---|

@@ -39,7 +39,7 @@ sovpro logs scanner-cron
 
 The `tei` service runs HuggingFace **Text Embeddings Inference** serving **Qwen3-Embedding-0.6B** (1024-dim, fp16) on the RTX 4050 GPU. Image `ghcr.io/huggingface/text-embeddings-inference:89-1.9`. Reachable inside the compose network as `http://tei:80`.
 
-The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) was retired on 2026-04-19 after a 3-way eval (see `docs/plans/embedding-model-comparison.md`). Its code still lives at `services/embed/` for rollback; no compose service references it.
+The prior custom FastAPI + FlagEmbedding wrapper (BGE-M3 + BGE-reranker-v2-m3) was retired on 2026-04-19 after a 3-way eval (see `docs/archive/embedding-eval-2026-04.md`). Its code still lives at `services/embed/` for rollback; no compose service references it.
 
 - **Model cache.** First request pulls ~1.3 GB into the `embedmodels` named volume (mounted at `/data`; TEI expects HF_HOME-style layout there). The volume was shared with the legacy BGE-M3 layout so a rollback wouldn't re-download either model.
 - **GPU attachment.** Compose uses `deploy.resources.reservations.devices` with `driver: nvidia, capabilities: [gpu]`. Confirm via:

@@ -1,9 +1,9 @@
 # Semantic Layer — Schema, Stack, and Phased Rollout
 
 **Last updated:** 2026-04-19
-**Status:** Approved architecture. Schema + chunking rules are still the authority. Embed-stack section updated post-Qwen3 migration; see `docs/plans/embedding-model-comparison.md` for the bake-off that drove the choice and `docs/plans/search-features-handoff.md` for the retrieval-side contract.
+**Status:** Approved architecture. Schema + chunking rules are still the authority. Embed-stack section updated post-Qwen3 migration; see `docs/archive/embedding-eval-2026-04.md` for the bake-off that drove the choice and `docs/plans/search-features-handoff.md` for the retrieval-side contract.
 
-This doc translates `docs/plans/national-expansion-scoping.md` answers into a concrete plan. If it disagrees with that doc, that doc wins — come back and fix this one.
+This doc was originally translated from the `docs/archive/scoping-q-a-2026-04.md` Q&A. That source is now archived (its decisions are reflected throughout this doc, `goals.md`, and the timeline); update those rather than the archived source.
 
 ## Goals recap
 
@@ -347,7 +347,7 @@ DB disk at 10M chunks × (1024×4 bytes embed + text + metadata) ≈ **30–50 G
 ### Phase 0 — foundation
 - [x] Custom `db/Dockerfile` with pgvector; compose wired to `build: ./db`.
 - [x] Migrations 0014 (pgvector + unaccent), 0015–0017 (speeches / refs / chunks + HNSW/GIN), 0019 (jurisdiction_sources + seed), 0020 (corrections), 0021 (constituency temporal).
-- [x] Embed service: Qwen3-Embedding-0.6B via TEI on RTX 4050 fp16, Dockerised, model-cache volume shared with the retired BGE-M3 layout, `/embed` + `/v1/embeddings` endpoints live. (BGE-M3 + BGE-reranker wrapper was the prior incarnation; retired 2026-04-19 per `docs/plans/embedding-model-comparison.md`.)
+- [x] Embed service: Qwen3-Embedding-0.6B via TEI on RTX 4050 fp16, Dockerised, model-cache volume shared with the retired BGE-M3 layout, `/embed` + `/v1/embeddings` endpoints live. (BGE-M3 + BGE-reranker wrapper was the prior incarnation; retired 2026-04-19 per `docs/archive/embedding-eval-2026-04.md`.)
 - [x] GPU throughput benchmarked on a real speeches sample (50.9 chunks/sec end-to-end; ~75 chunks/sec pure GPU).
 - [x] Frontend coverage page reading `jurisdiction_sources`.
 - [x] Federal Hansard ingester + chunker + embedder scanner commands shipped; federal + QC + AB + BC + MB corpora ingested (2.04 M speeches, 2.70 M chunks, 100 % embedded).
