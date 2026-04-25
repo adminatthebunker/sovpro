@@ -111,70 +111,9 @@ Adding a new command requires updates in **two** spots (see CLAUDE.md § Admin p
 
 ## Billing rail (premium reports phase 1a)
 
-Full design + deploy sequence in `docs/plans/premium-reports.md`. Operational quick-ref below.
+Operator procedures (Stripe enablement, admin comp, ledger correction, webhook secret rotation, verification SQL) live in [`docs/runbooks/billing-rail-operations.md`](runbooks/billing-rail-operations.md). Design context: [`docs/plans/premium-reports.md`](plans/premium-reports.md). Load-bearing invariants: `CLAUDE.md` § Premium reports / billing rail.
 
-### Env vars
-
-`STRIPE_SECRET_KEY` unset → feature disabled. UI hides purchase buttons; `POST /me/credits/checkout` returns 503; `POST /webhooks/stripe` returns 200-discard (NOT 5xx — Stripe would retry for 72h and burn its budget). Full list in `.env.example`:
-
-| Var | Unset behaviour |
-|---|---|
-| `STRIPE_SECRET_KEY` | Checkout endpoint 503s, buy buttons hidden. |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signature verification fails closed. |
-| `STRIPE_PRICE_ID_CREDIT_PACK_SMALL` / `_MEDIUM` / `_LARGE` | Each pack hides individually if its price id is unset. |
-| `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` | Default to `${PUBLIC_SITE_URL}/account/credits?purchase=success|cancel`. |
-
-### Compiling a user a credit grant (admin "comp" workflow)
-
-Intended for journalist / partner access or support remediation. Leaves a normal ledger row with admin attribution:
-
-1. Sign in as an admin (`users.is_admin = true`).
-2. Navigate to `/admin/users` → search by email → Open the user.
-3. In the "Grant credits (comp)" form enter amount (1–100,000) and a reason — the reason is user-visible in their `/account/credits` history so write it for them, not for yourself.
-4. Click "Grant credits." The ledger row posts with `kind='admin_credit'`, `created_by_admin_id` = you, and the user's spendable balance updates immediately.
-
-Audit trail: `SELECT * FROM credit_ledger WHERE kind='admin_credit' ORDER BY created_at DESC;` shows every comp with the granting admin id.
-
-### Suspending a user
-
-1. `/admin/users` → search → Open.
-2. Dropdown "Rate-limit tier" → `suspended` → blur.
-3. Takes effect on the user's next request (no logout required). They see a 403 on every signed-in endpoint until the tier is reverted.
-
-Direct-SQL alternative if the admin UI is unavailable:
-```sql
-UPDATE users SET rate_limit_tier = 'suspended' WHERE email = 'abuser@example.com';
-```
-
-### Rotating the Stripe webhook signing secret
-
-1. In Stripe dashboard → Developers → Webhooks → your endpoint → "Roll signing secret."
-2. Copy the new `whsec_…` value.
-3. Update `.env` → `STRIPE_WEBHOOK_SECRET=whsec_<new>`.
-4. `docker compose up -d api` (api restart only; the Stripe SDK picks up the new secret at boot).
-5. Stripe gives you a 24h overlap window where both old and new secrets validate — plenty of time for the restart.
-
-### Verifying the ledger balance of a specific user
-
-```sql
-SELECT COALESCE(SUM(delta), 0) AS balance
-  FROM credit_ledger
- WHERE user_id = (SELECT id FROM users WHERE email = 'you@example.com')
-   AND state IN ('committed','held');
-```
-Held rows contribute their negative delta → balance is the *spendable* amount, not the gross grant total.
-
-### Disaster: "the ledger is wrong"
-
-Never `UPDATE credit_ledger SET delta = ...`. Every correction must be a **new** ledger row:
-
-```sql
--- Refund 50 credits to a user after a failed report, outside the automatic hold-release path
-INSERT INTO credit_ledger (user_id, delta, state, kind, reason, created_by_admin_id)
-     VALUES ($user_id, 50, 'committed', 'admin_credit', 'Manual refund — report #xxx hung', $admin_id);
-```
-
-The ledger is append-only by discipline, not just by schema. Debug from `SELECT … ORDER BY created_at`; never mutate past rows.
+`STRIPE_SECRET_KEY` unset → feature disabled. UI hides purchase buttons; `POST /me/credits/checkout` returns 503; `POST /webhooks/stripe` returns 200-discard (NOT 5xx — Stripe would retry for 72h and burn its budget).
 
 ## Scheduled jobs
 

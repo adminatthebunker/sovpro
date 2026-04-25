@@ -11,8 +11,7 @@ Each entry: **Problem** → **Proposed fix**. One pass at a time; don't bundle.
 
 ## Trims
 
-- **`docs/operations.md`** has duplicated embedding + billing content that lives authoritatively in `CLAUDE.md`.
-  - **Fix:** cut the duplicates; keep operations-only material (compose commands, log locations, restart procedures). Target ~150 lines.
+- ~~**`docs/operations.md`** has duplicated embedding + billing content that lives authoritatively in `CLAUDE.md`.~~ **Done 2026-04-25** (228 → 167 lines). Billing rail section collapsed to a 2-line cross-link to the new runbook. Embedding-section dedup tracked in the next followup item.
 - **`docs/plans/apify-social-deep-enrichment.md`** carries legal/policy minutiae mixed with the technical plan.
   - **Fix:** move the consent / DSAR / TOS-compliance discussion into a sibling `docs/governance/social-enrichment-policy.md` (or fold it into the unwritten governance doc). Target plan-doc length: ~200 lines.
 - ~~**`docs/plans/premium-reports.md`** still includes the phase-1a billing-rail design that has now shipped and is summarized in `CLAUDE.md`.~~ **Done 2026-04-25** (302 → 120 lines). Phase-1a marked shipped, verbatim SQL replaced with prose pointing at the migration file, deployment sequence + verification SQL extracted to the new billing-rail-operations runbook, file list collapsed to a `CLAUDE.md` cross-ref.
