@@ -58,9 +58,13 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       # AI contradictions analysis (grouped search). Unset OPENROUTER_API_KEY
-      # → feature disabled, button greys out in the UI.
+      # → feature disabled, button greys out in the UI. The model defaults
+      # live in services/api/src/config.ts; both env-var names are forwarded
+      # so a host with the legacy OPENROUTER_MODEL keeps working (a
+      # one-line deprecation warning prints at boot in that case).
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      OPENROUTER_CONTRADICTIONS_MODEL: ${OPENROUTER_CONTRADICTIONS_MODEL:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
       OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://canadianpoliticaldata.ca}
       OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-Canadian Political Data}

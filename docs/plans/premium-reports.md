@@ -158,7 +158,7 @@ Added to `services/api/src/config.ts` behind the usual "unset → feature 503s" 
 - `STRIPE_PRICE_ID_CREDIT_PACK_SMALL` / `_MEDIUM` / `_LARGE` — one-time-payment prices created in the Stripe dashboard. Unset → corresponding pack is hidden on the frontend pack listing, not an error.
 - `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` — optional overrides; default to `${PUBLIC_SITE_URL}/account/credits?purchase=success|cancel`.
 
-Phase 1b adds `OPENROUTER_REPORT_MODEL` (a higher-tier model id — `anthropic/claude-sonnet-4.6` or similar — distinct from the free-tier `OPENROUTER_MODEL` that powers `contradictions.ts`).
+Phase 1b adds `OPENROUTER_REPORT_MODEL` (a higher-tier model id — `anthropic/claude-sonnet-4.6` or similar — distinct from the free-tier `OPENROUTER_CONTRADICTIONS_MODEL` that powers `contradictions.ts`; the latter is the canonical name for what was originally `OPENROUTER_MODEL`, which is still read as a deprecated fallback).
 
 ## Files added / modified — phase 1a
 

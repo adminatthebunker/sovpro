@@ -12,9 +12,9 @@ interface Props {
  *
  * Transparency is the whole point — the model identifier is rendered
  * verbatim so users consent to a specific third party, not "AI in
- * general." If an operator swaps OPENROUTER_MODEL, every user
- * re-consents on their next click (the localStorage record is keyed
- * on the model string).
+ * general." If an operator swaps OPENROUTER_CONTRADICTIONS_MODEL
+ * (legacy: OPENROUTER_MODEL), every user re-consents on their next
+ * click (the localStorage record is keyed on the model string).
  *
  * Structure mirrors PartyReportCard's `variant="modal"` pattern: an
  * outer div is the backdrop (onClick → cancel), inner div is the card

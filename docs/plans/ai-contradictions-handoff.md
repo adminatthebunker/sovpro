@@ -163,7 +163,7 @@ New env vars consumed by the API service (add to `services/api/src/config.ts`):
 | Variable | Default | Notes |
 |---|---|---|
 | `OPENROUTER_API_KEY` | (unset) | Required to enable the feature. Empty → `enabled: false`. |
-| `OPENROUTER_MODEL` | `google/gemini-2.0-flash-exp:free` | Full OpenRouter model id. Surfaced to the frontend. |
+| `OPENROUTER_CONTRADICTIONS_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | Full OpenRouter model id. Surfaced to the frontend. Legacy `OPENROUTER_MODEL` is still read as a fallback (boot-time deprecation warning). |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint. |
 | `OPENROUTER_SITE_URL` | `https://canadianpoliticaldata.ca` | Sent as `HTTP-Referer` for OpenRouter attribution. |
 | `OPENROUTER_APP_NAME` | `Canadian Political Data` | Sent as `X-Title`. |
@@ -284,7 +284,7 @@ Stages 1–4 are testable in isolation. Stage 7 is a *product* checkpoint, not j
 - **Meta round-trip.** `curl /api/v1/contradictions/meta` returns `{ enabled: true, model: "<configured>" }` with key set; `{ enabled: false, model: null }` when unset. Frontend button greys accordingly with a tooltip.
 - **Analyze happy path.** On Ziad Aboultaif's carbon-tax card, the call returns 2–4 pairs, at least one of which is labelled `contradiction` or `evolution` with a plausible rationale. The rationale text reads as something a reasonable person would agree with.
 - **Analyze chunk-ownership guard.** Send `chunk_ids` from a different politician and confirm 400, not 500 and not a silent mis-analysis.
-- **Consent modal.** First click opens modal with the configured model name rendered verbatim. Continue → analyze fires; Cancel → nothing fires and no localStorage write. "Don't show again" persists consent; reloading the page and clicking again skips the modal. Changing `OPENROUTER_MODEL` env var (rebuild API), reloading, and clicking re-prompts.
+- **Consent modal.** First click opens modal with the configured model name rendered verbatim. Continue → analyze fires; Cancel → nothing fires and no localStorage write. "Don't show again" persists consent; reloading the page and clicking again skips the modal. Changing `OPENROUTER_CONTRADICTIONS_MODEL` env var (rebuild API), reloading, and clicking re-prompts.
 - **429 path.** Force a rate-limit (small free-tier quota — hit it ~10 times fast, or mock the response). UI shows "AI service rate-limited", not a 500.
 - **Unconfigured path.** `docker compose up -d api` with `OPENROUTER_API_KEY` empty → button greys with tooltip; if forced, endpoint returns 503.
 - **Mobile.** 375 px: modal is readable, buttons tap-friendly, result pairs stack, no horizontal scroll.
@@ -307,7 +307,7 @@ Stages 1–4 are testable in isolation. Stage 7 is a *product* checkpoint, not j
 ## Open risks and gotchas
 
 - **Free-tier rate limits.** OpenRouter's free-tier endpoints have per-model rate limits that change without notice. Expect 429s in production once the feature gets attention. The error message must clearly say "rate-limited, try again later" — don't just show a generic failure.
-- **Free-tier model drift.** Which models are free on OpenRouter changes over time. The env-var + consent-re-prompt design was deliberately built for this — when a model goes paid or disappears, operators swap `OPENROUTER_MODEL` and every user re-consents on next click.
+- **Free-tier model drift.** Which models are free on OpenRouter changes over time. The env-var + consent-re-prompt design was deliberately built for this — when a model goes paid or disappears, operators swap `OPENROUTER_CONTRADICTIONS_MODEL` and every user re-consents on next click.
 - **Quoted opponent / read-into-record.** A politician quoting an opponent's position sits in a chunk labelled with the politician's own `party_at_time`. The model has no inherent way to know the chunk's rhetorical frame. Mitigation ideas (pick one when you see the false-positive rate in practice):
   - Filter out chunks whose text begins with `"The member opposite said"` or ends with the closing quote of a long block quote. Brittle.
   - Add a note in the system prompt instructing the model to flag quote-markers and downgrade those pairs.

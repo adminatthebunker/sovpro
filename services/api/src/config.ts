@@ -37,8 +37,14 @@ const schema = z.object({
   // is surfaced to the frontend consent modal verbatim, so swapping it
   // (e.g. when a free-tier option disappears) is a one-line ops change
   // that re-prompts every user on their next click.
+  //
+  // Model selection: prefer OPENROUTER_CONTRADICTIONS_MODEL. The legacy
+  // OPENROUTER_MODEL is still read for backward compat (with a one-line
+  // deprecation warning) so upgrades don't silently change behaviour.
+  // Either accepts any model id from https://openrouter.ai/models.
   OPENROUTER_API_KEY: z.string().optional(),
-  OPENROUTER_MODEL: z.string().default("nvidia/nemotron-3-super-120b-a12b:free"),
+  OPENROUTER_CONTRADICTIONS_MODEL: z.string().optional(),
+  OPENROUTER_MODEL: z.string().optional(),
   OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   OPENROUTER_SITE_URL: z.string().url().default("https://canadianpoliticaldata.ca"),
   OPENROUTER_APP_NAME: z.string().default("Canadian Political Data"),
@@ -131,7 +137,13 @@ export const config = (() => {
     publicSiteUrl: env.PUBLIC_SITE_URL.replace(/\/$/, ""),
     openrouter: {
       apiKey: env.OPENROUTER_API_KEY ?? "",
-      model: env.OPENROUTER_MODEL,
+      // Precedence: new name → legacy name → built-in default. Empty
+      // strings (compose's `${VAR:-}` passthrough when the host hasn't
+      // set it) fall through to the next branch.
+      model:
+        (env.OPENROUTER_CONTRADICTIONS_MODEL ?? "").trim() ||
+        (env.OPENROUTER_MODEL ?? "").trim() ||
+        "nvidia/nemotron-3-super-120b-a12b:free",
       baseUrl: env.OPENROUTER_BASE_URL.replace(/\/$/, ""),
       siteUrl: env.OPENROUTER_SITE_URL.replace(/\/$/, ""),
       appName: env.OPENROUTER_APP_NAME,
@@ -196,6 +208,15 @@ if (config.env === "production" && (!config.smtp.password || !config.smtp.userna
 if (config.env === "production" && !config.stripe.enabled) {
   console.warn(
     "[config] Stripe secret key or webhook secret unset in production; /me/credits/checkout and /webhooks/stripe will be disabled."
+  );
+}
+
+if (
+  (process.env.OPENROUTER_MODEL ?? "").trim() !== "" &&
+  (process.env.OPENROUTER_CONTRADICTIONS_MODEL ?? "").trim() === ""
+) {
+  console.warn(
+    "[config] OPENROUTER_MODEL is deprecated; rename to OPENROUTER_CONTRADICTIONS_MODEL. The old name still works, but will be dropped in a future release."
   );
 }
 
