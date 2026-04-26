@@ -93,6 +93,16 @@ export interface GroupedSearchResponse {
 
 export type SpeechSearchResponse = TimelineSearchResponse | GroupedSearchResponse;
 
+export const SPEECH_TYPE_VALUES = [
+  "floor",
+  "committee",
+  "question_period",
+  "statement",
+  "point_of_order",
+  "group",
+] as const;
+export type SpeechType = (typeof SPEECH_TYPE_VALUES)[number];
+
 export interface SpeechSearchFilter {
   q?: string;
   lang?: "en" | "fr" | "any";
@@ -111,6 +121,14 @@ export interface SpeechSearchFilter {
    *  filler ("I declare the motion lost"), which floods semantic search
    *  for unrelated phrases. */
   exclude_presiding?: boolean;
+  /** Cosine-similarity floor 0..1. Only applied when `q` is set; raising
+   *  this drops weaker semantic matches from both the count and the page. */
+  min_similarity?: number;
+  /** Restrict to one (parliament, session) — both must be present together. */
+  parliament_number?: number;
+  session_number?: number;
+  /** Speech-type multi-select (Question Period, statement, committee, …). */
+  speech_types?: SpeechType[];
   page?: number;
   limit?: number;
   group_by?: "timeline" | "politician";
@@ -154,6 +172,16 @@ export function buildSpeechSearchQuery(f: SpeechSearchFilter): string {
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
   if (f.exclude_presiding) p.set("exclude_presiding", "true");
+  if (f.min_similarity != null && f.min_similarity > 0) {
+    p.set("min_similarity", String(f.min_similarity));
+  }
+  if (f.parliament_number != null && f.session_number != null) {
+    p.set("parliament_number", String(f.parliament_number));
+    p.set("session_number", String(f.session_number));
+  }
+  if (f.speech_types && f.speech_types.length > 0) {
+    for (const t of f.speech_types) p.append("speech_type", t);
+  }
   p.set("page", String(f.page ?? 1));
   p.set("limit", String(f.limit ?? 20));
   if (f.group_by && f.group_by !== "timeline") p.set("group_by", f.group_by);
@@ -236,11 +264,20 @@ export async function fetchPoliticianQuotes(
   if (parentFilter.from) p.set("from", parentFilter.from);
   if (parentFilter.to) p.set("to", parentFilter.to);
   if (parentFilter.exclude_presiding) p.set("exclude_presiding", "true");
+  if (parentFilter.parliament_number != null && parentFilter.session_number != null) {
+    p.set("parliament_number", String(parentFilter.parliament_number));
+    p.set("session_number", String(parentFilter.session_number));
+  }
+  if (parentFilter.speech_types && parentFilter.speech_types.length > 0) {
+    for (const t of parentFilter.speech_types) p.append("speech_type", t);
+  }
   // Server clamps to >= 0.45; sending a value above that tightens the
-  // floor for this request so paging reshuffles to match. Omitted when
-  // the UI is at "All matches" (default 0), to keep URLs minimal.
-  if (minSimilarity != null && minSimilarity > 0) {
-    p.set("min_similarity", String(minSimilarity));
+  // floor for this request so paging reshuffles to match. The explicit
+  // `minSimilarity` argument wins over the parent filter's value so the
+  // expand affordance can offer its own slider.
+  const effectiveMin = minSimilarity ?? parentFilter.min_similarity;
+  if (effectiveMin != null && effectiveMin > 0) {
+    p.set("min_similarity", String(effectiveMin));
   }
   p.set("page", String(page));
   p.set("limit", String(limit));

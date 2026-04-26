@@ -138,6 +138,85 @@
   border-color: var(--accent);
 }
 
+/* ── Advanced filters disclosure ──────────────────────────────── */
+
+.speech-filters__advanced {
+  margin: -.75rem 0 1.5rem;
+}
+
+.speech-filters__advanced-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  cursor: pointer;
+  padding: .5rem .9rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--ink-muted);
+  font-size: .85rem;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+
+/* Custom disclosure marker so the summary stays compact across browsers. */
+.speech-filters__advanced-summary::-webkit-details-marker { display: none; }
+.speech-filters__advanced-summary::before {
+  content: "▸";
+  display: inline-block;
+  font-size: .7rem;
+  transition: transform .15s ease;
+}
+.speech-filters__advanced[open] .speech-filters__advanced-summary::before {
+  transform: rotate(90deg);
+}
+
+.speech-filters__advanced-summary:hover,
+.speech-filters__advanced-summary:focus-visible {
+  color: var(--ink);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.speech-filters__advanced-active {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.speech-filters--advanced {
+  margin-top: .65rem;
+}
+
+.speech-filters__item--checkboxes {
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 220px;
+}
+
+.speech-filters__checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .75rem;
+  padding: .25rem 0;
+}
+
+.speech-filters__checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  font-size: .85rem;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.speech-filters__checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 /* ── Results ──────────────────────────────────────────────────── */
 
 .hansard-search__results {
@@ -491,6 +570,8 @@
   .hansard-search__title { font-size: 1.6rem; }
   .speech-filters { flex-direction: column; }
   .speech-filters__item { min-width: 0; }
+  .speech-filters__item--checkboxes { min-width: 0; }
+  .speech-filters__checkbox-group { gap: .35rem .65rem; }
   .speech-result__speaker { align-items: flex-start; }
   .speech-result__actions { font-size: .85rem; }
 }

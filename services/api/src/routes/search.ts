@@ -30,6 +30,19 @@ const politicianIdInput = z.union([
   z.array(z.string().uuid()).max(10),
 ]).optional();
 
+// Speech-type taxonomy populated by ingest. `floor` is the catch-all for
+// jurisdictions whose Hansard parsers don't structurally distinguish turn
+// types (most provincial PDF feeds); the others are well-populated on
+// federal Hansard.
+const SPEECH_TYPE_VALUES = [
+  "floor",
+  "committee",
+  "question_period",
+  "statement",
+  "point_of_order",
+  "group",
+] as const;
+
 export const baseFilterSchema = z.object({
   q: z.string().trim().max(500).default(""),
   lang: z.enum(["en", "fr", "any"]).default("any"),
@@ -41,6 +54,26 @@ export const baseFilterSchema = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   exclude_presiding: z.coerce.boolean().optional(),
+  // Cosine-similarity floor (0..1). Applies only when `q` is present —
+  // recency-mode browsing has no similarity to threshold against. Mirrors
+  // the channel /politician-quotes already uses; the difference is the
+  // public /speeches route doesn't impose a server-side 0.45 minimum.
+  min_similarity: z.coerce.number().min(0).max(1).optional(),
+  // Restrict to speeches inside one (parliament, session) pair. Both must
+  // be present together; the resolver looks up `legislative_sessions.id`
+  // by (parliament_number, session_number) within the level/province
+  // already on the request, so a global "31st Parliament" without
+  // jurisdiction context would be ambiguous.
+  parliament_number: z.coerce.number().int().positive().max(100).optional(),
+  session_number: z.coerce.number().int().positive().max(20).optional(),
+  // Multi-select: e.g. `?speech_type=question_period&speech_type=statement`
+  // matches the repeated-param convention used by `politician_id`.
+  // Coerced to an array regardless of single/multi form so handlers don't
+  // have to special-case URLSearchParams' single-value shape.
+  speech_type: z.union([
+    z.enum(SPEECH_TYPE_VALUES),
+    z.array(z.enum(SPEECH_TYPE_VALUES)).max(SPEECH_TYPE_VALUES.length),
+  ]).optional(),
 });
 
 export function effectivePoliticianIds(
@@ -90,10 +123,9 @@ const expandQuery = baseFilterSchema.extend({
   politician_id: z.string().uuid(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(50),
-  // Client-selectable similarity floor. Always clamped >= 0.45 server-side
-  // so the baseline "actually matches the query" definition never weakens;
-  // tightening is allowed (≥50%, ≥60%, ≥70%, ≥80%).
-  min_similarity: z.coerce.number().min(0).max(1).optional(),
+  // min_similarity inherited from baseFilterSchema; /politician-quotes
+  // additionally clamps it to ≥0.45 server-side (see handler) so the
+  // baseline "actually matches the query" definition never weakens.
 });
 
 type BaseFilter = z.infer<typeof baseFilterSchema>;
@@ -185,13 +217,42 @@ function buildFilterWhere(f: BaseFilter): {
       `NOT EXISTS (SELECT 1 FROM speeches sx WHERE sx.id = sc.speech_id AND sx.speaker_role IS NOT NULL AND sx.speaker_role <> '')`,
     );
   }
+  // Restrict to a specific (parliament, session) — sc.session_id is
+  // already denormalised, so this is a pre-filter against legislative_sessions.
+  // Both numbers must be present together; one without the other is ambiguous.
+  if (f.parliament_number != null && f.session_number != null) {
+    filterParams.push(f.parliament_number);
+    const pIdx = filterParams.length;
+    filterParams.push(f.session_number);
+    const sIdx = filterParams.length;
+    where.push(
+      `EXISTS (SELECT 1 FROM legislative_sessions ls WHERE ls.id = sc.session_id AND ls.parliament_number = $${pIdx} AND ls.session_number = $${sIdx})`,
+    );
+  }
+  // Speech-type multi-select. Same EXISTS pattern as exclude_presiding;
+  // the column lives on speeches, not speech_chunks. Coerce single value
+  // → array so the SQL is uniform.
+  if (f.speech_type) {
+    const types = Array.isArray(f.speech_type) ? f.speech_type : [f.speech_type];
+    if (types.length > 0) {
+      filterParams.push(types);
+      where.push(
+        `EXISTS (SELECT 1 FROM speeches sx WHERE sx.id = sc.speech_id AND sx.speech_type = ANY($${filterParams.length}::text[]))`,
+      );
+    }
+  }
   return { whereSql: where.join(" AND "), filterParams };
 }
 
 function hasAnyStructuralFilter(f: BaseFilter): boolean {
+  const speechTypes = Array.isArray(f.speech_type)
+    ? f.speech_type.length > 0
+    : Boolean(f.speech_type);
   return Boolean(
     effectivePoliticianIds(f).length > 0 ||
-    f.party || f.level || f.province_territory || f.from || f.to
+    f.party || f.level || f.province_territory || f.from || f.to ||
+    (f.parliament_number != null && f.session_number != null) ||
+    speechTypes
   );
 }
 
@@ -229,8 +290,14 @@ async function handleGroupedByPolitician(
   // Distance threshold for counting a chunk as a "mention" — below this
   // similarity (0.45) Qwen3 results start drifting off-topic for the
   // civic-Hansard corpus. Tuned by eye; revisit if recall complaints.
-  const MIN_SIMILARITY = 0.45;
-  const MAX_DISTANCE = 1 - MIN_SIMILARITY;
+  // Client may tighten via min_similarity; never loosen below 0.45 so
+  // mention_count stays semantically "actually about this topic".
+  const MIN_SIMILARITY_FLOOR = 0.45;
+  const effectiveMinSimilarity = Math.max(
+    MIN_SIMILARITY_FLOOR,
+    input.min_similarity ?? 0,
+  );
+  const MAX_DISTANCE = 1 - effectiveMinSimilarity;
 
   const params: unknown[] = [
     ...filterParams,
@@ -663,10 +730,15 @@ export default async function searchRoutes(app: FastifyInstance) {
     }
 
     if (!parsed.data.q && !hasAnyStructuralFilter(parsed.data)) {
-      return reply.badRequest("provide `q` or at least one filter (politician_ids, party, level, province, from, to)");
+      return reply.badRequest("provide `q` or at least one filter (politician_ids, party, level, province, from, to, parliament+session, speech_type)");
     }
 
-    return runTimelineSearch(parsed.data);
+    // min_similarity is only meaningful alongside a semantic query;
+    // runTimelineSearch already gates on `!!q && minSimilarity > 0` so
+    // recency-mode browsing ignores it harmlessly.
+    return runTimelineSearch(parsed.data, {
+      minSimilarity: parsed.data.min_similarity,
+    });
   });
 
   // Authenticated deep-dive: every quote one politician has on the query.
@@ -886,6 +958,51 @@ export default async function searchRoutes(app: FastifyInstance) {
       keyword_overlap: row?.keyword_overlap ?? null,
       mode: q ? "semantic" : "recent",
     };
+  });
+
+  // Session list for the cascading parliament/session dropdown on the
+  // search filter UI. Fast, cacheable — the table changes ~once per
+  // prorogation. `province` is omitted for federal (matches the existing
+  // URL convention from /search/speeches and the page filter).
+  const sessionsQuery = z.object({
+    level: z.enum(["federal", "provincial", "municipal"]).optional(),
+    province: z.string().length(2).optional(),
+  });
+
+  app.get("/sessions", async (req, reply) => {
+    const parsed = sessionsQuery.safeParse(req.query);
+    if (!parsed.success) return reply.badRequest(parsed.error.message);
+    const { level, province } = parsed.data;
+
+    const where: string[] = [];
+    const params: (string | number)[] = [];
+    if (level) { params.push(level); where.push(`level = $${params.length}`); }
+    if (province) {
+      params.push(province);
+      where.push(`province_territory = $${params.length}`);
+    } else if (level === "federal") {
+      where.push(`province_territory IS NULL`);
+    }
+    const whereSql = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
+    interface SessionRow {
+      parliament_number: number;
+      session_number: number;
+      name: string | null;
+      start_date: string | null;
+      end_date: string | null;
+    }
+    const rows = await query<SessionRow>(
+      `SELECT parliament_number, session_number, name, start_date, end_date
+         FROM legislative_sessions
+         ${whereSql}
+        ORDER BY parliament_number DESC, session_number DESC`,
+      params,
+    );
+    // Browser-side cache for an hour; sessions change ~once per
+    // prorogation, never within a request burst.
+    reply.header("Cache-Control", "public, max-age=3600");
+    return { sessions: rows };
   });
 
   app.get("/meta", async () => {

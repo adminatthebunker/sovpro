@@ -4,10 +4,12 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   effectivePoliticianIds,
   MAX_POLITICIAN_PINS,
+  SPEECH_TYPE_VALUES,
   useSpeechSearch,
   useSpeechSearchMeta,
   type PoliticianSort,
   type SpeechSearchFilter,
+  type SpeechType,
 } from "../hooks/useSpeechSearch";
 import { SpeechFilters } from "../components/SpeechFilters";
 import { SpeechResultCard } from "../components/SpeechResultCard";
@@ -48,6 +50,33 @@ function readSort(params: URLSearchParams): PoliticianSort {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+function parseMinSimilarity(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0 || n > 1) return undefined;
+  return n;
+}
+
+function parsePositiveInt(raw: string | null): number | undefined {
+  if (!raw) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) return undefined;
+  return n;
+}
+
+function parseSpeechTypes(params: URLSearchParams): SpeechType[] | undefined {
+  const allowed = new Set<string>(SPEECH_TYPE_VALUES);
+  const seen = new Set<SpeechType>();
+  const out: SpeechType[] = [];
+  for (const v of params.getAll("speech_type")) {
+    if (allowed.has(v) && !seen.has(v as SpeechType)) {
+      seen.add(v as SpeechType);
+      out.push(v as SpeechType);
+    }
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function readFilter(params: URLSearchParams): SpeechSearchFilter {
   const lang = params.get("lang");
   const level = params.get("level");
@@ -62,6 +91,11 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
       politician_ids.push(id);
     }
   }
+  // Parliament + session must arrive together; one without the other is
+  // ambiguous (which session of which parliament?) so drop both.
+  const parliament = parsePositiveInt(params.get("parliament"));
+  const session = parsePositiveInt(params.get("session"));
+  const havePair = parliament != null && session != null;
   return {
     q: params.get("q") ?? "",
     lang: (lang === "en" || lang === "fr" || lang === "any" ? lang : "any") as SpeechSearchFilter["lang"],
@@ -74,6 +108,10 @@ function readFilter(params: URLSearchParams): SpeechSearchFilter {
     from: params.get("from") ?? undefined,
     to: params.get("to") ?? undefined,
     exclude_presiding: params.get("exclude_presiding") === "true" ? true : undefined,
+    min_similarity: parseMinSimilarity(params.get("min_similarity")),
+    parliament_number: havePair ? parliament : undefined,
+    session_number: havePair ? session : undefined,
+    speech_types: parseSpeechTypes(params),
     page: Number(params.get("page")) || 1,
     limit: 20,
     group_by: view === "politician" ? "politician" : "timeline",
@@ -92,6 +130,16 @@ function writeFilter(f: SpeechSearchFilter, view: ViewMode): URLSearchParams {
   if (f.from) p.set("from", f.from);
   if (f.to) p.set("to", f.to);
   if (f.exclude_presiding) p.set("exclude_presiding", "true");
+  if (f.min_similarity != null && f.min_similarity > 0) {
+    p.set("min_similarity", String(f.min_similarity));
+  }
+  if (f.parliament_number != null && f.session_number != null) {
+    p.set("parliament", String(f.parliament_number));
+    p.set("session", String(f.session_number));
+  }
+  if (f.speech_types && f.speech_types.length > 0) {
+    for (const t of f.speech_types) p.append("speech_type", t);
+  }
   if (f.politician_ids && f.politician_ids.length > 0) {
     for (const id of f.politician_ids) p.append("politician_id", id);
   } else if (f.politician_id) {
@@ -190,7 +238,9 @@ export default function HansardSearchPage() {
       filter.party ||
       filter.from ||
       filter.to ||
-      pinnedIds.length > 0,
+      pinnedIds.length > 0 ||
+      (filter.parliament_number != null && filter.session_number != null) ||
+      (filter.speech_types && filter.speech_types.length > 0),
   );
   const hasQuery = Boolean(filter.q && filter.q.trim());
   // Grouped mode is semantic-only (the API 400s on a q-less grouped call).
