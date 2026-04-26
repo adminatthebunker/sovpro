@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { ShareMenu } from "./ShareMenu";
+import { BetaBadge } from "./BetaBadge";
 import { useUserAuth } from "../hooks/useUserAuth";
 
 /**
@@ -62,13 +63,16 @@ export function Layout() {
     <div className="shell">
       <a className="skip-link" href="#main">Skip to main content</a>
       <header className="shell__header">
-        <Link to="/" className="shell__brand">
-          <span className="shell__logo" aria-hidden="true">🍁</span>
-          <div>
-            <h1>Canadian Political Data</h1>
-            <p className="shell__tag">Canada's open source for political data.</p>
-          </div>
-        </Link>
+        <div className="shell__brand-group">
+          <Link to="/" className="shell__brand">
+            <span className="shell__logo" aria-hidden="true">🍁</span>
+            <div>
+              <h1>Canadian Political Data</h1>
+              <p className="shell__tag">Canada's open source for political data.</p>
+            </div>
+          </Link>
+          <BetaBadge />
+        </div>
         <nav className="shell__tabs" aria-label="Primary">
           <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
             Home

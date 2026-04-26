@@ -57,10 +57,61 @@ button.active { background: var(--accent); border-color: var(--accent); }
   display: flex; align-items: center; justify-content: space-between;
   padding-bottom: 1rem; border-bottom: 1px solid var(--border);
 }
+.shell__brand-group { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
 .shell__brand { display: flex; gap: .75rem; align-items: center; }
 .shell__logo { font-size: 2.4rem; }
 .shell__brand h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.02em; }
 .shell__tag { margin: 0; color: var(--ink-muted); font-size: .85rem; }
+
+.beta-badge { position: relative; display: inline-block; }
+.beta-badge__btn {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .25rem .65rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  color: #fbbf24;
+  font-size: .72rem; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, transform .15s;
+}
+.beta-badge__btn::before {
+  content: ""; display: inline-block;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.7);
+}
+.beta-badge__btn:hover {
+  background: rgba(251, 191, 36, 0.2);
+  border-color: rgba(251, 191, 36, 0.7);
+  transform: translateY(-1px);
+}
+.beta-badge__btn[aria-expanded="true"] {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: rgba(251, 191, 36, 0.75);
+}
+.beta-badge__panel {
+  position: absolute; left: 0; top: calc(100% + .5rem);
+  z-index: 50;
+  width: max-content; max-width: min(360px, calc(100vw - 2rem));
+  padding: .7rem .85rem;
+  background: rgba(15, 23, 42, 0.97);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: rgba(226, 232, 240, 0.92);
+  font-size: .82rem; line-height: 1.5;
+  text-align: left;
+}
+.beta-badge__panel::before {
+  content: ""; position: absolute; top: -6px; left: 1.1rem;
+  transform: rotate(45deg);
+  width: 10px; height: 10px;
+  background: rgba(15, 23, 42, 0.97);
+  border-left: 1px solid rgba(251, 191, 36, 0.35);
+  border-top: 1px solid rgba(251, 191, 36, 0.35);
+}
 .shell__tabs { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 .shell__tabs a {
   background: var(--panel); color: var(--ink);
@@ -1459,6 +1510,8 @@ button.active { background: var(--accent); border-color: var(--accent); }
   .shell__logo { font-size: 1.9rem; }
   .shell__brand h1 { font-size: 1.15rem; }
   .shell__tag { font-size: .78rem; }
+  .beta-badge__btn { font-size: .68rem; padding: .22rem .55rem; }
+  .beta-badge__panel { font-size: .78rem; padding: .6rem .75rem; max-width: calc(100vw - 1.5rem); }
 
   .shell__tabs {
     width: 100%; gap: .35rem; flex-wrap: wrap;
