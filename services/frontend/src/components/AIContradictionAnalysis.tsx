@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import {
   userFetch,
   UserUnauthorizedError,
@@ -33,6 +33,7 @@ interface Props {
   chunks: GroupedSearchChunk[];
   meta: AIAnalyzeMeta | null;
   reportsMeta?: ReportsMeta | null;
+  actionSlot?: ReactNode;
 }
 
 const CONSENT_KEY = "cpd_ai_analyze_consent_v1";
@@ -109,6 +110,7 @@ export function AIContradictionAnalysis({
   chunks,
   meta,
   reportsMeta,
+  actionSlot,
 }: Props) {
   const { user } = useUserAuth();
 
@@ -219,6 +221,7 @@ export function AIContradictionAnalysis({
         >
           {loading ? "Analyzing…" : "Analyze for contradictions (AI)"}
         </button>
+        {actionSlot}
         {readConsent() && (
           <button
             type="button"

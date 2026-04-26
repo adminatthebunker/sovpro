@@ -548,21 +548,21 @@ export default function HansardSearchPage() {
                     group={g}
                     parentFilter={filter}
                     footer={
-                      <>
-                        <AIContradictionAnalysis
-                          politicianId={g.politician.id}
-                          politicianName={g.politician.name ?? "this politician"}
-                          query={filter.q ?? ""}
-                          chunks={g.chunks}
-                          meta={aiMeta}
-                          reportsMeta={reportsMeta}
-                        />
-                        <AIFullReportButton
-                          politicianId={g.politician.id}
-                          query={filter.q ?? ""}
-                          meta={reportsMeta}
-                        />
-                      </>
+                      <AIContradictionAnalysis
+                        politicianId={g.politician.id}
+                        politicianName={g.politician.name ?? "this politician"}
+                        query={filter.q ?? ""}
+                        chunks={g.chunks}
+                        meta={aiMeta}
+                        reportsMeta={reportsMeta}
+                        actionSlot={
+                          <AIFullReportButton
+                            politicianId={g.politician.id}
+                            query={filter.q ?? ""}
+                            meta={reportsMeta}
+                          />
+                        }
+                      />
                     }
                   />
                 </li>
