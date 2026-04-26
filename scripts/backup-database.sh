@@ -6,20 +6,40 @@
 # parallel snapshot). Latest dump stays uncompressed and restore-ready;
 # older dumps are demoted to .tar.zst. Designed to run from cron.
 #
-# Env-var contract (defaults below; override by exporting before invocation):
+# Tuning knobs (resolved as: process env > $SOVPRO_REPO/.env > code default):
 #   BACKUP_DEST            target directory
 #   BACKUP_RETENTION       total dumps kept (1 uncompressed + N-1 compacted)
 #   BACKUP_COMPRESS_LEVEL  zstd level for compaction (1..19)
 #   BACKUP_PARALLEL_JOBS   pg_dump -j value
 #   SOVPRO_REPO            path to the sovpro checkout (for git SHA + .env)
+#
+# DB_PASSWORD is read from $SOVPRO_REPO/.env only (no env-var override),
+# so cron-environment compromise can't swap which DB the dump pulls from.
 
 set -euo pipefail
 
-BACKUP_DEST="${BACKUP_DEST:-/media/bunker-admin/Internal/canadian-political-data-backups}"
-BACKUP_RETENTION="${BACKUP_RETENTION:-7}"
-BACKUP_COMPRESS_LEVEL="${BACKUP_COMPRESS_LEVEL:-19}"
-BACKUP_PARALLEL_JOBS="${BACKUP_PARALLEL_JOBS:-8}"
 SOVPRO_REPO="${SOVPRO_REPO:-/home/bunker-admin/sovpro}"
+
+# Read a single KEY=VALUE entry from $SOVPRO_REPO/.env. Echoes the value
+# (last one wins on duplicate keys, matching docker-compose semantics);
+# echoes nothing if .env or the key is missing. Never fails.
+read_env_var() {
+    local key="$1" envfile="$SOVPRO_REPO/.env"
+    [ -f "$envfile" ] || return 0
+    grep -E "^${key}=" "$envfile" 2>/dev/null | tail -n1 | cut -d= -f2- || true
+}
+
+BACKUP_DEST="${BACKUP_DEST:-$(read_env_var BACKUP_DEST)}"
+BACKUP_DEST="${BACKUP_DEST:-/media/bunker-admin/Internal/canadian-political-data-backups}"
+
+BACKUP_RETENTION="${BACKUP_RETENTION:-$(read_env_var BACKUP_RETENTION)}"
+BACKUP_RETENTION="${BACKUP_RETENTION:-7}"
+
+BACKUP_COMPRESS_LEVEL="${BACKUP_COMPRESS_LEVEL:-$(read_env_var BACKUP_COMPRESS_LEVEL)}"
+BACKUP_COMPRESS_LEVEL="${BACKUP_COMPRESS_LEVEL:-3}"
+
+BACKUP_PARALLEL_JOBS="${BACKUP_PARALLEL_JOBS:-$(read_env_var BACKUP_PARALLEL_JOBS)}"
+BACKUP_PARALLEL_JOBS="${BACKUP_PARALLEL_JOBS:-8}"
 
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 START_EPOCH="$(date -u +%s)"
@@ -83,9 +103,9 @@ trap on_exit EXIT
 
 log "starting backup TS=$TS dest=$BACKUP_DEST retention=$BACKUP_RETENTION fstype=$FSTYPE"
 
-# Load DB_PASSWORD from .env (same source as runbook, same parsing)
+# Load DB_PASSWORD from .env (no env-var override — see header comment)
 [ -f "$SOVPRO_REPO/.env" ] || fail ".env not found at $SOVPRO_REPO/.env"
-DB_PASSWORD="$(grep '^DB_PASSWORD=' "$SOVPRO_REPO/.env" | cut -d= -f2-)"
+DB_PASSWORD="$(read_env_var DB_PASSWORD)"
 [ -n "$DB_PASSWORD" ] || fail "DB_PASSWORD missing or empty in $SOVPRO_REPO/.env"
 
 # Determine target uid/gid from the backup directory itself, so the chown
